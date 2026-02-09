@@ -11,9 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -38,6 +36,25 @@ public class DiscordWebhookManager {
             2,  // Max 2 concurrent webhooks (prevents overwhelming Discord API and limits resource usage)
             new ThreadFactory()
     );
+
+    // Queue for failed messages to retry when internet comes back
+    private static final ConcurrentLinkedQueue<String> failedMessages = new ConcurrentLinkedQueue<>();
+
+    // Scheduler for retrying failed messages
+    private static final ScheduledExecutorService retryScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("IslandTime-Webhook-Retry");
+        return t;
+    });
+
+    // Start retry task
+    static {
+        // Retry failed messages every 30 seconds
+        retryScheduler.scheduleWithFixedDelay(() -> {
+            retryFailedMessages();
+        }, 30, 30, TimeUnit.SECONDS);
+    }
 
     // Custom thread factory for better debugging and daemon threads
     private static class ThreadFactory implements java.util.concurrent.ThreadFactory {
@@ -145,9 +162,20 @@ public class DiscordWebhookManager {
      * Send a webhook notification using thread pool
      */
     private static void sendWebhook(String webhookUrl, String message) {
+        sendWebhook(webhookUrl, message, true);
+    }
+
+    /**
+     * Send a webhook notification using thread pool
+     * @param webhookUrl URL to send to
+     * @param message Message content
+     * @param queueOnFailure Whether to queue the message if it fails
+     */
+    private static void sendWebhook(String webhookUrl, String message, boolean queueOnFailure) {
         // Submit to thread pool instead of creating new thread
         webhookExecutor.submit(() -> {
             HttpURLConnection connection = null;
+            boolean success = false;
             try {
                 URL url = new URL(webhookUrl);
                 connection = (HttpURLConnection) url.openConnection();
@@ -185,8 +213,15 @@ public class DiscordWebhookManager {
                     } catch (Exception e) {
                         // Ignore error reading error response
                     }
+                } else {
+                    success = true;
                 }
 
+            } catch (java.net.UnknownHostException | java.net.SocketException e) {
+                // Network error - likely no internet connection
+                // SocketException catches ConnectException, NoRouteToHostException, etc.
+                System.err.println("Discord webhook network error (no internet?): " + e.getMessage());
+                // Don't print full stack trace for expected network errors
             } catch (Exception e) {
                 System.err.println("Failed to send Discord webhook: " + e.getMessage());
                 e.printStackTrace();
@@ -194,8 +229,40 @@ public class DiscordWebhookManager {
                 if (connection != null) {
                     connection.disconnect();
                 }
+
+                // If sending failed and we should queue it, add to retry queue
+                if (!success && queueOnFailure) {
+                    failedMessages.offer(message);
+                    System.out.println("Queued failed message for retry (" + failedMessages.size() + " in queue)");
+                }
             }
         });
+    }
+
+    /**
+     * Retry sending failed messages
+     */
+    private static void retryFailedMessages() {
+        String url = webhookUrl;
+        if (url == null || url.isEmpty()) {
+            return;
+        }
+
+        int retryCount = 0;
+        int maxRetries = 5; // Process max 5 messages per retry attempt
+
+        while (retryCount < maxRetries && !failedMessages.isEmpty()) {
+            String message = failedMessages.poll();
+            if (message != null) {
+                System.out.println("Retrying failed webhook message...");
+                sendWebhook(url, message, true); // Re-queue if it fails again (keeps retrying until success)
+                retryCount++;
+            }
+        }
+
+        if (!failedMessages.isEmpty()) {
+            System.out.println(failedMessages.size() + " messages still in retry queue");
+        }
     }
 
     /**
@@ -203,6 +270,9 @@ public class DiscordWebhookManager {
      * Should be called when mod is unloading
      */
     public static void shutdown() {
+        // Shutdown retry scheduler first
+        retryScheduler.shutdown();
+
         webhookExecutor.shutdown();
         try {
             // Wait up to 10 seconds for pending webhooks to complete
@@ -215,9 +285,15 @@ public class DiscordWebhookManager {
                     System.err.println("Webhook thread pool did not terminate after forced shutdown");
                 }
             }
+
+            // Wait for retry scheduler
+            if (!retryScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                retryScheduler.shutdownNow();
+            }
         } catch (InterruptedException e) {
             System.err.println("Webhook shutdown interrupted, forcing shutdown");
             webhookExecutor.shutdownNow();
+            retryScheduler.shutdownNow();
             Thread.currentThread().interrupt();
         }
     }
