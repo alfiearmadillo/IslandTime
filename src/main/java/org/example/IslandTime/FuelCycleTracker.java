@@ -25,7 +25,6 @@ public class FuelCycleTracker {
 
     private static final String SAVE_FILE = "config/islandtime_fuel_cycles.txt";
     private static final long CYCLE_DURATION_MS = 24 * 60 * 60 * 1000L; // 24 hours in milliseconds
-    private static final int MAX_SAVED_CYCLES = 4; // Keep last 4 completed cycles
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("MMM d, h:mm a");
 
     // Current cycle data
@@ -148,13 +147,8 @@ public class FuelCycleTracker {
                 currentCycleIslandTime
         );
 
-        // Add to front of list
-        completedCycles.add(0, cycle);
-
-        // Keep only the last MAX_SAVED_CYCLES
-        while (completedCycles.size() > MAX_SAVED_CYCLES) {
-            completedCycles.remove(completedCycles.size() - 1);
-        }
+        // Add to end of list (cycles are stored oldest to newest)
+        completedCycles.add(cycle);
 
         // Reset current cycle
         currentCycleStartTime = 0;
@@ -167,8 +161,10 @@ public class FuelCycleTracker {
 
     /**
      * Display fuel cycle stats to the player
+     * @param client Minecraft client
+     * @param specificCycle Optional cycle number to display (1 = oldest), or null to show last 4
      */
-    public static void displayStats(MinecraftClient client) {
+    public static void displayStats(MinecraftClient client, Integer specificCycle) {
         if (client.player == null) return;
 
         // Check if there's any data
@@ -178,6 +174,25 @@ public class FuelCycleTracker {
                             .formatted(Formatting.YELLOW),
                     false
             );
+            return;
+        }
+
+        int totalCycles = completedCycles.size();
+
+        // If requesting a specific cycle
+        if (specificCycle != null) {
+            if (specificCycle < 1 || specificCycle > totalCycles) {
+                client.player.sendMessage(
+                        Text.literal("Invalid cycle number. Valid range: 1-" + totalCycles)
+                                .formatted(Formatting.RED),
+                        false
+                );
+                return;
+            }
+
+            // Display the requested cycle (cycles are 1-indexed from oldest)
+            CompletedCycle cycle = completedCycles.get(specificCycle - 1);
+            displaySingleCycle(client, cycle, specificCycle, totalCycles);
             return;
         }
 
@@ -223,16 +238,22 @@ public class FuelCycleTracker {
             client.player.sendMessage(Text.literal(""), false);
         }
 
-        // Display completed cycles
+        // Display recent completed cycles (last 4)
         if (!completedCycles.isEmpty()) {
+            int displayCount = Math.min(4, totalCycles);
+            int startIndex = Math.max(0, totalCycles - 4); // Start from 4th-to-last
+
             client.player.sendMessage(
                     Text.literal("Recent Completed Cycles:")
-                            .formatted(Formatting.GOLD),
+                            .formatted(Formatting.GOLD)
+                            .append(Text.literal(" (showing " + displayCount + " of " + totalCycles + ")")
+                                    .formatted(Formatting.GRAY)),
                     false
             );
 
-            for (int i = 0; i < completedCycles.size(); i++) {
+            for (int i = startIndex; i < totalCycles; i++) {
                 CompletedCycle cycle = completedCycles.get(i);
+                int cycleNumber = i + 1; // 1-indexed
 
                 LocalDateTime startTime = LocalDateTime.ofInstant(
                         Instant.ofEpochMilli(cycle.startTime),
@@ -248,7 +269,7 @@ public class FuelCycleTracker {
                 long duration = cycle.endTime - cycle.startTime;
 
                 client.player.sendMessage(
-                        Text.literal("  Cycle " + (i + 1) + ": ")
+                        Text.literal("  Cycle " + cycleNumber + ": ")
                                 .formatted(Formatting.YELLOW)
                                 .append(Text.literal(startStr + " - " + endStr)
                                         .formatted(Formatting.WHITE)),
@@ -271,7 +292,72 @@ public class FuelCycleTracker {
                         false
                 );
             }
+
+            if (totalCycles > 4) {
+                client.player.sendMessage(
+                        Text.literal("Use /fueltime <cycle> to view older cycles (e.g., /fueltime 1)")
+                                .formatted(Formatting.GRAY)
+                                .formatted(Formatting.ITALIC),
+                        false
+                );
+            }
         }
+    }
+
+    /**
+     * Display a single cycle's information
+     */
+    private static void displaySingleCycle(MinecraftClient client, CompletedCycle cycle, int cycleNumber, int totalCycles) {
+        LocalDateTime startTime = LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(cycle.startTime),
+                ZoneId.systemDefault()
+        );
+        LocalDateTime endTime = LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(cycle.endTime),
+                ZoneId.systemDefault()
+        );
+
+        String startStr = startTime.format(TIME_FORMATTER);
+        String endStr = endTime.format(TIME_FORMATTER);
+        long duration = cycle.endTime - cycle.startTime;
+
+        client.player.sendMessage(
+                Text.literal("Cycle " + cycleNumber + " of " + totalCycles)
+                        .formatted(Formatting.GOLD),
+                false
+        );
+
+        client.player.sendMessage(
+                Text.literal("Period: ")
+                        .formatted(Formatting.AQUA)
+                        .append(Text.literal(startStr + " - " + endStr)
+                                .formatted(Formatting.WHITE)),
+                false
+        );
+
+        client.player.sendMessage(
+                Text.literal("Duration: ")
+                        .formatted(Formatting.AQUA)
+                        .append(Text.literal(formatDuration(duration))
+                                .formatted(Formatting.WHITE)),
+                false
+        );
+
+        client.player.sendMessage(
+                Text.literal("Minions Refueled: ")
+                        .formatted(Formatting.AQUA)
+                        .append(Text.literal(String.valueOf(cycle.minionsRefueled))
+                                .formatted(Formatting.WHITE)),
+                false
+        );
+
+        client.player.sendMessage(
+                Text.literal("Active Time: ")
+                        .formatted(Formatting.AQUA)
+                        .append(Text.literal(formatDuration(cycle.islandTime))
+                                .formatted(Formatting.WHITE)),
+                false
+        );
     }
 
     /**

@@ -32,9 +32,15 @@ public class IslandTimeCommand {
         dispatcher.register(literal("afkmod")
                 .then(literal("help")
                         .executes(ctx -> {
-                            showHelp(ctx.getSource().getClient());
+                            showHelp(ctx.getSource().getClient(), 1);
                             return 1;
-                        })));
+                        })
+                        .then(argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                                .executes(ctx -> {
+                                    int page = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page");
+                                    showHelp(ctx.getSource().getClient(), page);
+                                    return 1;
+                                }))));
 
         // Register /islandtime command
         dispatcher.register(literal("islandtime")
@@ -54,9 +60,15 @@ public class IslandTimeCommand {
         // Register /fueltime command
         dispatcher.register(literal("fueltime")
                 .executes(ctx -> {
-                    FuelCycleTracker.displayStats(ctx.getSource().getClient());
+                    FuelCycleTracker.displayStats(ctx.getSource().getClient(), null);
                     return 1;
-                }));
+                })
+                .then(argument("cycle", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                        .executes(ctx -> {
+                            int cycleNumber = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "cycle");
+                            FuelCycleTracker.displayStats(ctx.getSource().getClient(), cycleNumber);
+                            return 1;
+                        })));
 
         // Register webhook command
         dispatcher.register(literal("webhook")
@@ -148,7 +160,7 @@ public class IslandTimeCommand {
                             // Validate it's numeric
                             if (!userId.matches("\\d+")) {
                                 client.player.sendMessage(
-                                        Text.literal("Invalid Discord user ID. Must be numeric (e.g., 199061696386433024)")
+                                        Text.literal("Invalid Discord user ID. Must be numeric (e.g., 123456789012345678)")
                                                 .formatted(Formatting.RED),
                                         false
                                 );
@@ -414,213 +426,80 @@ public class IslandTimeCommand {
         );
     }
 
-    private static void showHelp(MinecraftClient client) {
+    private static void showHelp(MinecraftClient client, int page) {
+        // Define all commands as an array
+        String[][] commands = {
+                // Page 1 - Basic commands
+                {"/islandtime", "Show last 7 days of island time"},
+                {"/islandtime <DD-MM-YY>", "Show specific date (e.g., /islandtime 1-1-26)"},
+                {"/fueltime", "Show current and recent fuel cycle stats (last 4 cycles)"},
+                {"/fueltime <cycle>", "Show details for a specific cycle number (e.g., /fueltime 6)"},
+                {"/webhook", "Show current webhook URL"},
+                {"/webhook <url>", "Set webhook URL (for Discord alerts)"},
+
+                // Page 2 - Webhook & tracking
+                {"/webhook clear", "Remove webhook"},
+                {"/discordping", "Show current Discord user ID for webhook pings"},
+                {"/discordping <userid>", "Set Discord user ID to ping in webhook alerts"},
+                {"/discordping clear", "Remove Discord ping (webhooks won't ping anyone)"},
+                {"/trackitem", "Show currently tracked item"},
+                {"/trackitem set", "Track the item in your main hand (must have UUID + stats_book)"},
+
+                // Page 3 - Alert settings
+                {"/trackitem clear", "Stop tracking the current item"},
+                {"/trackedalertspeed", "Show current tracked item alert speed and options"},
+                {"/trackedalertspeed <speed>", "Set tracked item alert speed (off/fast/normal/slow)"},
+                {"/islandalertspeed", "Show current island alert speed and options"},
+                {"/islandalertspeed <speed>", "Set island alert speed (off/fast/normal/slow)"},
+                {"/disconnectalertspeed", "Show current disconnect alert speed and options"},
+
+                // Page 4
+                {"/disconnectalertspeed <speed>", "Set disconnect alert speed (off/fast/normal/slow)"}
+        };
+
+        int commandsPerPage = 7;
+        int totalCommands = commands.length;
+        int totalPages = (int) Math.ceil((double) totalCommands / commandsPerPage);
+
+        // Validate page number
+        if (page < 1 || page > totalPages) {
+            client.player.sendMessage(
+                    Text.literal("Invalid page number. Valid range: 1-" + totalPages)
+                            .formatted(Formatting.RED),
+                    false
+            );
+            return;
+        }
+
+        // Display header
         client.player.sendMessage(
-                Text.literal("=== Island Time Mod Commands ===")
+                Text.literal("=== Island Time Mod Commands (Page " + page + "/" + totalPages + ") ===")
                         .formatted(Formatting.GOLD),
                 false
         );
 
         client.player.sendMessage(Text.literal(""), false);
 
-        // /islandtime
-        client.player.sendMessage(
-                Text.literal("/islandtime").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show last 7 days of island time").formatted(Formatting.GRAY),
-                false
-        );
+        // Calculate which commands to show
+        int startIdx = (page - 1) * commandsPerPage;
+        int endIdx = Math.min(startIdx + commandsPerPage, totalCommands);
 
-        // /islandtime <date>
-        client.player.sendMessage(
-                Text.literal("/islandtime <DD-MM-YY>").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show specific date (e.g., /islandtime 1-1-26)").formatted(Formatting.GRAY),
-                false
-        );
+        // Display commands for this page
+        for (int i = startIdx; i < endIdx; i++) {
+            client.player.sendMessage(
+                    Text.literal(commands[i][0]).formatted(Formatting.WHITE),
+                    false
+            );
+            client.player.sendMessage(
+                    Text.literal("  " + commands[i][1]).formatted(Formatting.GRAY),
+                    false
+            );
 
-        client.player.sendMessage(Text.literal(""), false);
-
-        // /fueltime
-        client.player.sendMessage(
-                Text.literal("/fueltime").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show 24-hour fuel cycle stats (minions fueled + island time)").formatted(Formatting.GRAY),
-                false
-        );
-
-        client.player.sendMessage(Text.literal(""), false);
-
-        // /webhook
-        client.player.sendMessage(
-                Text.literal("/webhook").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show current webhook URL").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /webhook <url>
-        client.player.sendMessage(
-                Text.literal("/webhook <url>").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Set webhook URL (for Discord alerts)").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /webhook clear
-        client.player.sendMessage(
-                Text.literal("/webhook clear").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Remove webhook").formatted(Formatting.GRAY),
-                false
-        );
-
-        client.player.sendMessage(Text.literal(""), false);
-
-
-        // /discordping
-        client.player.sendMessage(
-                Text.literal("/discordping").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show current Discord user ID for webhook pings").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /discordping <userid>
-        client.player.sendMessage(
-                Text.literal("/discordping <userid>").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Set Discord user ID to ping in webhook alerts").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /discordping clear
-        client.player.sendMessage(
-                Text.literal("/discordping clear").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Remove Discord ping (webhooks won't ping anyone)").formatted(Formatting.GRAY),
-                false
-        );
-
-        client.player.sendMessage(Text.literal(""), false);
-
-        // /trackitem
-        client.player.sendMessage(
-                Text.literal("/trackitem").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show currently tracked item").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /trackitem set
-        client.player.sendMessage(
-                Text.literal("/trackitem set").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Track the item in your main hand (must have UUID + stats_book)").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /trackitem clear
-        client.player.sendMessage(
-                Text.literal("/trackitem clear").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Stop tracking the current item").formatted(Formatting.GRAY),
-                false
-        );
-
-        client.player.sendMessage(Text.literal(""), false);
-
-        // /trackedalertspeed
-        client.player.sendMessage(
-                Text.literal("/trackedalertspeed").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show current tracked item alert speed and options").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /trackedalertspeed <speed>
-        client.player.sendMessage(
-                Text.literal("/trackedalertspeed <speed>").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Set tracked item alert speed (off/fast/normal/slow)").formatted(Formatting.GRAY),
-                false
-        );
-
-        client.player.sendMessage(Text.literal(""), false);
-
-        // /islandalertspeed
-        client.player.sendMessage(
-                Text.literal("/islandalertspeed").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show current island alert speed and options").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /islandalertspeed <speed>
-        client.player.sendMessage(
-                Text.literal("/islandalertspeed <speed>").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Set island alert speed (off/fast/normal/slow)").formatted(Formatting.GRAY),
-                false
-        );
-
-        client.player.sendMessage(Text.literal(""), false);
-
-        // /disconnectalertspeed
-        client.player.sendMessage(
-                Text.literal("/disconnectalertspeed").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Show current disconnect alert speed and options").formatted(Formatting.GRAY),
-                false
-        );
-
-        // /disconnectalertspeed <speed>
-        client.player.sendMessage(
-                Text.literal("/disconnectalertspeed <speed>").formatted(Formatting.WHITE),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Set disconnect alert speed (off/fast/normal/slow)").formatted(Formatting.GRAY),
-                false
-        );
-        client.player.sendMessage(
-                Text.literal("  Note: Disconnect alerts are sent immediately, speed controls repeat frequency").formatted(Formatting.DARK_GRAY),
-                false
-        );
+            // Add blank line after each command except the last one on the page
+            if (i < endIdx - 1) {
+                client.player.sendMessage(Text.literal(""), false);
+            }
+        }
     }
 
     private static void showRecent() {
