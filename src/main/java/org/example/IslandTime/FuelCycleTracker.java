@@ -200,50 +200,47 @@ public class FuelCycleTracker {
         // Display current cycle if active
         if (currentCycleStartTime > 0) {
             long now = System.currentTimeMillis();
-            long elapsed = now - currentCycleLastFuelTime; // Time since last fuel
-            long remaining = CYCLE_DURATION_MS - elapsed;
+            long elapsed = now - currentCycleStartTime; // Total time since cycle started
+            long timeSinceLastFuel = now - currentCycleLastFuelTime; // Time since last fuel
+            long remaining = CYCLE_DURATION_MS - timeSinceLastFuel;
 
             LocalDateTime startTime = LocalDateTime.ofInstant(
                     Instant.ofEpochMilli(currentCycleStartTime),
                     ZoneId.systemDefault()
             );
+            LocalDateTime endTime = LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(currentCycleLastFuelTime + CYCLE_DURATION_MS),
+                    ZoneId.systemDefault()
+            );
 
             String startStr = startTime.format(TIME_FORMATTER);
+            String endStr = endTime.format(TIME_FORMATTER);
+
+            // Calculate percentage based on elapsed time (not full 24h)
+            double activePercentage = elapsed > 0 ? (currentCycleIslandTime * 100.0 / elapsed) : 0.0;
 
             client.player.sendMessage(
-                    Text.literal("» Current Fuel Cycle (Active)")
-                            .formatted(Formatting.GOLD),
+                    Text.literal("  Current: ")
+                            .formatted(Formatting.GREEN)
+                            .append(Text.literal(startStr + " - " + endStr + " ")
+                                    .formatted(Formatting.WHITE))
+                            .append(Text.literal("(" + formatDuration(remaining) + " remaining)")
+                                    .formatted(Formatting.GRAY)),
                     false
             );
 
             client.player.sendMessage(
-                    Text.literal("Started: ")
-                            .formatted(Formatting.AQUA)
-                            .append(Text.literal(startStr)
-                                    .formatted(Formatting.WHITE)),
-                    false
-            );
-
-            client.player.sendMessage(
-                    Text.literal("Time Remaining: ")
-                            .formatted(Formatting.AQUA)
-                            .append(Text.literal(formatDuration(remaining))
-                                    .formatted(Formatting.WHITE)),
-                    false
-            );
-
-            client.player.sendMessage(
-                    Text.literal("Minions Refueled: ")
-                            .formatted(Formatting.AQUA)
+                    Text.literal("    Duration: ")
+                            .formatted(Formatting.GRAY)
+                            .append(Text.literal(formatDuration(elapsed))
+                                    .formatted(Formatting.WHITE))
+                            .append(Text.literal(" | Minions: ")
+                                    .formatted(Formatting.GRAY))
                             .append(Text.literal(String.valueOf(currentCycleMinionsRefueled))
-                                    .formatted(Formatting.WHITE)),
-                    false
-            );
-
-            client.player.sendMessage(
-                    Text.literal("Active Time: ")
-                            .formatted(Formatting.AQUA)
-                            .append(Text.literal(formatDuration(currentCycleIslandTime))
+                                    .formatted(Formatting.WHITE))
+                            .append(Text.literal(" | Active Time: ")
+                                    .formatted(Formatting.GRAY))
+                            .append(Text.literal(formatDuration(currentCycleIslandTime) + String.format(" (%.1f%%)", activePercentage))
                                     .formatted(Formatting.WHITE)),
                     false
             );
@@ -284,6 +281,9 @@ public class FuelCycleTracker {
                 String endStr = endTime.format(TIME_FORMATTER);
                 long duration = cycle.endTime - cycle.startTime;
 
+                // Calculate percentage based on full duration
+                double activePercentage = duration > 0 ? (cycle.islandTime * 100.0 / duration) : 0.0;
+
                 client.player.sendMessage(
                         Text.literal("  Cycle " + cycleNumber + ": ")
                                 .formatted(Formatting.YELLOW)
@@ -303,7 +303,7 @@ public class FuelCycleTracker {
                                         .formatted(Formatting.WHITE))
                                 .append(Text.literal(" | Active Time: ")
                                         .formatted(Formatting.GRAY))
-                                .append(Text.literal(formatDuration(cycle.islandTime))
+                                .append(Text.literal(formatDuration(cycle.islandTime) + String.format(" (%.1f%%)", activePercentage))
                                         .formatted(Formatting.WHITE)),
                         false
                 );
@@ -336,6 +336,9 @@ public class FuelCycleTracker {
         String startStr = startTime.format(TIME_FORMATTER);
         String endStr = endTime.format(TIME_FORMATTER);
         long duration = cycle.endTime - cycle.startTime;
+
+        // Calculate percentage based on full duration
+        double activePercentage = duration > 0 ? (cycle.islandTime * 100.0 / duration) : 0.0;
 
         client.player.sendMessage(
                 Text.literal("Cycle " + cycleNumber + " of " + totalCycles)
@@ -370,7 +373,7 @@ public class FuelCycleTracker {
         client.player.sendMessage(
                 Text.literal("Active Time: ")
                         .formatted(Formatting.AQUA)
-                        .append(Text.literal(formatDuration(cycle.islandTime))
+                        .append(Text.literal(formatDuration(cycle.islandTime) + String.format(" (%.1f%%)", activePercentage))
                                 .formatted(Formatting.WHITE)),
                 false
         );
