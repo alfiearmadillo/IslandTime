@@ -211,7 +211,7 @@ public class FuelCycleTracker {
             String startStr = startTime.format(TIME_FORMATTER);
 
             client.player.sendMessage(
-                    Text.literal("â±ï¸ Current Fuel Cycle (Active)")
+                    Text.literal("» Current Fuel Cycle (Active)")
                             .formatted(Formatting.GOLD),
                     false
             );
@@ -259,7 +259,7 @@ public class FuelCycleTracker {
             int startIndex = Math.max(0, totalCycles - 4);
 
             client.player.sendMessage(
-                    Text.literal("ð Recent Completed Cycles (Showing " +
+                    Text.literal("» Recent Completed Cycles (Showing " +
                                     Math.min(4, totalCycles) + " of " + totalCycles + ")")
                             .formatted(Formatting.GOLD),
                     false
