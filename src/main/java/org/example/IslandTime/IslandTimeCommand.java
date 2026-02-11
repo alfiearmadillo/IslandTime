@@ -520,11 +520,21 @@ public class IslandTimeCommand {
         Collections.sort(days);
         Collections.reverse(days);
 
+        String today = LocalDate.now().toString();
         int shown = 0;
+
+        // Add header
+        client.player.sendMessage(
+                Text.literal("» Island Time (Last 7 Days)")
+                        .formatted(Formatting.GOLD),
+                false
+        );
 
         for (String day : days) {
             long ms = times.get(day);
-            String line = formatLine(day, ms);
+
+            // Determine if this is today
+            boolean isToday = day.equals(today);
 
             if (shown == 1) {
                 client.player.sendMessage(
@@ -534,7 +544,8 @@ public class IslandTimeCommand {
                 );
             }
 
-            client.player.sendMessage(Text.literal(line), false);
+            // Format with colored date
+            formatLineColored(client, day, ms, isToday);
 
             shown++;
             if (shown >= 7) break;
@@ -570,10 +581,10 @@ public class IslandTimeCommand {
         }
 
         long ms = times.get(key);
-        client.player.sendMessage(
-                Text.literal(formatLine(key, ms)),
-                false
-        );
+        String today = LocalDate.now().toString();
+        boolean isToday = key.equals(today);
+
+        formatLineColored(client, key, ms, isToday);
     }
 
     private static LocalDate parseFlexibleDate(String input) {
@@ -607,6 +618,30 @@ public class IslandTimeCommand {
         return String.format(
                 "%s: %02dh%02dm%02ds",
                 prettyDate, h, m, s
+        );
+    }
+
+    /**
+     * Format and display a line with colored date (green for today, yellow for previous days)
+     */
+    private static void formatLineColored(MinecraftClient client, String date, long ms, boolean isToday) {
+        long seconds = ms / 1000;
+        long h = seconds / 3600;
+        long m = (seconds % 3600) / 60;
+        long s = seconds % 60;
+
+        String prettyDate = LocalDate.parse(date).format(OUTPUT_FORMAT);
+        String timeStr = String.format(": %02dh%02dm%02ds", h, m, s);
+
+        // Date is green if today, yellow otherwise; time is always white
+        Formatting dateColor = isToday ? Formatting.GREEN : Formatting.YELLOW;
+
+        client.player.sendMessage(
+                Text.literal(prettyDate)
+                        .formatted(dateColor)
+                        .append(Text.literal(timeStr)
+                                .formatted(Formatting.WHITE)),
+                false
         );
     }
 }

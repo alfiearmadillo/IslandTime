@@ -219,26 +219,31 @@ public class FuelCycleTracker {
             // Calculate percentage based on elapsed time (not full 24h)
             double activePercentage = elapsed > 0 ? (currentCycleIslandTime * 100.0 / elapsed) : 0.0;
 
+            // Header for current cycle
             client.player.sendMessage(
-                    Text.literal("  Current: ")
-                            .formatted(Formatting.GREEN)
-                            .append(Text.literal(startStr + " - " + endStr + " ")
-                                    .formatted(Formatting.WHITE))
-                            .append(Text.literal("(" + formatDuration(remaining) + " remaining)")
-                                    .formatted(Formatting.GRAY)),
+                    Text.literal("» Current Cycle")
+                            .formatted(Formatting.GOLD),
                     false
             );
 
             client.player.sendMessage(
-                    Text.literal("    Duration: ")
+                    Text.literal("  Current: ")
+                            .formatted(Formatting.GREEN)
+                            .append(Text.literal(startStr + " - " + endStr)
+                                    .formatted(Formatting.WHITE)),
+                    false
+            );
+
+            client.player.sendMessage(
+                    Text.literal("    Minions: ")
                             .formatted(Formatting.GRAY)
-                            .append(Text.literal(formatDuration(elapsed))
-                                    .formatted(Formatting.WHITE))
-                            .append(Text.literal(" | Minions: ")
-                                    .formatted(Formatting.GRAY))
                             .append(Text.literal(String.valueOf(currentCycleMinionsRefueled))
                                     .formatted(Formatting.WHITE))
-                            .append(Text.literal(" | Active Time: ")
+                            .append(Text.literal(" | Duration: ")
+                                    .formatted(Formatting.GRAY))
+                            .append(Text.literal(formatDuration(elapsed))
+                                    .formatted(Formatting.WHITE))
+                            .append(Text.literal(" | Active: ")
                                     .formatted(Formatting.GRAY))
                             .append(Text.literal(formatDuration(currentCycleIslandTime) + String.format(" (%.1f%%)", activePercentage))
                                     .formatted(Formatting.WHITE)),
@@ -293,15 +298,15 @@ public class FuelCycleTracker {
                 );
 
                 client.player.sendMessage(
-                        Text.literal("    Duration: ")
+                        Text.literal("    Minions: ")
                                 .formatted(Formatting.GRAY)
-                                .append(Text.literal(formatDuration(duration))
-                                        .formatted(Formatting.WHITE))
-                                .append(Text.literal(" | Minions: ")
-                                        .formatted(Formatting.GRAY))
                                 .append(Text.literal(String.valueOf(cycle.minionsRefueled))
                                         .formatted(Formatting.WHITE))
-                                .append(Text.literal(" | Active Time: ")
+                                .append(Text.literal(" | Duration: ")
+                                        .formatted(Formatting.GRAY))
+                                .append(Text.literal(formatDuration(duration))
+                                        .formatted(Formatting.WHITE))
+                                .append(Text.literal(" | Active: ")
                                         .formatted(Formatting.GRAY))
                                 .append(Text.literal(formatDuration(cycle.islandTime) + String.format(" (%.1f%%)", activePercentage))
                                         .formatted(Formatting.WHITE)),
