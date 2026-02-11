@@ -33,7 +33,7 @@ public class FuelCycleTracker {
     private static int currentCycleMinionsRefueled = 0;
     private static long currentCycleIslandTime = 0; // Milliseconds spent on island
 
-    // Completed cycles
+    // Completed cycles (stored oldest to newest, never deleted)
     private static final List<CompletedCycle> completedCycles = new ArrayList<>();
 
     // For tracking island time
@@ -136,6 +136,7 @@ public class FuelCycleTracker {
 
     /**
      * Completes the current cycle and adds it to completed cycles
+     * NEVER deletes old cycles - all cycles are preserved
      */
     private static void completeCurrentCycle(long endTime) {
         if (currentCycleStartTime == 0) return;
@@ -147,7 +148,7 @@ public class FuelCycleTracker {
                 currentCycleIslandTime
         );
 
-        // Add to end of list (cycles are stored oldest to newest)
+        // Add to end of list (cycles are stored oldest to newest, never deleted)
         completedCycles.add(cycle);
 
         // Reset current cycle
@@ -206,54 +207,69 @@ public class FuelCycleTracker {
                     Instant.ofEpochMilli(currentCycleStartTime),
                     ZoneId.systemDefault()
             );
-            LocalDateTime endTime = LocalDateTime.ofInstant(
-                    Instant.ofEpochMilli(currentCycleLastFuelTime + CYCLE_DURATION_MS),
-                    ZoneId.systemDefault()
-            );
 
             String startStr = startTime.format(TIME_FORMATTER);
-            String endStr = endTime.format(TIME_FORMATTER);
-            String remainingStr = formatDuration(remaining);
 
             client.player.sendMessage(
-                    Text.literal("Current Cycle: ")
-                            .formatted(Formatting.GOLD)
-                            .append(Text.literal(startStr + " - " + endStr + " (in " + remainingStr + ")")
+                    Text.literal("â±ï¸ Current Fuel Cycle (Active)")
+                            .formatted(Formatting.GOLD),
+                    false
+            );
+
+            client.player.sendMessage(
+                    Text.literal("Started: ")
+                            .formatted(Formatting.AQUA)
+                            .append(Text.literal(startStr)
                                     .formatted(Formatting.WHITE)),
                     false
             );
 
             client.player.sendMessage(
-                    Text.literal("  Minions: ")
+                    Text.literal("Time Remaining: ")
+                            .formatted(Formatting.AQUA)
+                            .append(Text.literal(formatDuration(remaining))
+                                    .formatted(Formatting.WHITE)),
+                    false
+            );
+
+            client.player.sendMessage(
+                    Text.literal("Minions Refueled: ")
                             .formatted(Formatting.AQUA)
                             .append(Text.literal(String.valueOf(currentCycleMinionsRefueled))
-                                    .formatted(Formatting.WHITE))
-                            .append(Text.literal(" | Active Time: ")
-                                    .formatted(Formatting.AQUA))
+                                    .formatted(Formatting.WHITE)),
+                    false
+            );
+
+            client.player.sendMessage(
+                    Text.literal("Active Time: ")
+                            .formatted(Formatting.AQUA)
                             .append(Text.literal(formatDuration(currentCycleIslandTime))
                                     .formatted(Formatting.WHITE)),
                     false
             );
 
-            client.player.sendMessage(Text.literal(""), false);
+            client.player.sendMessage(Text.literal(""), false); // Blank line
         }
 
         // Display recent completed cycles (last 4)
         if (!completedCycles.isEmpty()) {
-            int displayCount = Math.min(4, totalCycles);
-            int startIndex = Math.max(0, totalCycles - 4); // Start from 4th-to-last
+            // Calculate which cycles to show (last 4)
+            // IMPORTANT: We show the MOST RECENT 4 cycles in REVERSE chronological order
+            // Cycle 1 is the OLDEST cycle ever recorded, Cycle N is the most recent
+            int startIndex = Math.max(0, totalCycles - 4);
 
             client.player.sendMessage(
-                    Text.literal("Recent Completed Cycles:")
-                            .formatted(Formatting.GOLD)
-                            .append(Text.literal(" (showing " + displayCount + " of " + totalCycles + ")")
-                                    .formatted(Formatting.GRAY)),
+                    Text.literal("ð Recent Completed Cycles (Showing " +
+                                    Math.min(4, totalCycles) + " of " + totalCycles + ")")
+                            .formatted(Formatting.GOLD),
                     false
             );
 
-            for (int i = startIndex; i < totalCycles; i++) {
+            // Iterate BACKWARDS from most recent to oldest (reverse chronological order)
+            // Display: Cycle 7 (newest), then 6, then 5, then 4 (oldest of the 4 shown)
+            for (int i = totalCycles - 1; i >= startIndex; i--) {
                 CompletedCycle cycle = completedCycles.get(i);
-                int cycleNumber = i + 1; // 1-indexed
+                int cycleNumber = i + 1; // Cycle 1 = oldest (index 0), Cycle 2 = second oldest (index 1), etc.
 
                 LocalDateTime startTime = LocalDateTime.ofInstant(
                         Instant.ofEpochMilli(cycle.startTime),
@@ -379,6 +395,7 @@ public class FuelCycleTracker {
 
     /**
      * Save fuel cycle data to disk
+     * SAVES ALL CYCLES - never deletes past cycles
      */
     public static void save() {
         try {
@@ -393,7 +410,7 @@ public class FuelCycleTracker {
                 writer.write(currentCycleMinionsRefueled + "\n");
                 writer.write(currentCycleIslandTime + "\n");
 
-                // Write completed cycles
+                // Write ALL completed cycles (never delete old ones)
                 writer.write("COMPLETED\n");
                 for (CompletedCycle cycle : completedCycles) {
                     writer.write(cycle.serialize() + "\n");
@@ -405,6 +422,7 @@ public class FuelCycleTracker {
 
     /**
      * Load fuel cycle data from disk
+     * Loads ALL saved cycles - never deletes past cycles
      */
     public static void load() {
         Path saveFile = Paths.get(SAVE_FILE);
@@ -441,7 +459,7 @@ public class FuelCycleTracker {
 
                         section = ""; // Done reading current
                     } else if (section.equals("COMPLETED")) {
-                        // Read completed cycle
+                        // Read completed cycle - ALL cycles are loaded and preserved
                         CompletedCycle cycle = CompletedCycle.deserialize(line);
                         if (cycle != null) {
                             completedCycles.add(cycle);

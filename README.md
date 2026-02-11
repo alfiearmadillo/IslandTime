@@ -356,9 +356,7 @@ If it fails, your item doesn't have the required NBT tags.
 4. You should see a message in chat: `[Minion Name] fueled with [Fuel Name]`
 
 **Common issues:**
-- Placing fuel in the wrong slot won't be detected
-- Using hoppers or other automation won't be detected (GUI must be opened)
-- Check console for "Minion fueled" debug messages
+- Adding fuel to an already fueled minion will not trigger tracking or the chat message, the fuel slot must first be empty.
 
 **To verify it's working:**
 ```
