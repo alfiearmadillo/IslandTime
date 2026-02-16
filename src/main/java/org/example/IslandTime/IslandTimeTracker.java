@@ -13,6 +13,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -38,6 +41,14 @@ public class IslandTimeTracker {
     private static final AtomicBoolean currentlyOnIsland = new AtomicBoolean(false);
 
     private static final Path SAVE_FILE = Paths.get("config/islandtime.txt");
+
+    // Executor for async saves to prevent freezing the game
+    private static final ExecutorService saveExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("IslandTime-Saver");
+        return t;
+    });
 
     public static void tick(MinecraftClient client) {
         if (client.player == null || client.world == null) return;
@@ -173,26 +184,28 @@ public class IslandTimeTracker {
     }
 
     /**
-     * Save time data to disk
-     * Thread-safe via synchronized block
+     * Save time data to disk asynchronously to prevent freezing the game
+     * This runs on a background thread so disk I/O doesn't block the main game thread
      */
-    public static synchronized void save() {
-        try {
-            Files.createDirectories(SAVE_FILE.getParent());
-            BufferedWriter writer = Files.newBufferedWriter(SAVE_FILE);
+    public static void save() {
+        saveExecutor.submit(() -> {
+            try {
+                Files.createDirectories(SAVE_FILE.getParent());
 
-            // Create a snapshot of the map to avoid holding lock during I/O
-            Map<String, Long> snapshot = new ConcurrentHashMap<>(timePerDay);
+                // Create a snapshot of the map to avoid holding lock during I/O
+                Map<String, Long> snapshot = new ConcurrentHashMap<>(timePerDay);
 
-            for (var entry : snapshot.entrySet()) {
-                writer.write(entry.getKey() + "=" + entry.getValue());
-                writer.newLine();
+                try (BufferedWriter writer = Files.newBufferedWriter(SAVE_FILE)) {
+                    for (var entry : snapshot.entrySet()) {
+                        writer.write(entry.getKey() + "=" + entry.getValue());
+                        writer.newLine();
+                    }
+                }
+            } catch (IOException e) {
+                System.err.println("Failed to save island time data: " + e.getMessage());
+                e.printStackTrace();
             }
-            writer.close();
-        } catch (IOException e) {
-            System.err.println("Failed to save island time data: " + e.getMessage());
-            e.printStackTrace();
-        }
+        });
     }
 
     /**
@@ -217,6 +230,30 @@ public class IslandTimeTracker {
         } catch (IOException e) {
             System.err.println("Failed to load island time data: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Shutdown the save executor gracefully
+     * Should be called when mod is unloading
+     */
+    public static void shutdown() {
+        saveExecutor.shutdown();
+        try {
+            // Wait up to 5 seconds for pending saves to complete
+            if (!saveExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                System.err.println("Save executor did not terminate in time, forcing shutdown");
+                saveExecutor.shutdownNow();
+
+                // Wait a bit more for forced shutdown
+                if (!saveExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    System.err.println("Save executor did not terminate after forced shutdown");
+                }
+            }
+        } catch (InterruptedException e) {
+            System.err.println("Save shutdown interrupted, forcing shutdown");
+            saveExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 }
