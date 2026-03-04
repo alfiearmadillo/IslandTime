@@ -11,15 +11,19 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Tracks connection status and sends Discord alert immediately when disconnected,
- * then repeats at configured intervals while disconnected
+ * Tracks connection status and sends Discord alert after a 10-second grace period,
+ * then repeats at configured intervals while disconnected.
+ * The 10-second delay prevents spurious alerts from brief connection blips.
  */
 public class DisconnectAlertTracker {
 
     private static final String CONFIG_FILE = "config/islandtime_disconnect_alerts.txt";
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("h:mm a");
 
-    // Alert speed settings - controls repeat interval (first alert is always immediate)
+    /** Grace period before the first alert is sent. If reconnected within this window, no alert fires. */
+    private static final long INITIAL_ALERT_DELAY_MS = 10_000; // 10 seconds
+
+    // Alert speed settings - controls repeat interval (first alert fires after 10s grace period)
     public enum AlertSpeed {
         OFF(0),              // No alerts at all
         FAST(5 * 60_000),    // Repeat every 5 minutes
@@ -110,16 +114,18 @@ public class DisconnectAlertTracker {
         // Player is still disconnected - check if we should alert
         if (!isConnected && !wasConnected) {
             long now = System.currentTimeMillis();
+            long disconnectedDuration = now - timeDisconnected;
 
-            // First alert - send immediately when disconnected (no delay)
-            if (!hasAlerted) {
-                sendDisconnectAlert(now - timeDisconnected);
+            // First alert - only fires after the 10-second grace period.
+            // If the player reconnects within 10 seconds, this branch is never reached.
+            if (!hasAlerted && disconnectedDuration >= INITIAL_ALERT_DELAY_MS) {
+                sendDisconnectAlert(disconnectedDuration);
                 hasAlerted = true;
                 lastAlertSentTime = now;
             }
             // Repeat alert at configured intervals
-            else if ((now - lastAlertSentTime) >= disconnectAlertSpeed.repeatAlertMs) {
-                sendDisconnectAlert(now - timeDisconnected);
+            else if (hasAlerted && (now - lastAlertSentTime) >= disconnectAlertSpeed.repeatAlertMs) {
+                sendDisconnectAlert(disconnectedDuration);
                 lastAlertSentTime = now;
             }
         }

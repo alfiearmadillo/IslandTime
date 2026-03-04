@@ -355,17 +355,17 @@ public class IslandTimeCommand {
                     );
                     client.player.sendMessage(
                             Text.literal("  fast: ").formatted(Formatting.WHITE)
-                                    .append(Text.literal("Immediate, then every 5 min").formatted(Formatting.GRAY)),
+                                    .append(Text.literal("After 10s, then every 5 min").formatted(Formatting.GRAY)),
                             false
                     );
                     client.player.sendMessage(
                             Text.literal("  normal: ").formatted(Formatting.WHITE)
-                                    .append(Text.literal("Immediate, then every 30 min").formatted(Formatting.GRAY)),
+                                    .append(Text.literal("After 10s, then every 30 min").formatted(Formatting.GRAY)),
                             false
                     );
                     client.player.sendMessage(
                             Text.literal("  slow: ").formatted(Formatting.WHITE)
-                                    .append(Text.literal("Immediate, then every 3 hours").formatted(Formatting.GRAY)),
+                                    .append(Text.literal("After 10s, then every 3 hours").formatted(Formatting.GRAY)),
                             false
                     );
                     return 1;
@@ -454,7 +454,8 @@ public class IslandTimeCommand {
                 {"/disconnectalertspeed", "Show current disconnect alert speed and options"},
 
                 // Page 4
-                {"/disconnectalertspeed <speed>", "Set disconnect alert speed (off/fast/normal/slow)"}
+                {"/disconnectalertspeed <speed>", "Set disconnect alert speed (off/fast/normal/slow). " +
+                        "Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."}
         };
 
         int commandsPerPage = 7;
