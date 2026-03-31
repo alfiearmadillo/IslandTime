@@ -63,6 +63,37 @@ public class IslandTimeCommand {
                     FuelCycleTracker.displayStats(ctx.getSource().getClient(), null);
                     return 1;
                 })
+                .then(literal("debug")
+                        .executes(ctx -> {
+                            MinecraftClient client = ctx.getSource().getClient();
+                            client.player.sendMessage(
+                                    Text.literal("[FuelCycleTracker Debug] Injecting fake cycle and saving...")
+                                            .formatted(Formatting.YELLOW),
+                                    false
+                            );
+
+                            boolean saved = FuelCycleTracker.debugSimulateCycle();
+
+                            if (saved) {
+                                client.player.sendMessage(
+                                        Text.literal("[FuelCycleTracker Debug] Save succeeded — file exists on disk.")
+                                                .formatted(Formatting.GREEN),
+                                        false
+                                );
+                                client.player.sendMessage(
+                                        Text.literal("[FuelCycleTracker Debug] Run /fueltime to confirm the cycle appears, then check latest.log for any errors.")
+                                                .formatted(Formatting.GRAY),
+                                        false
+                                );
+                            } else {
+                                client.player.sendMessage(
+                                        Text.literal("[FuelCycleTracker Debug] Save FAILED — file not found after save attempt. Check latest.log for the IOException.")
+                                                .formatted(Formatting.RED),
+                                        false
+                                );
+                            }
+                            return 1;
+                        }))
                 .then(argument("cycle", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
                         .executes(ctx -> {
                             int cycleNumber = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "cycle");
@@ -434,6 +465,7 @@ public class IslandTimeCommand {
                 {"/islandtime <DD-MM-YY>", "Show specific date (e.g., /islandtime 1-1-26)"},
                 {"/fueltime", "Show current and recent fuel cycle stats (last 4 cycles)"},
                 {"/fueltime <cycle>", "Show details for a specific cycle number (e.g., /fueltime 6)"},
+                {"/fueltime debug", "Inject a fake completed cycle and attempt save (for diagnostics)"},
                 {"/webhook", "Show current webhook URL"},
                 {"/webhook <url>", "Set webhook URL (for Discord alerts)"},
 
