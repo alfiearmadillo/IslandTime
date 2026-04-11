@@ -9,7 +9,11 @@ import net.minecraft.client.input.MouseInput;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
+import net.minecraft.nbt.NbtHelper;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -58,7 +62,10 @@ public class BackpackPreviewScreen extends Screen {
 
     private int panelX, panelY, panelW, panelH;
     private int rows;
-    private int hoveredSlot = -1;
+    private int hoveredSlot  = -1;
+    private int copiedSlot   = -1;
+    private long copiedAtMs  = 0L;
+    private static final long COPY_FLASH_MS = 500L;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -163,9 +170,21 @@ public class BackpackPreviewScreen extends Screen {
                 hoveredSlot = i;
                 context.fill(sx, sy, sx + SLOT_INNER, sy + SLOT_INNER, SLOT_HOVER);
             }
+
+            // Green flash on copy
+            if (i == copiedSlot) {
+                long elapsed = System.currentTimeMillis() - copiedAtMs;
+                if (elapsed < COPY_FLASH_MS) {
+                    float alpha = 1.0f - (float) elapsed / COPY_FLASH_MS;
+                    int a = (int) (alpha * 0xA0);
+                    context.fill(sx, sy, sx + SLOT_INNER, sy + SLOT_INNER, (a << 24) | 0x0055FF00);
+                } else {
+                    copiedSlot = -1;
+                }
+            }
         }
 
-        String hint = "ESC to close";
+        String hint = "E to close";
         int hintX = panelX + (panelW - tr.getWidth(hint)) / 2;
         context.drawText(tr, hint, hintX, panelY + panelH - 10, COL_HINT, false);
     }
@@ -179,14 +198,58 @@ public class BackpackPreviewScreen extends Screen {
      * separate int parameters (keyCode, scanCode, modifiers).
      * Use {@code input.isEscape()} from the {@link net.minecraft.client.input.AbstractInput}
      * interface instead of comparing against GLFW constants.
+     *
+     * Ctrl+C copies the hovered item's full component data to the clipboard as
+     * pretty-printed SNBT (same format as the /give command / NBT editors).
      */
     @Override
     public boolean keyPressed(KeyInput input) {
-        if (input.isEscape()) {
+        if (input.isEscape() || GLFW.glfwGetKey(MinecraftClient.getInstance().getWindow().getHandle(), GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS) {
             close();
             return true;
         }
+
+        // Ctrl+C — copy hovered item data
+        MinecraftClient client = MinecraftClient.getInstance();
+        long window = client.getWindow().getHandle();
+        boolean ctrlHeld = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL)  == GLFW.GLFW_PRESS
+                            || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+        boolean ctrlC = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_C) == GLFW.GLFW_PRESS && ctrlHeld;
+        if (ctrlC && hoveredSlot >= 0 && hoveredSlot < contents.size()) {
+            ItemStack stack = contents.get(hoveredSlot);
+            if (!stack.isEmpty()) {
+                copyItemData(client, stack);
+                return true;
+            }
+        }
+
         return super.keyPressed(input);
+    }
+
+    /**
+     * Serialises {@code stack} to pretty-printed SNBT and puts it on the
+     * system clipboard. The format matches Minecraft's internal component
+     * encoding — identical to what you'd paste into an NBT editor or /give.
+     */
+    private void copyItemData(MinecraftClient client, ItemStack stack) {
+        DynamicRegistryManager registries =
+                client.world != null
+                        ? client.world.getRegistryManager()
+                        : client.getNetworkHandler() != null
+                            ? client.getNetworkHandler().getRegistryManager()
+                            : DynamicRegistryManager.EMPTY;
+
+        ItemStack.CODEC
+                .encodeStart(registries.getOps(NbtOps.INSTANCE), stack)
+                .resultOrPartial(err -> System.err.println("[IslandTime] Copy encode failed: " + err))
+                .ifPresent(nbt -> {
+                    String snbt = NbtHelper.toFormattedString(nbt);
+                    client.keyboard.setClipboard(snbt);
+                    System.out.println("[IslandTime] Copied item data for: "
+                            + stack.getName().getString());
+                    copiedSlot  = hoveredSlot;
+                    copiedAtMs  = System.currentTimeMillis();
+                });
     }
 
     @Override
