@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -21,28 +22,25 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * THREAD SAFETY: Uses ConcurrentHashMap and atomic variables to prevent race conditions
- * when accessed by multiple game systems (FuelCycleTracker, AFKAlertTracker, etc.)
+ * when accessed by multiple game systems (FuelCycleTracker, IslandAlertTracker, etc.)
  */
 public class IslandTimeTracker {
 
-    // Thread-safe map for time tracking
+    private static final Path SAVE_FILE = Paths.get("config/IslandTime/islandtime.txt");
+    private static final Path SAVE_TMP  = Paths.get("config/IslandTime/islandtime.tmp");
+
     private static final Map<String, Long> timePerDay = new ConcurrentHashMap<>();
 
-    // Thread-safe atomic variables
-    private static final AtomicLong lastTick = new AtomicLong(System.currentTimeMillis());
-    private static final AtomicLong lastSave = new AtomicLong(System.currentTimeMillis());
-    private static final AtomicLong lastCheck = new AtomicLong(System.currentTimeMillis());
+    private static final AtomicLong lastTick   = new AtomicLong(System.currentTimeMillis());
+    private static final AtomicLong lastSave   = new AtomicLong(System.currentTimeMillis());
+    private static final AtomicLong lastCheck  = new AtomicLong(System.currentTimeMillis());
 
-    private static final long SAVE_INTERVAL = 5000; // Save every 5 seconds
-    private static final long CHECK_INTERVAL = 1000; // Check scoreboard every 1 second
+    private static final long SAVE_INTERVAL  = 5_000;
+    private static final long CHECK_INTERVAL = 1_000;
 
-    // Thread-safe boolean flags
-    private static final AtomicBoolean wasOnIsland = new AtomicBoolean(false);
+    private static final AtomicBoolean wasOnIsland       = new AtomicBoolean(false);
     private static final AtomicBoolean currentlyOnIsland = new AtomicBoolean(false);
 
-    private static final Path SAVE_FILE = Paths.get("config/islandtime.txt");
-
-    // Executor for async saves to prevent freezing the game
     private static final ExecutorService saveExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r);
         t.setDaemon(true);
@@ -50,169 +48,157 @@ public class IslandTimeTracker {
         return t;
     });
 
+    // -------------------------------------------------------------------------
+    // Tracking toggle
+    // -------------------------------------------------------------------------
+
+    /**
+     * When false, no new time is accumulated. Existing recorded data is preserved.
+     * Disabling mid-day simply stops future ticks from adding to today's total —
+     * whatever has already been recorded is kept. Re-enabling resumes immediately.
+     * The value is persisted via TrackingToggleConfig.
+     */
+    private static volatile boolean trackingEnabled = true;
+
+    public static boolean isTrackingEnabled() { return trackingEnabled; }
+
+    /**
+     * Called by TrackingToggleConfig after loading, and by the toggle command.
+     * Does NOT call TrackingToggleConfig.save() itself — the caller owns that.
+     */
+    public static void setTrackingEnabled(boolean enabled) {
+        trackingEnabled = enabled;
+        if (!enabled) {
+            // Reset tick state so we don't accumulate a stale delta if
+            // tracking is re-enabled later while still on island.
+            wasOnIsland.set(false);
+            lastTick.set(System.currentTimeMillis());
+            save(); // flush whatever we have so far
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Tick
+    // -------------------------------------------------------------------------
+
     public static void tick(MinecraftClient client) {
         if (client.player == null || client.world == null) return;
 
-        long now = System.currentTimeMillis();
+        // We always run the scoreboard check so that isCurrentlyOnIsland()
+        // stays accurate for FuelCycleTracker / IslandAlertTracker, even
+        // when island-time tracking is disabled.
+
+        long now            = System.currentTimeMillis();
         long lastCheckValue = lastCheck.get();
 
-        // Only check scoreboard once per second
         if (now - lastCheckValue < CHECK_INTERVAL) {
-            // Still update time if we were on island last check
-            if (wasOnIsland.get()) {
+            if (wasOnIsland.get() && trackingEnabled) {
                 long lastTickValue = lastTick.get();
-                long delta = now - lastTickValue;
-
-                // Only update if we successfully set the new lastTick value
+                long delta         = now - lastTickValue;
                 if (lastTick.compareAndSet(lastTickValue, now)) {
                     String today = LocalDate.now().toString();
-
-                    // Thread-safe update using compute
-                    timePerDay.compute(today, (key, oldValue) -> {
-                        long currentTime = (oldValue != null) ? oldValue : 0L;
-                        return currentTime + delta;
-                    });
-
-                    // Save periodically
+                    timePerDay.compute(today, (k, old) -> (old != null ? old : 0L) + delta);
                     long lastSaveValue = lastSave.get();
-                    if (now - lastSaveValue >= SAVE_INTERVAL) {
-                        if (lastSave.compareAndSet(lastSaveValue, now)) {
-                            save();
-                        }
+                    if (now - lastSaveValue >= SAVE_INTERVAL && lastSave.compareAndSet(lastSaveValue, now)) {
+                        save();
                     }
                 }
+            } else {
+                lastTick.set(now); // keep current so no huge delta on re-enable
             }
             return;
         }
 
-        // Atomically update lastCheck
-        if (!lastCheck.compareAndSet(lastCheckValue, now)) {
-            return; // Another thread already updated, skip
-        }
+        if (!lastCheck.compareAndSet(lastCheckValue, now)) return;
 
         ScoreboardObjective obj =
                 client.world.getScoreboard().getObjectiveForSlot(ScoreboardDisplaySlot.SIDEBAR);
+        if (obj == null) { handleOffIsland(); return; }
 
-        if (obj == null) {
-            handleOffIsland();
-            return;
-        }
-
-        // Get the actual scoreboard lines
         var scoreboard = client.world.getScoreboard();
-        var scores = scoreboard.getScoreboardEntries(obj);
-
+        var scores     = scoreboard.getScoreboardEntries(obj);
         boolean onIsland = false;
 
-        // Check each line for "Your Island"
         for (var scoreEntry : scores) {
             String ownerName = scoreEntry.owner();
-
-            // Hypixel uses teams with prefixes/suffixes for colored text
-            var playerTeam = scoreboard.getScoreHolderTeam(ownerName);
+            var playerTeam   = scoreboard.getScoreHolderTeam(ownerName);
             if (playerTeam != null) {
-                // Get the prefix and suffix (this is where the actual text is)
-                String prefix = playerTeam.getPrefix().getString();
-                String suffix = playerTeam.getSuffix().getString();
-
-                // Remove Minecraft color codes and normalize
-                String fullLine = (prefix + suffix).replaceAll("§.", "").toLowerCase().trim();
-
-                if (fullLine.contains("your island")) {
-                    onIsland = true;
-                    break;
-                }
+                String fullLine = (playerTeam.getPrefix().getString() + playerTeam.getSuffix().getString())
+                        .replaceAll("§.", "").toLowerCase().trim();
+                if (fullLine.contains("your island")) { onIsland = true; break; }
             }
         }
 
-        if (!onIsland) {
-            handleOffIsland();
+        if (!onIsland) { handleOffIsland(); return; }
+
+        // Always update location flag
+        currentlyOnIsland.set(true);
+
+        if (!trackingEnabled) {
+            // Not accumulating time; reset so no stale delta if later re-enabled
+            wasOnIsland.set(false);
+            lastTick.set(now);
             return;
         }
 
-        // We're on island - track time
         long lastTickValue = lastTick.getAndSet(now);
-        long delta = now - lastTickValue;
-
-        String today = LocalDate.now().toString();
-
-        // Thread-safe update
-        timePerDay.compute(today, (key, oldValue) -> {
-            long currentTime = (oldValue != null) ? oldValue : 0L;
-            return currentTime + delta;
-        });
+        long delta         = now - lastTickValue;
+        String today       = LocalDate.now().toString();
+        timePerDay.compute(today, (k, old) -> (old != null ? old : 0L) + delta);
 
         wasOnIsland.set(true);
-        currentlyOnIsland.set(true);
 
-        // Save every 5 seconds while on island
         long lastSaveValue = lastSave.get();
-        if (now - lastSaveValue >= SAVE_INTERVAL) {
-            if (lastSave.compareAndSet(lastSaveValue, now)) {
-                save();
-            }
+        if (now - lastSaveValue >= SAVE_INTERVAL && lastSave.compareAndSet(lastSaveValue, now)) {
+            save();
         }
     }
 
     private static void handleOffIsland() {
-        // If we just left the island, save one final time
-        if (wasOnIsland.compareAndSet(true, false)) {
-            save();
-        }
-
+        if (wasOnIsland.compareAndSet(true, false)) save();
         currentlyOnIsland.set(false);
-
-        // Reset tick timer so we don't get huge delta when returning
         lastTick.set(System.currentTimeMillis());
     }
 
-    /**
-     * Returns whether the player is currently on their island
-     * Used by FuelCycleTracker
-     * Thread-safe read
-     */
-    public static boolean isCurrentlyOnIsland() {
-        return currentlyOnIsland.get();
-    }
+    public static boolean isCurrentlyOnIsland() { return currentlyOnIsland.get(); }
+    public static Map<String, Long> getTimes()   { return new ConcurrentHashMap<>(timePerDay); }
 
-    /**
-     * Get a thread-safe copy of the time tracking data
-     * Returns a new ConcurrentHashMap to prevent external modification
-     */
-    public static Map<String, Long> getTimes() {
-        return new ConcurrentHashMap<>(timePerDay);
-    }
+    // -------------------------------------------------------------------------
+    // Persistence — atomic write via tmp → rename
+    // -------------------------------------------------------------------------
 
-    /**
-     * Save time data to disk asynchronously to prevent freezing the game
-     * This runs on a background thread so disk I/O doesn't block the main game thread
-     */
     public static void save() {
+        Map<String, Long> snapshot = new ConcurrentHashMap<>(timePerDay);
         saveExecutor.submit(() -> {
             try {
                 Files.createDirectories(SAVE_FILE.getParent());
-
-                // Create a snapshot of the map to avoid holding lock during I/O
-                Map<String, Long> snapshot = new ConcurrentHashMap<>(timePerDay);
-
-                try (BufferedWriter writer = Files.newBufferedWriter(SAVE_FILE)) {
+                try (BufferedWriter writer = Files.newBufferedWriter(SAVE_TMP)) {
                     for (var entry : snapshot.entrySet()) {
                         writer.write(entry.getKey() + "=" + entry.getValue());
                         writer.newLine();
                     }
                 }
+                Files.move(SAVE_TMP, SAVE_FILE,
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException e) {
-                System.err.println("Failed to save island time data: " + e.getMessage());
+                System.err.println("[IslandTimeTracker] Save failed: " + e.getMessage());
                 e.printStackTrace();
+                try { Files.deleteIfExists(SAVE_TMP); } catch (IOException ignored) {}
             }
         });
     }
 
-    /**
-     * Load time data from disk
-     * Thread-safe via ConcurrentHashMap operations
-     */
     public static void load() {
+        if (!Files.exists(SAVE_FILE) && Files.exists(SAVE_TMP)) {
+            try {
+                Files.move(SAVE_TMP, SAVE_FILE, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("[IslandTimeTracker] Recovered from .tmp after crash.");
+            } catch (IOException e) {
+                System.err.println("[IslandTimeTracker] Could not promote .tmp: " + e.getMessage());
+            }
+        }
+
         if (!Files.exists(SAVE_FILE)) return;
 
         try {
@@ -223,35 +209,26 @@ public class IslandTimeTracker {
                     try {
                         timePerDay.put(parts[0], Long.parseLong(parts[1]));
                     } catch (NumberFormatException e) {
-                        System.err.println("Invalid time value in save file: " + line);
+                        System.err.println("[IslandTimeTracker] Skipping corrupt line: " + line);
                     }
                 }
             }
         } catch (IOException e) {
-            System.err.println("Failed to load island time data: " + e.getMessage());
+            System.err.println("[IslandTimeTracker] Load failed: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
-    /**
-     * Shutdown the save executor gracefully
-     * Should be called when mod is unloading
-     */
     public static void shutdown() {
         saveExecutor.shutdown();
         try {
-            // Wait up to 5 seconds for pending saves to complete
             if (!saveExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                System.err.println("Save executor did not terminate in time, forcing shutdown");
+                System.err.println("[IslandTimeTracker] Save executor timed out, forcing shutdown");
                 saveExecutor.shutdownNow();
-
-                // Wait a bit more for forced shutdown
-                if (!saveExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                    System.err.println("Save executor did not terminate after forced shutdown");
-                }
+                if (!saveExecutor.awaitTermination(2, TimeUnit.SECONDS))
+                    System.err.println("[IslandTimeTracker] Save executor did not terminate");
             }
         } catch (InterruptedException e) {
-            System.err.println("Save shutdown interrupted, forcing shutdown");
             saveExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }

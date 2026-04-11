@@ -8,6 +8,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -25,29 +26,24 @@ import java.util.concurrent.TimeUnit;
  */
 public class FuelCycleTracker {
 
-    private static final String SAVE_FILE = "config/islandtime_fuel_cycles.txt";
-    private static final long CYCLE_DURATION_MS = 24 * 60 * 60 * 1000L; // 24 hours in milliseconds
+    private static final String SAVE_FILE     = "config/IslandTime/fuel_cycles.txt";
+    private static final String SAVE_FILE_TMP = "config/IslandTime/fuel_cycles.tmp";
+    private static final long CYCLE_DURATION_MS = 24 * 60 * 60 * 1000L;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("MMM d, h:mm a");
 
-    // FIX: Periodic save interval while a cycle is active (30 seconds)
     private static final long SAVE_INTERVAL_MS = 30_000L;
     private static long lastSaveTime = 0;
 
-    // Current cycle data
-    private static long currentCycleStartTime = 0; // Epoch milliseconds - when first minion was fueled
-    private static long currentCycleLastFuelTime = 0; // Epoch milliseconds - when last minion was fueled (for 24h expiration)
-    private static int currentCycleMinionsRefueled = 0;
-    private static long currentCycleIslandTime = 0; // Milliseconds spent on island
+    private static long currentCycleStartTime       = 0;
+    private static long currentCycleLastFuelTime    = 0;
+    private static int  currentCycleMinionsRefueled = 0;
+    private static long currentCycleIslandTime      = 0;
 
-    // Completed cycles (stored oldest to newest, never deleted)
     private static final List<CompletedCycle> completedCycles = new ArrayList<>();
 
-    // For tracking island time
-    private static long lastTickTime = 0;
+    private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick = false;
 
-    // FIX: Async executor for saves — prevents blocking the render thread on disk I/O,
-    // mirrors the approach used by IslandTimeTracker.
     private static final ExecutorService saveExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r);
         t.setDaemon(true);
@@ -55,32 +51,56 @@ public class FuelCycleTracker {
         return t;
     });
 
+    // -------------------------------------------------------------------------
+    // Tracking toggle
+    // -------------------------------------------------------------------------
+
     /**
-     * Data class for a completed fuel cycle
+     * When false:
+     *   - onMinionFueled() will not start a new cycle (fueling is a no-op for tracking).
+     *   - Any in-progress cycle continues to run and will complete naturally at its
+     *     24-hour expiry — we never abandon data mid-cycle.
+     * The value is persisted via TrackingToggleConfig.
      */
+    private static volatile boolean trackingEnabled = true;
+
+    public static boolean isTrackingEnabled() { return trackingEnabled; }
+
+    /**
+     * Called by TrackingToggleConfig after loading, and by the toggle command.
+     * Does NOT call TrackingToggleConfig.save() itself — the caller owns that.
+     */
+    public static void setTrackingEnabled(boolean enabled) {
+        trackingEnabled = enabled;
+        // No state reset needed: an active cycle keeps running regardless.
+        // onMinionFueled() is the only entry point for new cycles, and it
+        // checks the flag before doing anything.
+    }
+
+    // -------------------------------------------------------------------------
+    // Data class
+    // -------------------------------------------------------------------------
+
     private static class CompletedCycle {
-        long startTime; // Epoch milliseconds
-        long endTime; // Epoch milliseconds
-        int minionsRefueled;
-        long islandTime; // Milliseconds
+        long startTime;
+        long endTime;
+        int  minionsRefueled;
+        long islandTime;
 
         CompletedCycle(long startTime, long endTime, int minionsRefueled, long islandTime) {
-            this.startTime = startTime;
-            this.endTime = endTime;
+            this.startTime       = startTime;
+            this.endTime         = endTime;
             this.minionsRefueled = minionsRefueled;
-            this.islandTime = islandTime;
+            this.islandTime      = islandTime;
         }
 
-        // Serialize to string
         String serialize() {
             return startTime + "," + endTime + "," + minionsRefueled + "," + islandTime;
         }
 
-        // Deserialize from string
         static CompletedCycle deserialize(String line) {
             String[] parts = line.split(",");
             if (parts.length != 4) return null;
-
             try {
                 return new CompletedCycle(
                         Long.parseLong(parts[0]),
@@ -94,135 +114,122 @@ public class FuelCycleTracker {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Public API
+    // -------------------------------------------------------------------------
+
     /**
-     * Called when a minion is fueled
+     * Called when a minion is fueled.
+     * If tracking is disabled, fueling is ignored for cycle purposes — no new
+     * cycle starts. An already-active cycle is unaffected.
      */
     public static void onMinionFueled() {
         long now = System.currentTimeMillis();
 
-        // If there's no active cycle, start a new one
         if (currentCycleStartTime == 0) {
-            currentCycleStartTime = now;
-            currentCycleLastFuelTime = now;
+            // No active cycle — only start one if tracking is enabled
+            if (!trackingEnabled) return;
+            currentCycleStartTime       = now;
+            currentCycleLastFuelTime    = now;
             currentCycleMinionsRefueled = 1;
-            currentCycleIslandTime = 0;
-            lastTickTime = now;
+            currentCycleIslandTime      = 0;
+            lastTickTime                = now;
         } else {
-            // There's an active cycle - increment counter and update last fuel time
+            // Active cycle — always increment the minion counter and extend the
+            // 24-hour window, even if tracking was disabled after the cycle started.
+            // (The cycle was already started with the player's consent.)
             currentCycleMinionsRefueled++;
-            currentCycleLastFuelTime = now; // Update last fuel time (for 24h expiration)
-            lastTickTime = now;
-            // Note: currentCycleStartTime stays the same (first fuel time)
+            currentCycleLastFuelTime = now;
+            lastTickTime             = now;
         }
 
-        // FIX: Persist the new/updated cycle state immediately so a game restart
-        // during an active cycle can always recover it from disk.
         save();
     }
 
     /**
-     * Called every tick to update active time
+     * Called every tick.
      * @param isStatsIncreasing whether the tracked item's stats are currently increasing
      */
     public static void tick(boolean isStatsIncreasing) {
         if (currentCycleStartTime == 0) {
             wasOnIslandLastTick = false;
-            return; // No active cycle
+            return;
         }
 
         long now = System.currentTimeMillis();
 
-        // Check if the cycle has expired (24 hours since LAST fuel)
+        // Check cycle expiry — always runs, regardless of toggle
         if (now - currentCycleLastFuelTime >= CYCLE_DURATION_MS) {
             completeCurrentCycle(currentCycleLastFuelTime + CYCLE_DURATION_MS);
             wasOnIslandLastTick = false;
             return;
         }
 
-        // Only count time if stats are increasing
+        // Accumulate active time — still runs for an in-progress cycle even if
+        // tracking was disabled after it started
         if (wasOnIslandLastTick && isStatsIncreasing && lastTickTime > 0) {
             long delta = now - lastTickTime;
-
-            // Sanity check: don't add time if delta is too large (e.g., game was paused)
-            if (delta < 5000) { // Less than 5 seconds
+            if (delta < 5000) {
                 currentCycleIslandTime += delta;
             }
         }
 
-        lastTickTime = now;
+        lastTickTime        = now;
         wasOnIslandLastTick = isStatsIncreasing;
 
-        // FIX: Periodically save current cycle state while it is active.
-        // This ensures that even if the game is closed mid-cycle without a proper
-        // shutdown event firing, load() on the next startup will find fresh data
-        // and correctly detect + complete an expired cycle.
         if (now - lastSaveTime >= SAVE_INTERVAL_MS) {
             lastSaveTime = now;
             save();
         }
     }
 
-    /**
-     * Completes the current cycle and adds it to completed cycles
-     * NEVER deletes old cycles - all cycles are preserved
-     */
     private static void completeCurrentCycle(long endTime) {
         if (currentCycleStartTime == 0) return;
 
-        CompletedCycle cycle = new CompletedCycle(
+        completedCycles.add(new CompletedCycle(
                 currentCycleStartTime,
                 endTime,
                 currentCycleMinionsRefueled,
                 currentCycleIslandTime
-        );
+        ));
 
-        // Add to end of list (cycles are stored oldest to newest, never deleted)
-        completedCycles.add(cycle);
-
-        // Reset current cycle
-        currentCycleStartTime = 0;
-        currentCycleLastFuelTime = 0;
+        currentCycleStartTime       = 0;
+        currentCycleLastFuelTime    = 0;
         currentCycleMinionsRefueled = 0;
-        currentCycleIslandTime = 0;
+        currentCycleIslandTime      = 0;
 
         save();
     }
 
-    /**
-     * Injects a fake completed cycle for debug/testing purposes.
-     * Does not affect any active cycle.
-     * The cycle is backdated 25 hours with ~20h of active island time and 32 minions refueled.
-     * @return true if the cycle was saved successfully
-     */
+    // -------------------------------------------------------------------------
+    // Debug
+    // -------------------------------------------------------------------------
+
     public static boolean debugSimulateCycle() {
-        long now = System.currentTimeMillis();
-        long fakeStart = now - (25 * 60 * 60 * 1000L); // 25 hours ago
-        long fakeEnd   = now - (1  * 60 * 60 * 1000L); // 1 hour ago
-        long fakeIslandTime = 20 * 60 * 60 * 1000L;    // 20 hours active
+        long now        = System.currentTimeMillis();
+        long fakeStart  = now - (25 * 60 * 60 * 1000L);
+        long fakeEnd    = now - (1  * 60 * 60 * 1000L);
+        long fakeIsland = 20 * 60 * 60 * 1000L;
         int  fakeMinions = 32;
 
         System.out.println("[FuelCycleTracker] DEBUG: Injecting fake cycle — " +
                 "start=" + fakeStart + " end=" + fakeEnd +
-                " minions=" + fakeMinions + " islandTime=" + fakeIslandTime);
+                " minions=" + fakeMinions + " islandTime=" + fakeIsland);
 
-        CompletedCycle fake = new CompletedCycle(fakeStart, fakeEnd, fakeMinions, fakeIslandTime);
-        completedCycles.add(fake);
+        completedCycles.add(new CompletedCycle(fakeStart, fakeEnd, fakeMinions, fakeIsland));
         save();
 
-        // Verify it landed in the file
         Path saveFile = Paths.get(SAVE_FILE);
         return Files.exists(saveFile);
     }
 
-    /**
-     * Display fuel cycle stats to the player
-     * @param client Minecraft client
-     * @param specificCycle Optional cycle number to display (1 = oldest), or null to show last 4
-     */
+    // -------------------------------------------------------------------------
+    // Display
+    // -------------------------------------------------------------------------
+
     public static void displayStats(MinecraftClient client, Integer specificCycle) {
         if (client.player == null) return;
 
-        // Check if there's any data
         if (currentCycleStartTime == 0 && completedCycles.isEmpty()) {
             client.player.sendMessage(
                     Text.literal("No fuel cycle data yet. Fuel a minion to start tracking!")
@@ -234,7 +241,6 @@ public class FuelCycleTracker {
 
         int totalCycles = completedCycles.size();
 
-        // If requesting a specific cycle
         if (specificCycle != null) {
             if (specificCycle < 1 || specificCycle > totalCycles) {
                 client.player.sendMessage(
@@ -244,76 +250,44 @@ public class FuelCycleTracker {
                 );
                 return;
             }
-
-            // Display the requested cycle (cycles are 1-indexed from oldest)
-            CompletedCycle cycle = completedCycles.get(specificCycle - 1);
-            displaySingleCycle(client, cycle, specificCycle, totalCycles);
+            displaySingleCycle(client, completedCycles.get(specificCycle - 1), specificCycle, totalCycles);
             return;
         }
 
-        // Display current cycle if active
         if (currentCycleStartTime > 0) {
-            long now = System.currentTimeMillis();
-            long elapsed = now - currentCycleStartTime; // Total time since cycle started
-            long timeSinceLastFuel = now - currentCycleLastFuelTime; // Time since last fuel
-            long remaining = CYCLE_DURATION_MS - timeSinceLastFuel;
+            long now               = System.currentTimeMillis();
+            long elapsed           = now - currentCycleStartTime;
+            long timeSinceLastFuel = now - currentCycleLastFuelTime;
 
             LocalDateTime startTime = LocalDateTime.ofInstant(
-                    Instant.ofEpochMilli(currentCycleStartTime),
-                    ZoneId.systemDefault()
-            );
+                    Instant.ofEpochMilli(currentCycleStartTime), ZoneId.systemDefault());
             LocalDateTime endTime = LocalDateTime.ofInstant(
-                    Instant.ofEpochMilli(currentCycleLastFuelTime + CYCLE_DURATION_MS),
-                    ZoneId.systemDefault()
-            );
+                    Instant.ofEpochMilli(currentCycleLastFuelTime + CYCLE_DURATION_MS), ZoneId.systemDefault());
 
-            String startStr = startTime.format(TIME_FORMATTER);
-            String endStr = endTime.format(TIME_FORMATTER);
-
-            // Calculate percentage based on elapsed time (not full 24h)
             double activePercentage = elapsed > 0 ? (currentCycleIslandTime * 100.0 / elapsed) : 0.0;
 
-            // Header for current cycle
+            client.player.sendMessage(Text.literal("» Current Cycle").formatted(Formatting.GOLD), false);
             client.player.sendMessage(
-                    Text.literal("» Current Cycle")
-                            .formatted(Formatting.GOLD),
-                    false
-            );
-
-            client.player.sendMessage(
-                    Text.literal("  Current: ")
-                            .formatted(Formatting.GREEN)
-                            .append(Text.literal(startStr + " - " + endStr)
+                    Text.literal("  Current: ").formatted(Formatting.GREEN)
+                            .append(Text.literal(startTime.format(TIME_FORMATTER) + " - " + endTime.format(TIME_FORMATTER))
                                     .formatted(Formatting.WHITE)),
                     false
             );
-
             client.player.sendMessage(
-                    Text.literal("    Minions: ")
-                            .formatted(Formatting.GRAY)
-                            .append(Text.literal(String.valueOf(currentCycleMinionsRefueled))
-                                    .formatted(Formatting.WHITE))
-                            .append(Text.literal(" | Duration: ")
-                                    .formatted(Formatting.GRAY))
-                            .append(Text.literal(formatDuration(elapsed))
-                                    .formatted(Formatting.WHITE))
-                            .append(Text.literal(" | Active: ")
-                                    .formatted(Formatting.GRAY))
-                            .append(Text.literal(formatDuration(currentCycleIslandTime) + String.format(" (%.1f%%)", activePercentage))
-                                    .formatted(Formatting.WHITE)),
+                    Text.literal("    Minions: ").formatted(Formatting.GRAY)
+                            .append(Text.literal(String.valueOf(currentCycleMinionsRefueled)).formatted(Formatting.WHITE))
+                            .append(Text.literal(" | Duration: ").formatted(Formatting.GRAY))
+                            .append(Text.literal(formatDuration(elapsed)).formatted(Formatting.WHITE))
+                            .append(Text.literal(" | Active: ").formatted(Formatting.GRAY))
+                            .append(Text.literal(formatDuration(currentCycleIslandTime) +
+                                    String.format(" (%.1f%%)", activePercentage)).formatted(Formatting.WHITE)),
                     false
             );
-
-            client.player.sendMessage(Text.literal(""), false); // Blank line
+            client.player.sendMessage(Text.literal(""), false);
         }
 
-        // Display recent completed cycles (last 4)
         if (!completedCycles.isEmpty()) {
-            // Calculate which cycles to show (last 4)
-            // IMPORTANT: We show the MOST RECENT 4 cycles in REVERSE chronological order
-            // Cycle 1 is the OLDEST cycle ever recorded, Cycle N is the most recent
             int startIndex = Math.max(0, totalCycles - 4);
-
             client.player.sendMessage(
                     Text.literal("» Recent Completed Cycles (Showing " +
                                     Math.min(4, totalCycles) + " of " + totalCycles + ")")
@@ -321,48 +295,29 @@ public class FuelCycleTracker {
                     false
             );
 
-            // Iterate BACKWARDS from most recent to oldest (reverse chronological order)
             for (int i = totalCycles - 1; i >= startIndex; i--) {
-                CompletedCycle cycle = completedCycles.get(i);
-                int cycleNumber = i + 1;
+                CompletedCycle cycle      = completedCycles.get(i);
+                int            cycleNumber = i + 1;
+                long           duration    = cycle.endTime - cycle.startTime;
+                double         activePerc  = duration > 0 ? (cycle.islandTime * 100.0 / duration) : 0.0;
 
-                LocalDateTime startTime = LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(cycle.startTime),
-                        ZoneId.systemDefault()
-                );
-                LocalDateTime endTime = LocalDateTime.ofInstant(
-                        Instant.ofEpochMilli(cycle.endTime),
-                        ZoneId.systemDefault()
-                );
-
-                String startStr = startTime.format(TIME_FORMATTER);
-                String endStr = endTime.format(TIME_FORMATTER);
-                long duration = cycle.endTime - cycle.startTime;
-
-                // Calculate percentage based on full duration
-                double activePercentage = duration > 0 ? (cycle.islandTime * 100.0 / duration) : 0.0;
+                LocalDateTime st = LocalDateTime.ofInstant(Instant.ofEpochMilli(cycle.startTime), ZoneId.systemDefault());
+                LocalDateTime et = LocalDateTime.ofInstant(Instant.ofEpochMilli(cycle.endTime),   ZoneId.systemDefault());
 
                 client.player.sendMessage(
-                        Text.literal("  Cycle " + cycleNumber + ": ")
-                                .formatted(Formatting.YELLOW)
-                                .append(Text.literal(startStr + " - " + endStr)
+                        Text.literal("  Cycle " + cycleNumber + ": ").formatted(Formatting.YELLOW)
+                                .append(Text.literal(st.format(TIME_FORMATTER) + " - " + et.format(TIME_FORMATTER))
                                         .formatted(Formatting.WHITE)),
                         false
                 );
-
                 client.player.sendMessage(
-                        Text.literal("    Minions: ")
-                                .formatted(Formatting.GRAY)
-                                .append(Text.literal(String.valueOf(cycle.minionsRefueled))
-                                        .formatted(Formatting.WHITE))
-                                .append(Text.literal(" | Duration: ")
-                                        .formatted(Formatting.GRAY))
-                                .append(Text.literal(formatDuration(duration))
-                                        .formatted(Formatting.WHITE))
-                                .append(Text.literal(" | Active: ")
-                                        .formatted(Formatting.GRAY))
-                                .append(Text.literal(formatDuration(cycle.islandTime) + String.format(" (%.1f%%)", activePercentage))
-                                        .formatted(Formatting.WHITE)),
+                        Text.literal("    Minions: ").formatted(Formatting.GRAY)
+                                .append(Text.literal(String.valueOf(cycle.minionsRefueled)).formatted(Formatting.WHITE))
+                                .append(Text.literal(" | Duration: ").formatted(Formatting.GRAY))
+                                .append(Text.literal(formatDuration(duration)).formatted(Formatting.WHITE))
+                                .append(Text.literal(" | Active: ").formatted(Formatting.GRAY))
+                                .append(Text.literal(formatDuration(cycle.islandTime) +
+                                        String.format(" (%.1f%%)", activePerc)).formatted(Formatting.WHITE)),
                         false
                 );
             }
@@ -370,169 +325,136 @@ public class FuelCycleTracker {
             if (totalCycles > 4) {
                 client.player.sendMessage(
                         Text.literal("Use /fueltime <cycle> to view older cycles (e.g., /fueltime 1)")
-                                .formatted(Formatting.GRAY)
-                                .formatted(Formatting.ITALIC),
+                                .formatted(Formatting.GRAY).formatted(Formatting.ITALIC),
                         false
                 );
             }
         }
     }
 
-    /**
-     * Display a single cycle's information
-     */
-    private static void displaySingleCycle(MinecraftClient client, CompletedCycle cycle, int cycleNumber, int totalCycles) {
+    private static void displaySingleCycle(MinecraftClient client, CompletedCycle cycle,
+                                            int cycleNumber, int totalCycles) {
         LocalDateTime startTime = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(cycle.startTime),
-                ZoneId.systemDefault()
-        );
+                Instant.ofEpochMilli(cycle.startTime), ZoneId.systemDefault());
         LocalDateTime endTime = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(cycle.endTime),
-                ZoneId.systemDefault()
-        );
+                Instant.ofEpochMilli(cycle.endTime), ZoneId.systemDefault());
 
-        String startStr = startTime.format(TIME_FORMATTER);
-        String endStr = endTime.format(TIME_FORMATTER);
-        long duration = cycle.endTime - cycle.startTime;
-
-        // Calculate percentage based on full duration
+        long   duration         = cycle.endTime - cycle.startTime;
         double activePercentage = duration > 0 ? (cycle.islandTime * 100.0 / duration) : 0.0;
 
         client.player.sendMessage(
-                Text.literal("Cycle " + cycleNumber + " of " + totalCycles)
-                        .formatted(Formatting.GOLD),
-                false
-        );
-
+                Text.literal("Cycle " + cycleNumber + " of " + totalCycles).formatted(Formatting.GOLD), false);
         client.player.sendMessage(
-                Text.literal("Period: ")
-                        .formatted(Formatting.AQUA)
-                        .append(Text.literal(startStr + " - " + endStr)
+                Text.literal("Period: ").formatted(Formatting.AQUA)
+                        .append(Text.literal(startTime.format(TIME_FORMATTER) + " - " + endTime.format(TIME_FORMATTER))
                                 .formatted(Formatting.WHITE)),
-                false
-        );
-
+                false);
         client.player.sendMessage(
-                Text.literal("Duration: ")
-                        .formatted(Formatting.AQUA)
-                        .append(Text.literal(formatDuration(duration))
-                                .formatted(Formatting.WHITE)),
-                false
-        );
-
+                Text.literal("Duration: ").formatted(Formatting.AQUA)
+                        .append(Text.literal(formatDuration(duration)).formatted(Formatting.WHITE)),
+                false);
         client.player.sendMessage(
-                Text.literal("Minions Refueled: ")
-                        .formatted(Formatting.AQUA)
-                        .append(Text.literal(String.valueOf(cycle.minionsRefueled))
-                                .formatted(Formatting.WHITE)),
-                false
-        );
-
+                Text.literal("Minions Refueled: ").formatted(Formatting.AQUA)
+                        .append(Text.literal(String.valueOf(cycle.minionsRefueled)).formatted(Formatting.WHITE)),
+                false);
         client.player.sendMessage(
-                Text.literal("Active Time: ")
-                        .formatted(Formatting.AQUA)
-                        .append(Text.literal(formatDuration(cycle.islandTime) + String.format(" (%.1f%%)", activePercentage))
-                                .formatted(Formatting.WHITE)),
-                false
-        );
+                Text.literal("Active Time: ").formatted(Formatting.AQUA)
+                        .append(Text.literal(formatDuration(cycle.islandTime) +
+                                String.format(" (%.1f%%)", activePercentage)).formatted(Formatting.WHITE)),
+                false);
     }
 
-    /**
-     * Format milliseconds into a human-readable duration
-     */
     private static String formatDuration(long millis) {
-        long hours = TimeUnit.MILLISECONDS.toHours(millis);
+        long hours   = TimeUnit.MILLISECONDS.toHours(millis);
         long minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % 60;
         long seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60;
-
-        if (hours > 0) {
-            return String.format("%dh %dm", hours, minutes);
-        } else if (minutes > 0) {
-            return String.format("%dm %ds", minutes, seconds);
-        } else {
-            return String.format("%ds", seconds);
-        }
+        if (hours > 0)   return String.format("%dh %dm", hours, minutes);
+        if (minutes > 0) return String.format("%dm %ds", minutes, seconds);
+        return String.format("%ds", seconds);
     }
 
-    /**
-     * Save fuel cycle data to disk asynchronously.
-     * FIX: Now runs on a background thread (same pattern as IslandTimeTracker) so disk
-     * I/O never blocks the render thread. A snapshot of all mutable state is captured
-     * before the executor task runs to avoid reading stale values off-thread.
-     */
+    // -------------------------------------------------------------------------
+    // Persistence — atomic write via tmp → rename
+    // -------------------------------------------------------------------------
+
     public static void save() {
-        // Snapshot all mutable state on the calling (render) thread before handing off.
-        final long snapStart     = currentCycleStartTime;
-        final long snapLastFuel  = currentCycleLastFuelTime;
-        final int  snapMinions   = currentCycleMinionsRefueled;
-        final long snapIsland    = currentCycleIslandTime;
-        final List<CompletedCycle> snapCompleted = new ArrayList<>(completedCycles);
+        final long              snapStart    = currentCycleStartTime;
+        final long              snapLastFuel = currentCycleLastFuelTime;
+        final int               snapMinions  = currentCycleMinionsRefueled;
+        final long              snapIsland   = currentCycleIslandTime;
+        final List<CompletedCycle> snapDone  = new ArrayList<>(completedCycles);
 
         saveExecutor.submit(() -> {
+            Path realFile = Paths.get(SAVE_FILE);
+            Path tmpFile  = Paths.get(SAVE_FILE_TMP);
             try {
-                Path saveFile = Paths.get(SAVE_FILE);
-                Files.createDirectories(saveFile.getParent());
-
-                try (BufferedWriter writer = Files.newBufferedWriter(saveFile)) {
-                    // Write current cycle
+                Files.createDirectories(realFile.getParent());
+                try (BufferedWriter writer = Files.newBufferedWriter(tmpFile)) {
                     writer.write("CURRENT\n");
-                    writer.write(snapStart + "\n");
+                    writer.write(snapStart    + "\n");
                     writer.write(snapLastFuel + "\n");
-                    writer.write(snapMinions + "\n");
-                    writer.write(snapIsland + "\n");
-
-                    // Write ALL completed cycles (never delete old ones)
+                    writer.write(snapMinions  + "\n");
+                    writer.write(snapIsland   + "\n");
                     writer.write("COMPLETED\n");
-                    for (CompletedCycle cycle : snapCompleted) {
+                    for (CompletedCycle cycle : snapDone) {
                         writer.write(cycle.serialize() + "\n");
                     }
                 }
+                Files.move(tmpFile, realFile,
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException e) {
                 System.err.println("[FuelCycleTracker] Save failed: " + e.getMessage());
                 System.err.println("[FuelCycleTracker] Attempted path: " + Paths.get(SAVE_FILE).toAbsolutePath());
                 e.printStackTrace();
+                try { Files.deleteIfExists(tmpFile); } catch (IOException ignored) {}
             }
         });
     }
 
-    /**
-     * Load fuel cycle data from disk
-     * Loads ALL saved cycles - never deletes past cycles
-     */
     public static void load() {
-        Path saveFile = Paths.get(SAVE_FILE);
+        Path realFile = Paths.get(SAVE_FILE);
+        Path tmpFile  = Paths.get(SAVE_FILE_TMP);
 
-        if (!Files.exists(saveFile)) return;
+        if (!Files.exists(realFile) && Files.exists(tmpFile)) {
+            try {
+                Files.move(tmpFile, realFile, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("[FuelCycleTracker] Recovered from .tmp after crash.");
+            } catch (IOException e) {
+                System.err.println("[FuelCycleTracker] Could not promote .tmp: " + e.getMessage());
+            }
+        }
 
-        // Read all sections before acting on them, so completedCycles is fully
-        // populated before completeCurrentCycle (and its save()) is called.
-        long[] currentSnapshot = new long[4]; // startTime, lastFuelTime, minionsRefueled, islandTime
+        if (!Files.exists(realFile)) return;
+
+        long[]  currentSnapshot   = new long[4];
         boolean hasCurrentSection = false;
 
-        try (BufferedReader reader = Files.newBufferedReader(saveFile)) {
+        try (BufferedReader reader = Files.newBufferedReader(realFile)) {
             String line;
             String section = "";
 
             while ((line = reader.readLine()) != null) {
-                if (line.equals("CURRENT")) {
-                    section = "CURRENT";
-                    continue;
-                } else if (line.equals("COMPLETED")) {
-                    section = "COMPLETED";
-                    continue;
-                }
+                if      (line.equals("CURRENT"))   { section = "CURRENT";   continue; }
+                else if (line.equals("COMPLETED")) { section = "COMPLETED"; continue; }
 
                 if (section.equals("CURRENT")) {
-                    currentSnapshot[0] = Long.parseLong(line);                  // startTime
-                    currentSnapshot[1] = Long.parseLong(reader.readLine());     // lastFuelTime
-                    currentSnapshot[2] = Integer.parseInt(reader.readLine());   // minionsRefueled
-                    currentSnapshot[3] = Long.parseLong(reader.readLine());     // islandTime
-                    hasCurrentSection = true;
+                    try {
+                        currentSnapshot[0] = Long.parseLong(line);
+                        currentSnapshot[1] = Long.parseLong(readLineOrThrow(reader));
+                        currentSnapshot[2] = Integer.parseInt(readLineOrThrow(reader));
+                        currentSnapshot[3] = Long.parseLong(readLineOrThrow(reader));
+                        hasCurrentSection  = true;
+                    } catch (NumberFormatException | IOException e) {
+                        System.err.println("[FuelCycleTracker] Corrupt CURRENT section, skipping: " + e.getMessage());
+                    }
                     section = "";
                 } else if (section.equals("COMPLETED")) {
                     CompletedCycle cycle = CompletedCycle.deserialize(line);
                     if (cycle != null) {
                         completedCycles.add(cycle);
+                    } else if (!line.isBlank()) {
+                        System.err.println("[FuelCycleTracker] Skipping corrupt COMPLETED line: " + line);
                     }
                 }
             }
@@ -540,20 +462,14 @@ public class FuelCycleTracker {
             System.err.println("[FuelCycleTracker] Load failed: " + e.getMessage());
             e.printStackTrace();
             return;
-        } catch (NumberFormatException e) {
-            System.err.println("[FuelCycleTracker] Corrupt save file: " + e.getMessage());
-            e.printStackTrace();
-            return;
         }
 
-        // Now that completedCycles is fully populated, restore current cycle state
-        // and handle expiry — save() will now write the full history correctly.
         if (hasCurrentSection) {
-            currentCycleStartTime      = currentSnapshot[0];
-            currentCycleLastFuelTime   = currentSnapshot[1];
+            currentCycleStartTime       = currentSnapshot[0];
+            currentCycleLastFuelTime    = currentSnapshot[1];
             currentCycleMinionsRefueled = (int) currentSnapshot[2];
-            currentCycleIslandTime     = currentSnapshot[3];
-            lastTickTime = System.currentTimeMillis();
+            currentCycleIslandTime      = currentSnapshot[3];
+            lastTickTime                = System.currentTimeMillis();
 
             long now = System.currentTimeMillis();
             if (currentCycleStartTime > 0 && now - currentCycleLastFuelTime >= CYCLE_DURATION_MS) {
@@ -562,25 +478,24 @@ public class FuelCycleTracker {
         }
     }
 
-    /**
-     * FIX: Shutdown the save executor gracefully — mirrors IslandTimeTracker.shutdown().
-     * Call this from your mod's ClientLifecycleEvents.CLIENT_STOPPING handler to ensure
-     * any queued async saves complete before the JVM exits.
-     */
+    private static String readLineOrThrow(BufferedReader reader) throws IOException {
+        String line = reader.readLine();
+        if (line == null) throw new IOException("Unexpected end of file");
+        return line;
+    }
+
     public static void shutdown() {
-        // Do one final synchronous-style save by submitting it and then waiting.
         save();
         saveExecutor.shutdown();
         try {
             if (!saveExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                System.err.println("[FuelCycleTracker] Save executor did not terminate in time, forcing shutdown");
+                System.err.println("[FuelCycleTracker] Save executor timed out, forcing shutdown");
                 saveExecutor.shutdownNow();
-                if (!saveExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                if (!saveExecutor.awaitTermination(2, TimeUnit.SECONDS))
                     System.err.println("[FuelCycleTracker] Save executor did not terminate after forced shutdown");
-                }
             }
         } catch (InterruptedException e) {
-            System.err.println("[FuelCycleTracker] Save shutdown interrupted, forcing shutdown");
+            System.err.println("[FuelCycleTracker] Save shutdown interrupted");
             saveExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
