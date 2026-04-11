@@ -3,18 +3,15 @@ package org.example.islandtime;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class BackpackHoverHandler {
 
@@ -22,24 +19,64 @@ public class BackpackHoverHandler {
     // State
     // -------------------------------------------------------------------------
 
-    private static ItemStack       currentBackpack = ItemStack.EMPTY;
-    private static List<ItemStack> currentContents = null;
+    private static ItemStack                          currentBackpack  = ItemStack.EMPTY;
+    private static List<ItemStack>                    currentContents  = null;
+    private static CompletableFuture<List<ItemStack>> parseFuture      = null;
 
-    private static boolean pendingScreenOpen = false;
-    private static Screen  pendingParent     = null;
+    private static boolean frozen            = false;
+    private static boolean pendingUnfreeze   = false;
+    private static int     frozenMouseX      = 0;
+    private static int     frozenMouseY      = 0;
+
+    private static int lastMouseX = 0;
+    private static int lastMouseY = 0;
 
     private static int overlayHoveredIndex = -1;
+
+    /**
+     * After unfreezing, suppress focusedSlot until the mouse moves away from
+     * the position it was at when frozen. The anchor is frozenMouseX/Y because
+     * the mouse is still physically at that position when the inspect closes
+     * (the screen stays open; no cursor warp happens).
+     *
+     * The mixin TAIL checks this each frame and forces focusedSlot = null
+     * while it's true, AFTER vanilla has already written its value.
+     */
+    private static boolean suppressFocusedSlot = false;
+    private static int     suppressAnchorX     = 0;
+    private static int     suppressAnchorY     = 0;
 
     // -------------------------------------------------------------------------
     // Public queries
     // -------------------------------------------------------------------------
 
     public static boolean hasBackpackHovered() {
-        return currentContents != null;
+        return parseFuture != null || currentContents != null || frozen;
     }
 
     public static boolean isShowingOverlay() {
-        return currentContents != null && !isShiftDown();
+        return currentContents != null && !frozen;
+    }
+
+    public static boolean isFrozen() {
+        return frozen;
+    }
+
+    /**
+     * Returns true if focusedSlot should be forced to null this render frame.
+     * Automatically lifts suppression once mouseX/mouseY differs from the anchor.
+     *
+     * Called from the render TAIL inject after vanilla has written focusedSlot,
+     * so returning true here causes the mixin to overwrite it back to null.
+     */
+    public static boolean isFocusedSlotSuppressed(int mouseX, int mouseY) {
+        if (!suppressFocusedSlot) return false;
+        if (mouseX != suppressAnchorX || mouseY != suppressAnchorY) {
+            // Mouse has moved — lift suppression
+            suppressFocusedSlot = false;
+            return false;
+        }
+        return true;
     }
 
     public static ItemStack getOverlayHoveredItem() {
@@ -52,78 +89,146 @@ public class BackpackHoverHandler {
     }
 
     // -------------------------------------------------------------------------
-    // Called from HandledScreenMixin
+    // Called from HandledScreenMixin — render path
     // -------------------------------------------------------------------------
 
     public static void onBackpackHovered(ItemStack backpackStack,
                                          DrawContext context,
                                          int mouseX, int mouseY,
                                          HandledScreen<?> parentScreen) {
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+
         if (backpackStack != currentBackpack) {
             currentBackpack = backpackStack;
-            currentContents = BackpackNbtParser.parse(backpackStack);
+            currentContents = null;
+            overlayHoveredIndex = -1;
+            if (parseFuture != null) parseFuture.cancel(false);
+            parseFuture = BackpackNbtParser.parseAsync(backpackStack);
         }
-        if (currentContents == null) return;
 
-        if (isShiftDown()) {
-            pendingScreenOpen = true;
-            pendingParent     = parentScreen;
+        if (currentContents == null) {
+            drawLoading(context, mouseX, mouseY);
             return;
         }
 
         drawOverlay(context, mouseX, mouseY);
     }
 
+    public static void drawFrozen(DrawContext context, int mouseX, int mouseY) {
+        if (!frozen || currentContents == null) return;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        int sw = client.getWindow().getScaledWidth();
+        int sh = client.getWindow().getScaledHeight();
+        context.fill(0, 0, sw, sh, 0x80000000);
+
+        drawOverlay(context, mouseX, mouseY);
+    }
+
     public static void clearHovered() {
-        currentBackpack     = ItemStack.EMPTY;
-        currentContents     = null;
+        if (frozen) return;
+        currentBackpack = ItemStack.EMPTY;
+        currentContents = null;
         overlayHoveredIndex = -1;
+        if (parseFuture != null) { parseFuture.cancel(false); parseFuture = null; }
     }
 
     // -------------------------------------------------------------------------
-    // Tick
+    // Freeze / unfreeze
+    // -------------------------------------------------------------------------
+
+    public static void freeze() {
+        if (currentContents == null) return;
+        frozen       = true;
+        frozenMouseX = lastMouseX;
+        frozenMouseY = lastMouseY;
+    }
+
+    public static void requestUnfreeze() {
+        pendingUnfreeze = true;
+    }
+
+    private static void doUnfreeze() {
+        frozen          = false;
+        pendingUnfreeze = false;
+
+        // Anchor suppression to frozenMouseX/Y — that is exactly where the
+        // mouse physically is when the player closes the inspect overlay
+        // (the screen stays open, so no cursor warp occurs). focusedSlot will
+        // be forced to null until the mouse physically moves away from here.
+        suppressAnchorX     = frozenMouseX;
+        suppressAnchorY     = frozenMouseY;
+        suppressFocusedSlot = true;
+
+        // Do NOT call clearHovered() here — the render TAIL will clean up
+        // naturally once suppression ends and the cursor leaves the backpack.
+    }
+
+    // -------------------------------------------------------------------------
+    // Tick — resolves pending unfreeze and parse future
     // -------------------------------------------------------------------------
 
     public static void tick(MinecraftClient client) {
-        if (pendingScreenOpen && currentContents != null) {
-            pendingScreenOpen = false;
-            Screen parent = pendingParent;
-            pendingParent = null;
-            client.setScreen(new BackpackPreviewScreen(List.copyOf(currentContents), parent));
+        if (pendingUnfreeze) {
+            doUnfreeze();
+        }
+
+        if (parseFuture != null && parseFuture.isDone()) {
+            try {
+                List<ItemStack> result = parseFuture.get();
+                currentContents = (result != null) ? result : List.of();
+            } catch (Exception e) {
+                currentContents = List.of();
+            }
+            parseFuture = null;
         }
     }
 
     // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    private static boolean isShiftDown() {
-        long window = MinecraftClient.getInstance().getWindow().getHandle();
-        return GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT)  == GLFW.GLFW_PRESS
-                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
-    }
-
-    // -------------------------------------------------------------------------
-    // Layout
+    // Layout constants
     // -------------------------------------------------------------------------
 
     private static final int SLOT_SIZE   = 18;
     private static final int SLOT_INNER  = 16;
     private static final int COLS        = 9;
-    private static final int PADDING     = 8;
+    private static final int PADDING     = 4;
     private static final int LINE_HEIGHT = 10;
     private static final int SPACER      = 4;
 
-    // Vanilla tooltip colours
     private static final int BG          = 0xF0100010;
-    private static final int BORDER_TOP  = 0x505000FF;
-    private static final int BORDER_BOT  = 0x5028007F;
+    private static final int BORDER      = 0xFF28007F;
     private static final int SLOT_BG     = 0x40000000;
     private static final int SLOT_HOVER  = 0x60FFFFFF;
     private static final int SEP_COLOR   = 0x44FFFFFF;
 
     // -------------------------------------------------------------------------
-    // Draw
+    // Loading indicator
+    // -------------------------------------------------------------------------
+
+    private static void drawLoading(DrawContext context, int mouseX, int mouseY) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        TextRenderer    tr     = client.textRenderer;
+        String msg = "Loading...";
+        int w = tr.getWidth(msg) + PADDING * 2;
+        int h = LINE_HEIGHT + PADDING * 2;
+
+        int sw = client.getWindow().getScaledWidth();
+        int sh = client.getWindow().getScaledHeight();
+        int px = mouseX + 8;
+        int py = mouseY - 16;
+        if (px + w > sw - 4) px = mouseX - w - 4;
+        if (py + h > sh - 4) py = sh - h - 4;
+        if (py < 4) py = 4;
+
+        drawPanelBackground(context, px, py, w, h);
+        context.drawText(tr, msg, px + PADDING, py + PADDING, 0xFFAAAAAA, true);
+    }
+
+    // -------------------------------------------------------------------------
+    // Main overlay draw
     // -------------------------------------------------------------------------
 
     private static void drawOverlay(DrawContext context, int mouseX, int mouseY) {
@@ -131,80 +236,51 @@ public class BackpackHoverHandler {
         MinecraftClient client = MinecraftClient.getInstance();
         TextRenderer    tr     = client.textRenderer;
 
-        // --- Collect header lines from the real tooltip ----------------------
-        // getTooltip() returns the full list vanilla + mods would render, so
-        // colours and mod-injected lines (prices, SkyBlock id, etc.) are preserved.
         List<Text> headerLines = currentBackpack.getTooltip(
                 Item.TooltipContext.create(client.world),
                 client.player,
                 client.options.advancedItemTooltips ? TooltipType.ADVANCED : TooltipType.BASIC);
 
-        Text hintText = Text.literal("Press SHIFT to inspect")
-                            .formatted(Formatting.DARK_GRAY);
+        Text hintText = frozen
+                ? Text.literal("E to close").formatted(Formatting.DARK_GRAY)
+                : Text.literal("Press SHIFT to inspect").formatted(Formatting.DARK_GRAY);
 
-        // --- Panel dimensions -----------------------------------------------
-        // Width: always sized to fit exactly 9 item columns + padding.
-        // We intentionally ignore text widths to avoid runaway-width bugs.
         int rows   = (int) Math.ceil(currentContents.size() / (double) COLS);
         int gridW  = COLS * SLOT_SIZE;
         int gridH  = rows * SLOT_SIZE;
 
-        // Panel must be wide enough for both the header text and the item grid.
         int maxTextW = 0;
         for (Text line : headerLines) maxTextW = Math.max(maxTextW, tr.getWidth(line));
         int contentW = Math.max(gridW, maxTextW);
         int panelW   = contentW + PADDING * 2;
+        int headerH  = headerLines.size() * LINE_HEIGHT;
+        int panelH   = PADDING + headerH + SPACER + 1 + SPACER + gridH + SPACER + LINE_HEIGHT + PADDING;
 
-        // Height: header lines + separator + grid + hint + padding
-        int headerH = headerLines.size() * LINE_HEIGHT;
-        int panelH  = PADDING
-                    + headerH
-                    + SPACER
-                    + 1           // separator line
-                    + SPACER
-                    + gridH
-                    + SPACER
-                    + LINE_HEIGHT // hint
-                    + PADDING;
+        int anchorX = frozen ? frozenMouseX : mouseX;
+        int anchorY = frozen ? frozenMouseY : mouseY;
 
-        // --- Position (centered horizontally on cursor; clamp to screen edges) ---
         int sw = client.getWindow().getScaledWidth();
         int sh = client.getWindow().getScaledHeight();
-
-        int px = mouseX + 14;
-        int py = mouseY - 12;
-        if (px + panelW > sw - 4) px = mouseX - panelW - 4;
+        int px = anchorX + 8;
+        int py = anchorY - 16;
+        if (px + panelW > sw - 4) px = anchorX - panelW - 4;
         if (py + panelH > sh - 4) py = sh - panelH - 4;
         if (py < 4) py = 4;
 
-        // --- Vanilla-style background + border ------------------------------
-        // 1-px outer border (solid top colour so there's no transparent gap)
-        context.fill(px - 1, py - 1, px + panelW + 1, py + panelH + 1, BORDER_TOP);
-        // Dark inner background
-        context.fill(px, py, px + panelW, py + panelH, BG);
-        // Left border gradient strip
-        context.fillGradient(px, py + 1, px + 1, py + panelH - 1, BORDER_TOP, BORDER_BOT);
-        // Right border gradient strip
-        context.fillGradient(px + panelW - 1, py + 1, px + panelW, py + panelH - 1, BORDER_TOP, BORDER_BOT);
-        // Top & bottom solid border lines
-        context.fill(px + 1, py,            px + panelW - 1, py + 1,          BORDER_TOP);
-        context.fill(px + 1, py + panelH - 1, px + panelW - 1, py + panelH, BORDER_BOT);
+        drawPanelBackground(context, px, py, panelW, panelH);
 
-        // --- Header lines (name + rarity) -----------------------------------
         int ty = py + PADDING;
         for (Text line : headerLines) {
             context.drawText(tr, line, px + PADDING, ty, -1, true);
             ty += LINE_HEIGHT;
         }
 
-        // --- Separator line -------------------------------------------------
         ty += SPACER;
         context.fill(px + PADDING, ty, px + panelW - PADDING, ty + 1, SEP_COLOR);
         ty += 1 + SPACER;
 
-        // --- Item grid ------------------------------------------------------
-        int gridTop = ty;
-        int gridLeft = px + (panelW - gridW) / 2;  // centre grid within panel
+        int gridTop  = ty;
+        int gridLeft = px + (panelW - gridW) / 2;
         overlayHoveredIndex = -1;
 
         for (int i = 0; i < currentContents.size(); i++) {
@@ -221,19 +297,17 @@ public class BackpackHoverHandler {
                 context.drawStackOverlay(tr, item, sx, sy);
             }
 
-            if (mouseX >= sx && mouseX < sx + SLOT_INNER
-                    && mouseY >= sy && mouseY < sy + SLOT_INNER) {
+            if (mouseX >= sx && mouseX < sx + SLOT_SIZE
+                    && mouseY >= sy && mouseY < sy + SLOT_SIZE) {
                 overlayHoveredIndex = i;
                 context.fill(sx, sy, sx + SLOT_INNER, sy + SLOT_INNER, SLOT_HOVER);
             }
         }
 
-        // --- Hint line ------------------------------------------------------
         int hintY = gridTop + gridH + SPACER;
         int hintX = px + (panelW - tr.getWidth(hintText.getString())) / 2;
         context.drawText(tr, hintText, hintX, hintY, -1, false);
 
-        // --- Inner item tooltip (vanilla List<Text> drawTooltip) ------------
         if (overlayHoveredIndex >= 0) {
             ItemStack hovered = currentContents.get(overlayHoveredIndex);
             if (!hovered.isEmpty()) {
@@ -243,9 +317,23 @@ public class BackpackHoverHandler {
                         client.options.advancedItemTooltips
                                 ? TooltipType.ADVANCED
                                 : TooltipType.BASIC);
-                // Draw offset from cursor so it doesn't obscure the hovered cell
-                context.drawTooltip(tr, tip, mouseX + 18, mouseY + 4);
+                context.drawTooltip(tr, tip, mouseX, mouseY);
             }
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Panel background
+    // -------------------------------------------------------------------------
+
+    private static void drawPanelBackground(DrawContext ctx, int x, int y, int w, int h) {
+        ctx.fill(x + 1, y,     x + w - 1, y + h,     BG);
+        ctx.fill(x,     y + 1, x + 1,     y + h - 1, BG);
+        ctx.fill(x + w - 1, y + 1, x + w, y + h - 1, BG);
+
+        ctx.fill(x + 2,     y + 1,     x + w - 2, y + 2,         BORDER);
+        ctx.fill(x + 2,     y + h - 2, x + w - 2, y + h - 1,     BORDER);
+        ctx.fill(x + 1,     y + 2,     x + 2,     y + h - 2,     BORDER);
+        ctx.fill(x + w - 2, y + 2,     x + w - 1, y + h - 2,     BORDER);
     }
 }

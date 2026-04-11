@@ -49,6 +49,7 @@ public class IslandTimeMod implements ClientModInitializer {
         // Register commands
         IslandTimeCommand.register();
 
+
         // Save data when Minecraft closes.
         // Also shuts down webhook thread pool to prevent resource leak.
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {

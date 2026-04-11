@@ -1,5 +1,6 @@
 package org.example.islandtime.mixin;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.input.KeyInput;
@@ -9,19 +10,16 @@ import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.BackpackNbtParser;
 import org.example.islandtime.FakeSlot;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * priority = 1100 ensures our HEAD injection runs before Firmament's (default 1000).
- * In Mixin, higher-priority mixins are applied later, meaning their HEAD injectors
- * are inserted closer to the original method entry and therefore execute first.
- */
 @Mixin(value = HandledScreen.class, priority = 1100)
 public class HandledScreenMixin {
 
@@ -30,23 +28,21 @@ public class HandledScreenMixin {
     @Unique @Nullable private Slot islandtime$savedSlot = null;
 
     // -------------------------------------------------------------------------
-    // Cancel vanilla backpack tooltip when our overlay is active
-    // -------------------------------------------------------------------------
-
-    @Inject(method = "drawMouseoverTooltip", at = @At("HEAD"), cancellable = true)
-    private void islandtime$cancelTooltipForBackpack(DrawContext context,
-                                                     int mouseX, int mouseY,
-                                                     CallbackInfo ci) {
-        // Cancel whenever a backpack is hovered — including the shift-held frame
-        // where isShowingOverlay() returns false but the preview screen is about
-        // to open. Without this, the vanilla tooltip flickers for one frame.
-        if (BackpackHoverHandler.hasBackpackHovered()) {
-            ci.cancel();
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Draw overlay after everything else has rendered
+    // Render TAIL — this runs AFTER vanilla has already written focusedSlot
+    // from its own getSlotAt call, so we can safely overwrite it here.
+    //
+    // While suppression is active (post-unfreeze, mouse hasn't moved yet):
+    //   - force focusedSlot = null so no slot highlight shows and no other
+    //     mod (e.g. Firmament keybindings) sees the wrong slot
+    //   - skip backpack overlay logic
+    //
+    // While frozen:
+    //   - draw the frozen overlay
+    //   - focusedSlot was already nulled by vanilla because getSlotAt returns
+    //     null for positions outside the screen (we're blocking clicks anyway)
+    //
+    // Normal case:
+    //   - run backpack hover logic as before
     // -------------------------------------------------------------------------
 
     @Inject(method = "render", at = @At("TAIL"))
@@ -54,6 +50,19 @@ public class HandledScreenMixin {
                                         int mouseX, int mouseY,
                                         float delta,
                                         CallbackInfo ci) {
+        if (BackpackHoverHandler.isFrozen()) {
+            focusedSlot = null;
+            BackpackHoverHandler.drawFrozen(context, mouseX, mouseY);
+            return;
+        }
+
+        // Suppression: vanilla has set focusedSlot to whatever is under the
+        // mouse right now. We overwrite it to null until the mouse actually moves.
+        if (BackpackHoverHandler.isFocusedSlotSuppressed(mouseX, mouseY)) {
+            focusedSlot = null;
+            return;
+        }
+
         if (focusedSlot == null) {
             BackpackHoverHandler.clearHovered();
             return;
@@ -70,18 +79,71 @@ public class HandledScreenMixin {
     }
 
     // -------------------------------------------------------------------------
-    // Swap focusedSlot → FakeSlot(inner item) before keyPressed runs,
-    // so Firmament (and any other mod) reads the overlay-hovered item.
+    // Suppress vanilla tooltip while our overlay is active
     // -------------------------------------------------------------------------
 
-    @Inject(method = "keyPressed", at = @At("HEAD"))
+    @Inject(method = "drawMouseoverTooltip", at = @At("HEAD"), cancellable = true)
+    private void islandtime$cancelTooltipForBackpack(DrawContext context,
+                                                     int mouseX, int mouseY,
+                                                     CallbackInfo ci) {
+        if (BackpackHoverHandler.hasBackpackHovered()) {
+            ci.cancel();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Block mouse clicks while frozen
+    // -------------------------------------------------------------------------
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void islandtime$blockClickWhileFrozen(@Coerce Object input,
+                                                  boolean handled,
+                                                  CallbackInfoReturnable<Boolean> cir) {
+        if (BackpackHoverHandler.isFrozen()) {
+            cir.setReturnValue(true);
+            cir.cancel();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Key handling
+    // -------------------------------------------------------------------------
+
+    @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void islandtime$beforeKeyPressed(KeyInput input,
                                              CallbackInfoReturnable<Boolean> cir) {
+        long window = MinecraftClient.getInstance().getWindow().getHandle();
+
+        if (BackpackHoverHandler.isFrozen()) {
+            boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
+            if (ePressed || input.isEscape()) {
+                BackpackHoverHandler.requestUnfreeze();
+                cir.setReturnValue(true);
+                cir.cancel();
+                return;
+            }
+
+            ItemStack overlayItem = BackpackHoverHandler.getOverlayHoveredItem();
+            if (!overlayItem.isEmpty()) {
+                islandtime$savedSlot = focusedSlot;
+                focusedSlot = new FakeSlot(overlayItem);
+            }
+            return;
+        }
+
+        boolean shiftPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT)  == GLFW.GLFW_PRESS
+                            || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
+        if (shiftPressed && BackpackHoverHandler.isShowingOverlay()) {
+            BackpackHoverHandler.freeze();
+            cir.setReturnValue(true);
+            cir.cancel();
+            return;
+        }
+
         ItemStack overlayItem = BackpackHoverHandler.getOverlayHoveredItem();
         if (!overlayItem.isEmpty()) {
             islandtime$savedSlot = focusedSlot;
             focusedSlot = new FakeSlot(overlayItem);
-            System.out.println("[IslandTime] focusedSlot swapped → " + overlayItem.getName().getString());
         }
     }
 

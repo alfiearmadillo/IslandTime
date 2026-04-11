@@ -2,9 +2,10 @@
   "required": true,
   "minVersion": "0.8",
   "package": "org.example.islandtime.mixin",
-  "compatibilityLevel": "JAVA_17",
+  "compatibilityLevel": "JAVA_21",
   "client": [
-    "HandledScreenMixin"
+    "HandledScreenMixin",
+    "MouseMixin"
   ],
   "injectors": {
     "defaultRequire": 1
