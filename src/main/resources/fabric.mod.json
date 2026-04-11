@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "islandtime",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "name": "Island Time",
   "description": "Tracks time spent on your Hypixel SkyBlock island",
   "authors": ["You"],
@@ -9,6 +9,9 @@
   "entrypoints": {
     "client": ["org.example.islandtime.IslandTimeMod"]
   },
+  "mixins": [
+    "islandtime.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.15.0",
     "minecraft": ">=1.21.10",

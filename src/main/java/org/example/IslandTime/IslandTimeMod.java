@@ -40,17 +40,20 @@ public class IslandTimeMod implements ClientModInitializer {
 
             // Update disconnect alert tracker
             DisconnectAlertTracker.tick(client);
+
+            // Open the backpack preview screen if the player held Shift
+            // while hovering a backpack in the previous render frame.
+            BackpackHoverHandler.tick(client);
         });
 
         // Register commands
         IslandTimeCommand.register();
 
-        // Save data when Minecraft closes
-        // Also shuts down webhook thread pool to prevent resource leak
+        // Save data when Minecraft closes.
+        // Also shuts down webhook thread pool to prevent resource leak.
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("IslandTimeMod shutting down...");
 
-            // Save all data
             IslandTimeTracker.save();
             FuelCycleTracker.save();
             ItemTracker.save();
@@ -58,7 +61,6 @@ public class IslandTimeMod implements ClientModInitializer {
             DisconnectAlertTracker.save();
             DiscordWebhookManager.save();
 
-            // Shutdown webhook thread pool gracefully
             DiscordWebhookManager.shutdown();
 
             System.out.println("IslandTimeMod shutdown complete");
