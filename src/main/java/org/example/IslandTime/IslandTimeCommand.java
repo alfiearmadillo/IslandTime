@@ -502,6 +502,54 @@ public class IslandTimeCommand {
                                         return 0;
                                     }
                                     return 1;
+                                })))
+                .then(literal("view")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    String name = StringArgumentType.getString(ctx, "name");
+                                    MinecraftClient client = ctx.getSource().getClient();
+
+                                    if (FavouriteGuiViewer.open(name)) {
+                                        client.player.sendMessage(
+                                                Text.literal("Opening saved container '").formatted(Formatting.GREEN)
+                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
+                                                        .append(Text.literal("'").formatted(Formatting.GREEN)),
+                                                false
+                                        );
+                                    } else {
+                                        client.player.sendMessage(
+                                                Text.literal("No saved container found with name '").formatted(Formatting.RED)
+                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
+                                                        .append(Text.literal("'").formatted(Formatting.RED)),
+                                                false
+                                        );
+                                        return 0;
+                                    }
+                                    return 1;
+                                })))
+                .then(literal("open")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    String name = StringArgumentType.getString(ctx, "name");
+                                    MinecraftClient client = ctx.getSource().getClient();
+
+                                    if (FavouriteGuiViewer.open(name)) {
+                                        client.player.sendMessage(
+                                                Text.literal("Opening saved container '").formatted(Formatting.GREEN)
+                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
+                                                        .append(Text.literal("'").formatted(Formatting.GREEN)),
+                                                false
+                                        );
+                                    } else {
+                                        client.player.sendMessage(
+                                                Text.literal("No saved container found with name '").formatted(Formatting.RED)
+                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
+                                                        .append(Text.literal("'").formatted(Formatting.RED)),
+                                                false
+                                        );
+                                        return 0;
+                                    }
+                                    return 1;
                                 }))));
     }
 

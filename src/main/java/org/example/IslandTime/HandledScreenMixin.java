@@ -50,6 +50,13 @@ public class HandledScreenMixin {
                                         int mouseX, int mouseY,
                                         float delta,
                                         CallbackInfo ci) {
+        // FavouriteGuiViewer takes priority over everything
+        if (FavouriteGuiViewer.isActive()) {
+            FavouriteGuiViewer.render(context, mouseX, mouseY);
+            focusedSlot = null;
+            return;
+        }
+
         if (BackpackHoverHandler.isFrozen()) {
             focusedSlot = null;
             BackpackHoverHandler.drawFrozen(context, mouseX, mouseY);
@@ -86,7 +93,7 @@ public class HandledScreenMixin {
     private void islandtime$cancelTooltipForBackpack(DrawContext context,
                                                      int mouseX, int mouseY,
                                                      CallbackInfo ci) {
-        if (BackpackHoverHandler.hasBackpackHovered()) {
+        if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.hasBackpackHovered()) {
             ci.cancel();
         }
     }
@@ -99,7 +106,7 @@ public class HandledScreenMixin {
     private void islandtime$blockClickWhileFrozen(@Coerce Object input,
                                                   boolean handled,
                                                   CallbackInfoReturnable<Boolean> cir) {
-        if (BackpackHoverHandler.isFrozen()) {
+        if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.isFrozen()) {
             cir.setReturnValue(true);
             cir.cancel();
         }
@@ -113,6 +120,25 @@ public class HandledScreenMixin {
     private void islandtime$beforeKeyPressed(KeyInput input,
                                              CallbackInfoReturnable<Boolean> cir) {
         long window = MinecraftClient.getInstance().getWindow().getHandle();
+
+        // Handle FavouriteGuiViewer close
+        if (FavouriteGuiViewer.isActive()) {
+            boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
+            if (ePressed || input.isEscape()) {
+                FavouriteGuiViewer.close();
+                cir.setReturnValue(true);
+                cir.cancel();
+                return;
+            }
+
+            // Block all other key input while viewer is active
+            ItemStack hoveredItem = FavouriteGuiViewer.getHoveredItem();
+            if (!hoveredItem.isEmpty()) {
+                islandtime$savedSlot = focusedSlot;
+                focusedSlot = new FakeSlot(hoveredItem);
+            }
+            return;
+        }
 
         if (BackpackHoverHandler.isFrozen()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
