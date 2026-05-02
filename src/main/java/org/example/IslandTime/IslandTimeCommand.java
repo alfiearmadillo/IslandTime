@@ -382,6 +382,45 @@ public class IslandTimeCommand {
                             return 1;
                         })));
 
+        // /wikireplace
+        dispatcher.register(literal("wikireplace")
+                .executes(ctx -> {
+                    MinecraftClient client = ctx.getSource().getClient();
+                    boolean current = TrackingToggleConfig.isWikiReplaceEnabled();
+                    client.player.sendMessage(
+                            Text.literal("Wiki link replacement is currently: ").formatted(Formatting.AQUA)
+                                    .append(Text.literal(current ? "enabled" : "disabled")
+                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
+                            false
+                    );
+                    client.player.sendMessage(
+                            Text.literal("Use /wikireplace <on|off> to change.").formatted(Formatting.GRAY),
+                            false
+                    );
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            MinecraftClient client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                TrackingToggleConfig.setWikiReplaceEnabled(true);
+                                client.player.sendMessage(
+                                        Text.literal("Wiki link replacement enabled. Hypixel wiki links will now open on minecraft.wiki.")
+                                                .formatted(Formatting.GREEN), false);
+                            } else if (state.equals("off")) {
+                                TrackingToggleConfig.setWikiReplaceEnabled(false);
+                                client.player.sendMessage(
+                                        Text.literal("Wiki link replacement disabled. Links will open on the official Hypixel wiki.")
+                                                .formatted(Formatting.YELLOW), false);
+                            } else {
+                                client.player.sendMessage(
+                                        Text.literal("Usage: /wikireplace <on|off>").formatted(Formatting.RED), false);
+                                return 0;
+                            }
+                            return 1;
+                        })));
+
         // /trackfuelcycles
         dispatcher.register(literal("trackfuelcycles")
                 .executes(ctx -> {
@@ -458,6 +497,8 @@ public class IslandTimeCommand {
                         "Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
 
                 // Page 4 - Tracking toggles
+                {"/wikireplace", "Show whether Hypixel wiki link replacement is on or off"},
+                {"/wikireplace <on|off>", "Enable or disable replacing Hypixel wiki links with minecraft.wiki links. Enabled by default."},
                 {"/trackislandtime", "Show whether island-time tracking is on or off"},
                 {"/trackislandtime <on|off>", "Enable or disable island-time tracking. " +
                         "Disabling preserves all existing data and finishes the current day, " +

@@ -7,18 +7,19 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 
 /**
- * Persists the enabled/disabled toggles for island-time tracking and fuel-cycle tracking.
- * Both default to true. The values are loaded at startup and applied to their respective
- * trackers. All saves are atomic (tmp → rename) consistent with the rest of the mod.
+ * Persists the enabled/disabled toggles for island-time tracking, fuel-cycle tracking,
+ * and wiki link replacement. All default to true. The values are loaded at startup and
+ * applied to their respective trackers. All saves are atomic (tmp → rename) consistent
+ * with the rest of the mod.
  */
 public class TrackingToggleConfig {
 
     private static final Path CONFIG_FILE = Paths.get("config/IslandTime/tracking_toggles.txt");
     private static final Path CONFIG_TMP  = Paths.get("config/IslandTime/tracking_toggles.tmp");
 
-    // These mirror the live values in the trackers and are only used for persistence.
-    private static boolean islandTimeEnabled = true;
-    private static boolean fuelCycleEnabled  = true;
+    private static boolean islandTimeEnabled  = true;
+    private static boolean fuelCycleEnabled   = true;
+    private static boolean wikiReplaceEnabled = true;
 
     /** Called by IslandTimeTracker.setTrackingEnabled and the toggle command. */
     public static void setIslandTimeEnabled(boolean enabled) {
@@ -34,8 +35,16 @@ public class TrackingToggleConfig {
         save();
     }
 
-    public static boolean isIslandTimeEnabled() { return islandTimeEnabled; }
-    public static boolean isFuelCycleEnabled()  { return fuelCycleEnabled; }
+    /** Called by the /wikireplace command. */
+    public static void setWikiReplaceEnabled(boolean enabled) {
+        wikiReplaceEnabled = enabled;
+        WikiLinkReplacer.setEnabled(enabled);
+        save();
+    }
+
+    public static boolean isIslandTimeEnabled()  { return islandTimeEnabled; }
+    public static boolean isFuelCycleEnabled()   { return fuelCycleEnabled; }
+    public static boolean isWikiReplaceEnabled() { return wikiReplaceEnabled; }
 
     // -------------------------------------------------------------------------
     // Persistence — atomic write via tmp → rename
@@ -49,6 +58,8 @@ public class TrackingToggleConfig {
                 writer.write(islandTimeEnabled + "\n");
                 writer.write("FUEL_CYCLE_TRACKING\n");
                 writer.write(fuelCycleEnabled + "\n");
+                writer.write("WIKI_REPLACE\n");
+                writer.write(wikiReplaceEnabled + "\n");
             }
             Files.move(CONFIG_TMP, CONFIG_FILE,
                     StandardCopyOption.REPLACE_EXISTING,
@@ -78,12 +89,16 @@ public class TrackingToggleConfig {
             while ((line = reader.readLine()) != null) {
                 if      (line.equals("ISLAND_TIME_TRACKING")) { section = "ISLAND_TIME_TRACKING"; continue; }
                 else if (line.equals("FUEL_CYCLE_TRACKING"))  { section = "FUEL_CYCLE_TRACKING";  continue; }
+                else if (line.equals("WIKI_REPLACE"))         { section = "WIKI_REPLACE";          continue; }
 
                 if (section.equals("ISLAND_TIME_TRACKING") && !line.isEmpty()) {
                     islandTimeEnabled = Boolean.parseBoolean(line);
                     section = "";
                 } else if (section.equals("FUEL_CYCLE_TRACKING") && !line.isEmpty()) {
                     fuelCycleEnabled = Boolean.parseBoolean(line);
+                    section = "";
+                } else if (section.equals("WIKI_REPLACE") && !line.isEmpty()) {
+                    wikiReplaceEnabled = Boolean.parseBoolean(line);
                     section = "";
                 }
             }
@@ -98,5 +113,6 @@ public class TrackingToggleConfig {
         // so the trackers already have their data before we flip their flags.
         IslandTimeTracker.setTrackingEnabled(islandTimeEnabled);
         FuelCycleTracker.setTrackingEnabled(fuelCycleEnabled);
+        WikiLinkReplacer.setEnabled(wikiReplaceEnabled);
     }
 }
