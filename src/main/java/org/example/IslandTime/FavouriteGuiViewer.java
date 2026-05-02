@@ -231,6 +231,8 @@ public class FavouriteGuiViewer {
                 if (!stack.isEmpty()) {
                     items.set(savedItem.slotIndex, stack);
                 }
+            } catch (CommandSyntaxException e) {
+                System.err.println("[FavouriteGuiViewer] Failed to parse NBT for item at slot " + savedItem.slotIndex + ": " + e.getMessage());
             } catch (Exception e) {
                 System.err.println("[FavouriteGuiViewer] Failed to deserialize item at slot " + savedItem.slotIndex + ": " + e.getMessage());
             }
