@@ -110,7 +110,7 @@ public class WikiLinkReplacer {
                 // Prepend colorCode so any inline §-encoded colour is also preserved.
                 MutableText result = Text.empty();
                 if (!before.isEmpty()) result.append(Text.literal(before).setStyle(effectiveWithFixedUrl));
-                result.append(Text.literal(colorCode + "§l" + "Un").setStyle(effectiveWithFixedUrl.withBold(true)));
+                result.append(Text.literal(colorCode + "Un").setStyle(effectiveWithFixedUrl.withBold(true)));
                 result.append(Text.literal(colorCode + UNOFFICIAL + after).setStyle(effectiveWithFixedUrl));
 
                 for (Text sibling : original.getSiblings()) {
