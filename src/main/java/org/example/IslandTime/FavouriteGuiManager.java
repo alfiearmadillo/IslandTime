@@ -5,6 +5,7 @@ import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
@@ -100,10 +101,10 @@ public class FavouriteGuiManager {
                 // Serialize item to NBT using CODEC
                 DynamicRegistryManager registryManager = client.getNetworkHandler() != null
                         ? client.getNetworkHandler().getRegistryManager()
-                        : net.minecraft.registry.DynamicRegistryManager.EMPTY;
+                        : DynamicRegistryManager.EMPTY;
 
                 String nbtString = ItemStack.CODEC
-                        .encode(stack, registryManager.getOps(net.minecraft.nbt.NbtOps.INSTANCE), new NbtCompound())
+                        .encode(stack, registryManager.getOps(NbtOps.INSTANCE), new NbtCompound())
                         .result()
                         .map(NbtElement::toString)
                         .orElse("");

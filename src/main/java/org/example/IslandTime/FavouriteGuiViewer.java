@@ -9,7 +9,9 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringNbtReader;
+import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -220,8 +222,8 @@ public class FavouriteGuiViewer {
                 NbtCompound nbt = StringNbtReader.parse(savedItem.nbtData);
                 ItemStack stack = ItemStack.CODEC
                         .parse(client.getNetworkHandler() != null
-                                ? client.getNetworkHandler().getRegistryManager().getOps(net.minecraft.nbt.NbtOps.INSTANCE)
-                                : net.minecraft.registry.DynamicRegistryManager.EMPTY.getOps(net.minecraft.nbt.NbtOps.INSTANCE),
+                                ? client.getNetworkHandler().getRegistryManager().getOps(NbtOps.INSTANCE)
+                                : DynamicRegistryManager.EMPTY.getOps(NbtOps.INSTANCE),
                                 nbt)
                         .result()
                         .orElse(ItemStack.EMPTY);
