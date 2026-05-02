@@ -15,6 +15,7 @@ public class IslandTimeMod implements ClientModInitializer {
         ItemTracker.load();
         IslandAlertTracker.load();
         DisconnectAlertTracker.load();
+        FavouriteGuiManager.load();
         TrackingToggleConfig.load(); // applies toggle flags to trackers
 
         // Register tick events
@@ -46,6 +47,7 @@ public class IslandTimeMod implements ClientModInitializer {
             DisconnectAlertTracker.save();
             DiscordWebhookManager.save();
             TrackingToggleConfig.save();
+            FavouriteGuiManager.save();
 
             DiscordWebhookManager.shutdown();
 
