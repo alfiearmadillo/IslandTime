@@ -22,6 +22,12 @@ public class FavouriteGuiManager {
     private static final Path CONFIG_FILE = Paths.get("config/IslandTime/favourite_guis.txt");
     private static final Path CONFIG_TMP = Paths.get("config/IslandTime/favourite_guis.tmp");
 
+    // Prefixes used in the on-disk format to distinguish data lines from sentinel markers
+    private static final String PREFIX_NAME  = "NAME:";
+    private static final String PREFIX_TITLE = "TITLE:";
+    private static final String PREFIX_SIZE  = "SIZE:";
+    private static final String PREFIX_ITEM  = "ITEM:";
+
     // Map of saved container name -> SavedContainer
     private static final Map<String, SavedContainer> savedContainers = new HashMap<>();
 
@@ -220,15 +226,14 @@ public class FavouriteGuiManager {
             try (BufferedWriter writer = Files.newBufferedWriter(CONFIG_TMP)) {
                 for (SavedContainer container : savedContainers.values()) {
                     writer.write("CONTAINER\n");
-                    writer.write(container.name + "\n");
-                    writer.write(container.title + "\n");
-                    writer.write(container.size + "\n");
+                    writer.write(PREFIX_NAME  + container.name  + "\n");
+                    writer.write(PREFIX_TITLE + container.title + "\n");
+                    writer.write(PREFIX_SIZE  + container.size  + "\n");
 
                     // Write items
                     writer.write("ITEMS\n");
                     for (SavedItem item : container.items) {
-                        // Format: slotIndex|nbtData
-                        writer.write(item.slotIndex + "|" + item.nbtData + "\n");
+                        writer.write(PREFIX_ITEM + item.slotIndex + "|" + item.nbtData + "\n");
                     }
                     writer.write("END_CONTAINER\n");
                 }
@@ -299,27 +304,29 @@ public class FavouriteGuiManager {
                 }
 
                 if (section.equals("CONTAINER")) {
-                    if (currentName == null) {
-                        currentName = line;
-                    } else if (currentTitle == null) {
-                        currentTitle = line;
-                    } else {
+                    if (line.startsWith(PREFIX_NAME)) {
+                        currentName = line.substring(PREFIX_NAME.length());
+                    } else if (line.startsWith(PREFIX_TITLE)) {
+                        currentTitle = line.substring(PREFIX_TITLE.length());
+                    } else if (line.startsWith(PREFIX_SIZE)) {
                         try {
-                            currentSize = Integer.parseInt(line);
+                            currentSize = Integer.parseInt(line.substring(PREFIX_SIZE.length()));
                         } catch (NumberFormatException e) {
                             System.err.println("[FavouriteGuiManager] Invalid size: " + line);
                         }
                     }
                 } else if (section.equals("ITEMS")) {
-                    // Parse item: slotIndex|nbtData
-                    String[] parts = line.split("\\|", 2);
-                    if (parts.length == 2) {
-                        try {
-                            int slotIndex = Integer.parseInt(parts[0]);
-                            String nbtData = parts[1];
-                            currentItems.add(new SavedItem(slotIndex, nbtData));
-                        } catch (NumberFormatException e) {
-                            System.err.println("[FavouriteGuiManager] Invalid item data: " + line);
+                    // Parse item: ITEM:slotIndex|nbtData
+                    if (line.startsWith(PREFIX_ITEM)) {
+                        String[] parts = line.substring(PREFIX_ITEM.length()).split("\\|", 2);
+                        if (parts.length == 2) {
+                            try {
+                                int slotIndex = Integer.parseInt(parts[0]);
+                                String nbtData = parts[1];
+                                currentItems.add(new SavedItem(slotIndex, nbtData));
+                            } catch (NumberFormatException e) {
+                                System.err.println("[FavouriteGuiManager] Invalid item data: " + line);
+                            }
                         }
                     }
                 }
