@@ -9,6 +9,7 @@ import net.minecraft.screen.slot.Slot;
 import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.BackpackNbtParser;
 import org.example.islandtime.FakeSlot;
+import org.example.islandtime.FavouriteGuiViewer;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
@@ -50,10 +51,19 @@ public class HandledScreenMixin {
                                         int mouseX, int mouseY,
                                         float delta,
                                         CallbackInfo ci) {
-        // FavouriteGuiViewer takes priority over everything
+        // FavouriteGuiViewer takes priority but still allows backpack overlay
         if (FavouriteGuiViewer.isActive()) {
             FavouriteGuiViewer.render(context, mouseX, mouseY);
             focusedSlot = null;
+
+            // Check if hovering over a backpack item in the favourite viewer
+            ItemStack hoveredItem = FavouriteGuiViewer.getHoveredItem();
+            if (!hoveredItem.isEmpty() && BackpackNbtParser.hasBackpackData(hoveredItem)) {
+                HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+                BackpackHoverHandler.onBackpackHovered(hoveredItem, context, mouseX, mouseY, self);
+            } else {
+                BackpackHoverHandler.clearHovered();
+            }
             return;
         }
 
