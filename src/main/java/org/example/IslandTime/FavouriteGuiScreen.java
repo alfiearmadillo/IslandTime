@@ -21,7 +21,6 @@ public class FavouriteGuiScreen extends Screen {
         FavouriteGuiViewer.render(context, mouseX, mouseY);
     }
 
-    @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_E) {
             this.close();
@@ -31,7 +30,6 @@ public class FavouriteGuiScreen extends Screen {
         return true;
     }
 
-    @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // Block all mouse clicks
         return true;
