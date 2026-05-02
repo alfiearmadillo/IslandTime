@@ -9,6 +9,7 @@ import net.minecraft.screen.slot.Slot;
 import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.BackpackNbtParser;
 import org.example.islandtime.FakeSlot;
+import org.example.islandtime.FavouriteGuiViewer;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,6 +27,11 @@ public class HandledScreenMixin {
     @Shadow @Nullable protected Slot focusedSlot;
 
     @Unique @Nullable private Slot islandtime$savedSlot = null;
+
+    @Unique
+    private static boolean islandtime$shouldBlockMouseInput() {
+        return FavouriteGuiViewer.isActive() || BackpackHoverHandler.isFrozen();
+    }
 
     // -------------------------------------------------------------------------
     // Render TAIL — this runs AFTER vanilla has already written focusedSlot
@@ -50,6 +56,22 @@ public class HandledScreenMixin {
                                         int mouseX, int mouseY,
                                         float delta,
                                         CallbackInfo ci) {
+        // FavouriteGuiViewer takes priority but still allows backpack overlay
+        if (FavouriteGuiViewer.isActive()) {
+            FavouriteGuiViewer.render(context, mouseX, mouseY);
+            focusedSlot = null;
+
+            // Check if hovering over a backpack item in the favourite viewer
+            ItemStack hoveredItem = FavouriteGuiViewer.getHoveredItem();
+            if (!hoveredItem.isEmpty() && BackpackNbtParser.hasBackpackData(hoveredItem)) {
+                HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+                BackpackHoverHandler.onBackpackHovered(hoveredItem, context, mouseX, mouseY, self);
+            } else {
+                BackpackHoverHandler.clearHovered();
+            }
+            return;
+        }
+
         if (BackpackHoverHandler.isFrozen()) {
             focusedSlot = null;
             BackpackHoverHandler.drawFrozen(context, mouseX, mouseY);
@@ -86,7 +108,7 @@ public class HandledScreenMixin {
     private void islandtime$cancelTooltipForBackpack(DrawContext context,
                                                      int mouseX, int mouseY,
                                                      CallbackInfo ci) {
-        if (BackpackHoverHandler.hasBackpackHovered()) {
+        if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.hasBackpackHovered()) {
             ci.cancel();
         }
     }
@@ -99,7 +121,27 @@ public class HandledScreenMixin {
     private void islandtime$blockClickWhileFrozen(@Coerce Object input,
                                                   boolean handled,
                                                   CallbackInfoReturnable<Boolean> cir) {
-        if (BackpackHoverHandler.isFrozen()) {
+        if (islandtime$shouldBlockMouseInput()) {
+            cir.setReturnValue(true);
+            cir.cancel();
+        }
+    }
+
+    @Inject(method = "mouseDragged", at = @At("HEAD"), cancellable = true)
+    private void islandtime$blockDragWhileViewerActive(double mouseX, double mouseY,
+                                                       int button, double deltaX, double deltaY,
+                                                       CallbackInfoReturnable<Boolean> cir) {
+        if (islandtime$shouldBlockMouseInput()) {
+            cir.setReturnValue(true);
+            cir.cancel();
+        }
+    }
+
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
+    private void islandtime$blockScrollWhileViewerActive(double mouseX, double mouseY,
+                                                         double horizontalAmount, double verticalAmount,
+                                                         CallbackInfoReturnable<Boolean> cir) {
+        if (islandtime$shouldBlockMouseInput()) {
             cir.setReturnValue(true);
             cir.cancel();
         }
@@ -113,6 +155,22 @@ public class HandledScreenMixin {
     private void islandtime$beforeKeyPressed(KeyInput input,
                                              CallbackInfoReturnable<Boolean> cir) {
         long window = MinecraftClient.getInstance().getWindow().getHandle();
+
+        // Handle FavouriteGuiViewer close
+        if (FavouriteGuiViewer.isActive()) {
+            boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
+            if (ePressed || input.isEscape()) {
+                FavouriteGuiViewer.close();
+                cir.setReturnValue(true);
+                cir.cancel();
+                return;
+            }
+
+            // Block all other key input while viewer is active
+            cir.setReturnValue(true);
+            cir.cancel();
+            return;
+        }
 
         if (BackpackHoverHandler.isFrozen()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
