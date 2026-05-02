@@ -596,6 +596,13 @@ public class IslandTimeCommand {
                 {"/trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. " +
                         "Disabling lets any active cycle complete naturally, " +
                         "but fueling a minion will not start a new cycle."},
+
+                // Page 5 - Favourite GUI
+                {"/favouritegui", "List all saved container layouts"},
+                {"/favouritegui save <name>", "Save the currently open container under <name>"},
+                {"/favouritegui delete <name>", "Remove a previously saved container layout"},
+                {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
+                {"/favouritegui open <name>", "Alias for /favouritegui view <name>"},
         };
 
         int commandsPerPage = 7;

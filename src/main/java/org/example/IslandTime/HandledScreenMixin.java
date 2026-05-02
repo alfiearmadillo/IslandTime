@@ -28,6 +28,11 @@ public class HandledScreenMixin {
 
     @Unique @Nullable private Slot islandtime$savedSlot = null;
 
+    @Unique
+    private static boolean islandtime$shouldBlockMouseInput() {
+        return FavouriteGuiViewer.isActive() || BackpackHoverHandler.isFrozen();
+    }
+
     // -------------------------------------------------------------------------
     // Render TAIL — this runs AFTER vanilla has already written focusedSlot
     // from its own getSlotAt call, so we can safely overwrite it here.
@@ -116,7 +121,27 @@ public class HandledScreenMixin {
     private void islandtime$blockClickWhileFrozen(@Coerce Object input,
                                                   boolean handled,
                                                   CallbackInfoReturnable<Boolean> cir) {
-        if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.isFrozen()) {
+        if (islandtime$shouldBlockMouseInput()) {
+            cir.setReturnValue(true);
+            cir.cancel();
+        }
+    }
+
+    @Inject(method = "mouseDragged", at = @At("HEAD"), cancellable = true)
+    private void islandtime$blockDragWhileViewerActive(double mouseX, double mouseY,
+                                                       int button, double deltaX, double deltaY,
+                                                       CallbackInfoReturnable<Boolean> cir) {
+        if (islandtime$shouldBlockMouseInput()) {
+            cir.setReturnValue(true);
+            cir.cancel();
+        }
+    }
+
+    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true)
+    private void islandtime$blockScrollWhileViewerActive(double mouseX, double mouseY,
+                                                         double horizontalAmount, double verticalAmount,
+                                                         CallbackInfoReturnable<Boolean> cir) {
+        if (islandtime$shouldBlockMouseInput()) {
             cir.setReturnValue(true);
             cir.cancel();
         }
