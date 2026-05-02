@@ -35,9 +35,6 @@ public class IslandTimeMod implements ClientModInitializer {
         // Register commands
         IslandTimeCommand.register();
 
-        // Intercept chat messages and redirect Hypixel wiki links to minecraft.wiki
-        WikiLinkReplacer.register();
-
         // Save everything on shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("IslandTimeMod shutting down...");
