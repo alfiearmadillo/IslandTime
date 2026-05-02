@@ -98,11 +98,82 @@ public class FavouriteGuiManager {
             }
         }
 
-        // Save to memory
-        savedContainers.put(name, new SavedContainer(name, title, containerSize, items));
+        SavedContainer newContainer = new SavedContainer(name, title, containerSize, items);
+        SavedContainer previousContainer = savedContainers.get(name);
+        byte[] beforeSave = readConfigSnapshot();
 
-        // Persist to disk
+        // Save to memory first so save() persists the intended state.
+        savedContainers.put(name, newContainer);
+
+        // Persist to disk.
         save();
+
+        if (didPersistSucceed(previousContainer, newContainer, beforeSave, readConfigSnapshot())) {
+            return true;
+        }
+
+        // Roll back the in-memory change when persistence did not happen.
+        if (previousContainer == null) {
+            savedContainers.remove(name);
+        } else {
+            savedContainers.put(name, previousContainer);
+        }
+
+        return false;
+    }
+
+    private static byte[] readConfigSnapshot() {
+        try {
+            if (!Files.exists(CONFIG_FILE)) {
+                return null;
+            }
+            return Files.readAllBytes(CONFIG_FILE);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static boolean didPersistSucceed(SavedContainer previousContainer, SavedContainer newContainer, byte[] beforeSave, byte[] afterSave) {
+        if (afterSave == null) {
+            return false;
+        }
+
+        if (!Arrays.equals(beforeSave, afterSave)) {
+            return true;
+        }
+
+        return sameContainer(previousContainer, newContainer);
+    }
+
+    private static boolean sameContainer(SavedContainer first, SavedContainer second) {
+        if (first == second) {
+            return true;
+        }
+        if (first == null || second == null) {
+            return false;
+        }
+        if (!Objects.equals(first.name, second.name)
+                || !Objects.equals(first.title, second.title)
+                || first.size != second.size
+                || first.items == null
+                || second.items == null
+                || first.items.size() != second.items.size()) {
+            return false;
+        }
+
+        for (int i = 0; i < first.items.size(); i++) {
+            SavedItem firstItem = first.items.get(i);
+            SavedItem secondItem = second.items.get(i);
+            if (firstItem == null || secondItem == null) {
+                if (firstItem != secondItem) {
+                    return false;
+                }
+                continue;
+            }
+            if (firstItem.slotIndex != secondItem.slotIndex || !Objects.equals(firstItem.nbtData, secondItem.nbtData)) {
+                return false;
+            }
+        }
 
         return true;
     }
