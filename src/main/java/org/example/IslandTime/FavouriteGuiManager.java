@@ -4,6 +4,9 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
@@ -95,12 +98,20 @@ public class FavouriteGuiManager {
             ItemStack stack = slot.getStack();
 
             if (!stack.isEmpty()) {
-                // Serialize item to NBT
-                NbtCompound nbt = new NbtCompound();
-                stack.encode(nbt);
-                String nbtString = nbt.toString();
+                // Serialize item to NBT using CODEC
+                DynamicRegistryManager registryManager = client.getNetworkHandler() != null
+                        ? client.getNetworkHandler().getRegistryManager()
+                        : DynamicRegistryManager.EMPTY;
 
-                items.add(new SavedItem(i, nbtString));
+                String nbtString = ItemStack.CODEC
+                        .encode(stack, registryManager.getOps(NbtOps.INSTANCE), new NbtCompound())
+                        .result()
+                        .map(NbtElement::toString)
+                        .orElse("");
+
+                if (!nbtString.isEmpty()) {
+                    items.add(new SavedItem(i, nbtString));
+                }
             }
         }
 
