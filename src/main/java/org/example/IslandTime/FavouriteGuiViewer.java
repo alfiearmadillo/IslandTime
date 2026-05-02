@@ -3,6 +3,7 @@ package org.example.islandtime;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
@@ -53,6 +54,13 @@ public class FavouriteGuiViewer {
         displayItems = deserializeItems(container);
         active = true;
         hoveredIndex = -1;
+
+        // If there is no HandledScreen already open to render the overlay, open a
+        // standalone screen so the viewer works "anytime" from chat or the world.
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (!(client.currentScreen instanceof HandledScreen)) {
+            client.setScreen(new FavouriteGuiScreen());
+        }
 
         return true;
     }

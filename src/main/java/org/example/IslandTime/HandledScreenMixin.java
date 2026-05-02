@@ -142,11 +142,8 @@ public class HandledScreenMixin {
             }
 
             // Block all other key input while viewer is active
-            ItemStack hoveredItem = FavouriteGuiViewer.getHoveredItem();
-            if (!hoveredItem.isEmpty()) {
-                islandtime$savedSlot = focusedSlot;
-                focusedSlot = new FakeSlot(hoveredItem);
-            }
+            cir.setReturnValue(true);
+            cir.cancel();
             return;
         }
 
