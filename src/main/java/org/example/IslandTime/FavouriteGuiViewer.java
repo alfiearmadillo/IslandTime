@@ -1,6 +1,5 @@
 package org.example.islandtime;
 
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -8,9 +7,7 @@ import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.StringNbtReader;
 import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -60,9 +57,11 @@ public class FavouriteGuiViewer {
 
         // If there is no HandledScreen already open to render the overlay, open a
         // standalone screen so the viewer works "anytime" from chat or the world.
+        // Deferred via client.execute() so the chat screen's own close logic
+        // (which runs after the command returns) cannot overwrite our screen.
         MinecraftClient client = MinecraftClient.getInstance();
         if (!(client.currentScreen instanceof HandledScreen)) {
-            client.setScreen(new FavouriteGuiScreen());
+            client.execute(() -> client.setScreen(new FavouriteGuiScreen()));
         }
 
         return true;
@@ -219,20 +218,17 @@ public class FavouriteGuiViewer {
             }
 
             try {
-                NbtCompound nbt = StringNbtReader.parse(savedItem.nbtData);
                 ItemStack stack = ItemStack.CODEC
                         .parse(client.getNetworkHandler() != null
                                 ? client.getNetworkHandler().getRegistryManager().getOps(NbtOps.INSTANCE)
                                 : DynamicRegistryManager.EMPTY.getOps(NbtOps.INSTANCE),
-                                nbt)
+                                savedItem.nbt)
                         .result()
                         .orElse(ItemStack.EMPTY);
 
                 if (!stack.isEmpty()) {
                     items.set(savedItem.slotIndex, stack);
                 }
-            } catch (CommandSyntaxException e) {
-                System.err.println("[FavouriteGuiViewer] Failed to parse NBT for item at slot " + savedItem.slotIndex + ": " + e.getMessage());
             } catch (Exception e) {
                 System.err.println("[FavouriteGuiViewer] Failed to deserialize item at slot " + savedItem.slotIndex + ": " + e.getMessage());
             }

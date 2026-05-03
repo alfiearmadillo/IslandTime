@@ -34,21 +34,7 @@ public class HandledScreenMixin {
     }
 
     // -------------------------------------------------------------------------
-    // Render TAIL — this runs AFTER vanilla has already written focusedSlot
-    // from its own getSlotAt call, so we can safely overwrite it here.
-    //
-    // While suppression is active (post-unfreeze, mouse hasn't moved yet):
-    //   - force focusedSlot = null so no slot highlight shows and no other
-    //     mod (e.g. Firmament keybindings) sees the wrong slot
-    //   - skip backpack overlay logic
-    //
-    // While frozen:
-    //   - draw the frozen overlay
-    //   - focusedSlot was already nulled by vanilla because getSlotAt returns
-    //     null for positions outside the screen (we're blocking clicks anyway)
-    //
-    // Normal case:
-    //   - run backpack hover logic as before
+    // Render TAIL — runs AFTER vanilla has written focusedSlot.
     // -------------------------------------------------------------------------
 
     @Inject(method = "render", at = @At("TAIL"))
@@ -56,35 +42,48 @@ public class HandledScreenMixin {
                                         int mouseX, int mouseY,
                                         float delta,
                                         CallbackInfo ci) {
-        // FavouriteGuiViewer takes priority but still allows backpack overlay
+
+        // ── FavouriteGuiViewer active (overlay on top of a HandledScreen) ──
         if (FavouriteGuiViewer.isActive()) {
             FavouriteGuiViewer.render(context, mouseX, mouseY);
-            focusedSlot = null;
 
-            // Check if hovering over a backpack item in the favourite viewer
-            ItemStack hoveredItem = FavouriteGuiViewer.getHoveredItem();
-            if (!hoveredItem.isEmpty() && BackpackNbtParser.hasBackpackData(hoveredItem)) {
+            ItemStack viewerHovered = FavouriteGuiViewer.getHoveredItem();
+
+            // Remap focusedSlot so keybinding mods (e.g. Firmament) read the
+            // correct item rather than whatever happens to be under the cursor
+            // in the underlying HandledScreen.
+            focusedSlot = viewerHovered.isEmpty() ? null : new FakeSlot(viewerHovered);
+
+            // Frozen backpack inside the viewer takes priority
+            if (BackpackHoverHandler.isFrozen()) {
+                BackpackHoverHandler.drawFrozen(context, mouseX, mouseY);
+                return;
+            }
+
+            // Backpack hover for items within the viewer
+            if (!viewerHovered.isEmpty() && BackpackNbtParser.hasBackpackData(viewerHovered)) {
                 HandledScreen<?> self = (HandledScreen<?>) (Object) this;
-                BackpackHoverHandler.onBackpackHovered(hoveredItem, context, mouseX, mouseY, self);
+                BackpackHoverHandler.onBackpackHovered(viewerHovered, context, mouseX, mouseY, self);
             } else {
                 BackpackHoverHandler.clearHovered();
             }
             return;
         }
 
+        // ── Frozen backpack (standalone, no viewer) ────────────────────────
         if (BackpackHoverHandler.isFrozen()) {
             focusedSlot = null;
             BackpackHoverHandler.drawFrozen(context, mouseX, mouseY);
             return;
         }
 
-        // Suppression: vanilla has set focusedSlot to whatever is under the
-        // mouse right now. We overwrite it to null until the mouse actually moves.
+        // ── Suppression: mouse hasn't moved since unfreeze ─────────────────
         if (BackpackHoverHandler.isFocusedSlotSuppressed(mouseX, mouseY)) {
             focusedSlot = null;
             return;
         }
 
+        // ── Normal backpack hover ──────────────────────────────────────────
         if (focusedSlot == null) {
             BackpackHoverHandler.clearHovered();
             return;
@@ -114,7 +113,7 @@ public class HandledScreenMixin {
     }
 
     // -------------------------------------------------------------------------
-    // Block mouse clicks while frozen
+    // Block mouse clicks / drag / scroll while frozen or viewer active
     // -------------------------------------------------------------------------
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
@@ -128,8 +127,8 @@ public class HandledScreenMixin {
     }
 
     @Inject(method = "mouseDragged", at = @At("HEAD"), cancellable = true)
-    private void islandtime$blockDragWhileViewerActive(double mouseX, double mouseY,
-                                                       int button, double deltaX, double deltaY,
+    private void islandtime$blockDragWhileViewerActive(@Coerce Object input,
+                                                       double mouseX, double mouseY,
                                                        CallbackInfoReturnable<Boolean> cir) {
         if (islandtime$shouldBlockMouseInput()) {
             cir.setReturnValue(true);
@@ -156,9 +155,33 @@ public class HandledScreenMixin {
                                              CallbackInfoReturnable<Boolean> cir) {
         long window = MinecraftClient.getInstance().getWindow().getHandle();
 
-        // Handle FavouriteGuiViewer close
+        // ── FavouriteGuiViewer active ──────────────────────────────────────
         if (FavouriteGuiViewer.isActive()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
+
+            // Frozen backpack on top of the viewer — E/ESC unfreezes
+            if (BackpackHoverHandler.isFrozen()) {
+                if (ePressed || input.isEscape()) {
+                    BackpackHoverHandler.requestUnfreeze();
+                    cir.setReturnValue(true);
+                    cir.cancel();
+                    return;
+                }
+                // Remap focusedSlot so Firmament sees the backpack-overlay hovered item
+                ItemStack overlayItem = BackpackHoverHandler.getOverlayHoveredItem();
+                if (!overlayItem.isEmpty()) {
+                    islandtime$savedSlot = focusedSlot;
+                    focusedSlot = new FakeSlot(overlayItem);
+                }
+                // ── Do NOT cancel ──────────────────────────────────────────
+                // Letting the event fall through means mods like Firmament
+                // (which inject into keyPressed at their own priority) can see
+                // the key with focusedSlot already remapped to the right item.
+                // The TAIL inject below restores focusedSlot afterwards.
+                return;
+            }
+
+            // Close the viewer on E or ESC
             if (ePressed || input.isEscape()) {
                 FavouriteGuiViewer.close();
                 cir.setReturnValue(true);
@@ -166,12 +189,27 @@ public class HandledScreenMixin {
                 return;
             }
 
-            // Block all other key input while viewer is active
-            cir.setReturnValue(true);
-            cir.cancel();
+            // SHIFT → freeze/inspect a backpack that is currently being previewed
+            boolean shiftPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT)  == GLFW.GLFW_PRESS
+                                || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
+            if (shiftPressed && BackpackHoverHandler.isShowingOverlay()) {
+                BackpackHoverHandler.freeze();
+                cir.setReturnValue(true);
+                cir.cancel();
+                return;
+            }
+
+            // For all other keys (e.g. Firmament Ctrl+C copy):
+            // focusedSlot was already remapped to the viewer-hovered item in the
+            // render TAIL, so Firmament will read the correct item.
+            // We deliberately do NOT cancel here — the event falls through to
+            // any other mods that inject into keyPressed.
+            // Vanilla HandledScreen slot operations are safe because the FakeSlot
+            // blocks all mutations (canInsert/canTakeItems return false).
             return;
         }
 
+        // ── Standalone frozen backpack (no viewer) ─────────────────────────
         if (BackpackHoverHandler.isFrozen()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
             if (ePressed || input.isEscape()) {
@@ -189,6 +227,7 @@ public class HandledScreenMixin {
             return;
         }
 
+        // ── Normal backpack overlay — SHIFT freezes it ─────────────────────
         boolean shiftPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT)  == GLFW.GLFW_PRESS
                             || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
         if (shiftPressed && BackpackHoverHandler.isShowingOverlay()) {

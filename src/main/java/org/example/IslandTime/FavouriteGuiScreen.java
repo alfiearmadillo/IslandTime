@@ -1,7 +1,10 @@
 package org.example.islandtime;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.input.KeyInput;
+import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
@@ -9,6 +12,9 @@ import org.lwjgl.glfw.GLFW;
  * Standalone screen that renders the FavouriteGuiViewer overlay.
  * Used when the viewer is opened outside of a HandledScreen context
  * (e.g., from chat or the world).
+ *
+ * Mouse click and scroll blocking is handled globally by MouseMixin,
+ * so we only need to override the methods that exist on Screen.
  */
 public class FavouriteGuiScreen extends Screen {
 
@@ -19,25 +25,49 @@ public class FavouriteGuiScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         FavouriteGuiViewer.render(context, mouseX, mouseY);
+
+        if (BackpackHoverHandler.isFrozen()) {
+            BackpackHoverHandler.drawFrozen(context, mouseX, mouseY);
+        } else {
+            ItemStack hoveredItem = FavouriteGuiViewer.getHoveredItem();
+            if (!hoveredItem.isEmpty() && BackpackNbtParser.hasBackpackData(hoveredItem)) {
+                BackpackHoverHandler.onBackpackHovered(hoveredItem, context, mouseX, mouseY);
+            } else {
+                BackpackHoverHandler.clearHovered();
+            }
+        }
     }
 
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_E) {
+    @Override
+    public boolean keyPressed(KeyInput input) {
+        long window = MinecraftClient.getInstance().getWindow().getHandle();
+
+        if (BackpackHoverHandler.isFrozen()) {
+            boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
+            if (ePressed || input.isEscape()) {
+                BackpackHoverHandler.requestUnfreeze();
+            }
+            return true;
+        }
+
+        boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
+        if (ePressed || input.isEscape()) {
             this.close();
             return true;
         }
-        // Block all other key input while viewer is open
-        return true;
-    }
 
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Block all mouse clicks
+        boolean shiftPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT)  == GLFW.GLFW_PRESS
+                            || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
+        if (shiftPressed && BackpackHoverHandler.isShowingOverlay()) {
+            BackpackHoverHandler.freeze();
+            return true;
+        }
+
         return true;
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Block scrolling
         return true;
     }
 
@@ -49,5 +79,6 @@ public class FavouriteGuiScreen extends Screen {
     @Override
     public void removed() {
         FavouriteGuiViewer.close();
+        BackpackHoverHandler.clearHovered();
     }
 }

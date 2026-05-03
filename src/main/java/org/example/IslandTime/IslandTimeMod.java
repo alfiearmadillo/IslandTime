@@ -22,6 +22,7 @@ public class IslandTimeMod implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             IslandTimeTracker.tick(client);
             MinionFuelTracker.checkFuelSlot();
+            FavouriteGuiManager.tickScreenSnapshot(client);
 
             boolean isOnIsland      = IslandTimeTracker.isCurrentlyOnIsland();
             boolean statsIncreasing = ItemTracker.areStatsIncreasing();

@@ -5,6 +5,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
@@ -443,7 +445,12 @@ public class IslandTimeCommand {
                             FavouriteGuiManager.SavedContainer container = FavouriteGuiManager.getSavedContainer(name);
                             client.player.sendMessage(
                                     Text.literal("  • ").formatted(Formatting.GRAY)
-                                            .append(Text.literal(name).formatted(Formatting.AQUA))
+                                            .append(Text.literal(name).formatted(Formatting.AQUA)
+                                                    .styled(style -> style
+                                                            .withClickEvent(new ClickEvent.RunCommand(
+                                                                    "/favouritegui view " + name))
+                                                            .withHoverEvent(new HoverEvent.ShowText(
+                                                                    Text.literal("Click to view").formatted(Formatting.GRAY)))))
                                             .append(Text.literal(" - ").formatted(Formatting.GRAY))
                                             .append(Text.literal(container.title).formatted(Formatting.WHITE))
                                             .append(Text.literal(" (" + container.items.size() + " items)").formatted(Formatting.GRAY)),
@@ -481,6 +488,10 @@ public class IslandTimeCommand {
                                 })))
                 .then(literal("delete")
                         .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
+                                    return builder.buildFuture();
+                                })
                                 .executes(ctx -> {
                                     String name = StringArgumentType.getString(ctx, "name");
                                     MinecraftClient client = ctx.getSource().getClient();
@@ -505,6 +516,10 @@ public class IslandTimeCommand {
                                 })))
                 .then(literal("view")
                         .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
+                                    return builder.buildFuture();
+                                })
                                 .executes(ctx -> {
                                     String name = StringArgumentType.getString(ctx, "name");
                                     MinecraftClient client = ctx.getSource().getClient();
@@ -529,6 +544,10 @@ public class IslandTimeCommand {
                                 })))
                 .then(literal("open")
                         .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
+                                    return builder.buildFuture();
+                                })
                                 .executes(ctx -> {
                                     String name = StringArgumentType.getString(ctx, "name");
                                     MinecraftClient client = ctx.getSource().getClient();

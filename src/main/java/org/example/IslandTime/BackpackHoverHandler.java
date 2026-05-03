@@ -89,8 +89,19 @@ public class BackpackHoverHandler {
     }
 
     // -------------------------------------------------------------------------
-    // Called from HandledScreenMixin — render path
+    // Called from HandledScreenMixin / FavouriteGuiScreen — render path
     // -------------------------------------------------------------------------
+
+    /**
+     * Overload used by FavouriteGuiScreen (not a HandledScreen) and any other
+     * non-HandledScreen caller. The parentScreen parameter is unused internally,
+     * so passing null is safe.
+     */
+    public static void onBackpackHovered(ItemStack backpackStack,
+                                         DrawContext context,
+                                         int mouseX, int mouseY) {
+        onBackpackHovered(backpackStack, context, mouseX, mouseY, null);
+    }
 
     public static void onBackpackHovered(ItemStack backpackStack,
                                          DrawContext context,

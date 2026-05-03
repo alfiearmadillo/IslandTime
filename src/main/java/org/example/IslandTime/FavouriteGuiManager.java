@@ -5,7 +5,9 @@ import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.NbtSizeTracker;
 import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
@@ -13,12 +15,15 @@ import net.minecraft.screen.slot.Slot;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.Base64;
 
 public class FavouriteGuiManager {
 
@@ -33,6 +38,15 @@ public class FavouriteGuiManager {
 
     // Map of saved container name -> SavedContainer
     private static final Map<String, SavedContainer> savedContainers = new HashMap<>();
+
+    // -------------------------------------------------------------------------
+    // Last-seen container snapshot — populated every tick while a container is
+    // open so that /favouritegui save <name> works even after closing the GUI.
+    // -------------------------------------------------------------------------
+
+    private static String          lastSnapshotTitle = null;
+    private static int             lastSnapshotSize  = 0;
+    private static List<SavedItem> lastSnapshotItems = null;
 
     public static class SavedContainer {
         public String name;
@@ -50,69 +64,98 @@ public class FavouriteGuiManager {
 
     public static class SavedItem {
         public int slotIndex;
-        public String nbtData;
+        public NbtCompound nbt;
 
-        public SavedItem(int slotIndex, String nbtData) {
+        public SavedItem(int slotIndex, NbtCompound nbt) {
             this.slotIndex = slotIndex;
-            this.nbtData = nbtData;
+            this.nbt = nbt;
         }
     }
 
     /**
-     * Save the currently open container with the given name
-     * @return true if saved successfully, false if no container is open or save failed
+     * Called every client tick. Snapshots the currently open GenericContainerScreen so
+     * that saveCurrentContainer() can still be called after the GUI is closed.
      */
-    public static boolean saveCurrentContainer(String name) {
-        MinecraftClient client = MinecraftClient.getInstance();
+    public static void tickScreenSnapshot(MinecraftClient client) {
+        if (client.player == null) return;
+        if (!(client.currentScreen instanceof GenericContainerScreen containerScreen)) return;
+        if (!(client.player.currentScreenHandler instanceof GenericContainerScreenHandler containerHandler)) return;
 
-        if (client.currentScreen == null) {
-            return false;
-        }
-
-        // Check if it's a container screen (chest, barrel, etc.)
-        if (!(client.currentScreen instanceof GenericContainerScreen containerScreen)) {
-            return false;
-        }
-
-        ScreenHandler handler = client.player.currentScreenHandler;
-        if (!(handler instanceof GenericContainerScreenHandler containerHandler)) {
-            return false;
-        }
-
-        // Get container info
         String title = containerScreen.getTitle().getString();
-        int totalSlots = containerHandler.slots.size();
-
-        // Calculate actual container size (exclude player inventory)
-        // Player inventory is always last 36 slots (27 main + 9 hotbar)
+        int totalSlots    = containerHandler.slots.size();
         int containerSize = totalSlots - 36;
+        if (containerSize <= 0) return;
 
-        if (containerSize <= 0) {
-            return false; // Invalid container
-        }
+        DynamicRegistryManager reg = client.getNetworkHandler() != null
+                ? client.getNetworkHandler().getRegistryManager()
+                : DynamicRegistryManager.EMPTY;
 
-        // Save all items in the container (not player inventory)
         List<SavedItem> items = new ArrayList<>();
         for (int i = 0; i < containerSize; i++) {
             Slot slot = containerHandler.getSlot(i);
             ItemStack stack = slot.getStack();
-
             if (!stack.isEmpty()) {
-                // Serialize item to NBT using CODEC
-                DynamicRegistryManager registryManager = client.getNetworkHandler() != null
-                        ? client.getNetworkHandler().getRegistryManager()
-                        : DynamicRegistryManager.EMPTY;
-
-                String nbtString = ItemStack.CODEC
-                        .encode(stack, registryManager.getOps(NbtOps.INSTANCE), new NbtCompound())
+                NbtCompound nbt = ItemStack.CODEC
+                        .encode(stack, reg.getOps(NbtOps.INSTANCE), new NbtCompound())
                         .result()
-                        .map(NbtElement::toString)
-                        .orElse("");
+                        .filter(e -> e instanceof NbtCompound)
+                        .map(e -> (NbtCompound) e)
+                        .orElse(null);
+                if (nbt != null) items.add(new SavedItem(i, nbt));
+            }
+        }
 
-                if (!nbtString.isEmpty()) {
-                    items.add(new SavedItem(i, nbtString));
+        lastSnapshotTitle = title;
+        lastSnapshotSize  = containerSize;
+        lastSnapshotItems = items;
+    }
+
+    /**
+     * Save the currently open container with the given name.
+     * Falls back to the last-seen container snapshot if no container is currently open.
+     * @return true if saved successfully, false otherwise
+     */
+    public static boolean saveCurrentContainer(String name) {
+        MinecraftClient client = MinecraftClient.getInstance();
+
+        String title;
+        int containerSize;
+        List<SavedItem> items;
+
+        if (client.currentScreen instanceof GenericContainerScreen containerScreen
+                && client.player != null
+                && client.player.currentScreenHandler instanceof GenericContainerScreenHandler containerHandler) {
+            // Container is currently open — read it directly
+            title = containerScreen.getTitle().getString();
+            int totalSlots = containerHandler.slots.size();
+            containerSize  = totalSlots - 36;
+            if (containerSize <= 0) return false;
+
+            DynamicRegistryManager reg = client.getNetworkHandler() != null
+                    ? client.getNetworkHandler().getRegistryManager()
+                    : DynamicRegistryManager.EMPTY;
+
+            items = new ArrayList<>();
+            for (int i = 0; i < containerSize; i++) {
+                Slot slot = containerHandler.getSlot(i);
+                ItemStack stack = slot.getStack();
+                if (!stack.isEmpty()) {
+                    NbtCompound nbt = ItemStack.CODEC
+                            .encode(stack, reg.getOps(NbtOps.INSTANCE), new NbtCompound())
+                            .result()
+                            .filter(e -> e instanceof NbtCompound)
+                            .map(e -> (NbtCompound) e)
+                            .orElse(null);
+                    if (nbt != null) items.add(new SavedItem(i, nbt));
                 }
             }
+        } else if (lastSnapshotTitle != null && lastSnapshotItems != null) {
+            // Fall back to the last-seen container snapshot
+            title         = lastSnapshotTitle;
+            containerSize = lastSnapshotSize;
+            items         = lastSnapshotItems;
+        } else {
+            return false; // No container open and no snapshot available
         }
 
         SavedContainer newContainer = new SavedContainer(name, title, containerSize, items);
@@ -187,7 +230,7 @@ public class FavouriteGuiManager {
                 }
                 continue;
             }
-            if (firstItem.slotIndex != secondItem.slotIndex || !Objects.equals(firstItem.nbtData, secondItem.nbtData)) {
+            if (firstItem.slotIndex != secondItem.slotIndex || !Objects.equals(firstItem.nbt, secondItem.nbt)) {
                 return false;
             }
         }
@@ -244,7 +287,10 @@ public class FavouriteGuiManager {
                     // Write items
                     writer.write("ITEMS\n");
                     for (SavedItem item : container.items) {
-                        writer.write(PREFIX_ITEM + item.slotIndex + "|" + item.nbtData + "\n");
+                        String base64 = nbtToBase64(item.nbt);
+                        if (base64 != null) {
+                            writer.write(PREFIX_ITEM + item.slotIndex + "|" + base64 + "\n");
+                        }
                     }
                     writer.write("END_CONTAINER\n");
                 }
@@ -333,8 +379,10 @@ public class FavouriteGuiManager {
                         if (parts.length == 2) {
                             try {
                                 int slotIndex = Integer.parseInt(parts[0]);
-                                String nbtData = parts[1];
-                                currentItems.add(new SavedItem(slotIndex, nbtData));
+                                NbtCompound nbt = nbtFromBase64(parts[1]);
+                                if (nbt != null) {
+                                    currentItems.add(new SavedItem(slotIndex, nbt));
+                                }
                             } catch (NumberFormatException e) {
                                 System.err.println("[FavouriteGuiManager] Invalid item data: " + line);
                             }
@@ -348,6 +396,32 @@ public class FavouriteGuiManager {
         } catch (IOException e) {
             System.err.println("[FavouriteGuiManager] Load failed: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // NBT binary serialization helpers — consistent with BackpackNbtParser's
+    // byte-array approach; avoids any dependency on StringNbtReader.
+    // -------------------------------------------------------------------------
+
+    private static String nbtToBase64(NbtCompound nbt) {
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            NbtIo.writeCompressed(nbt, baos);
+            return Base64.getEncoder().encodeToString(baos.toByteArray());
+        } catch (IOException e) {
+            System.err.println("[FavouriteGuiManager] Failed to serialise NBT: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static NbtCompound nbtFromBase64(String base64) {
+        try {
+            byte[] bytes = Base64.getDecoder().decode(base64);
+            return NbtIo.readCompressed(new ByteArrayInputStream(bytes), NbtSizeTracker.ofUnlimitedBytes());
+        } catch (Exception e) {
+            System.err.println("[FavouriteGuiManager] Failed to deserialise NBT: " + e.getMessage());
+            return null;
         }
     }
 }
