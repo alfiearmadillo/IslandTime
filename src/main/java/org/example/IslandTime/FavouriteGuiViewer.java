@@ -183,8 +183,11 @@ public class FavouriteGuiViewer {
         int hintX = px + (panelW - tr.getWidth(hint.getString())) / 2;
         context.drawText(tr, hint, hintX, hintY, -1, false);
 
-        // Draw tooltip for hovered item
-        if (hoveredIndex >= 0 && hoveredIndex < displayItems.size()) {
+        // Draw tooltip for hovered item — suppressed when BackpackHoverHandler is
+        // showing its own overlay on top (it draws its own tooltip for the item
+        // inside the backpack, and we don't want both stacked on screen).
+        if (hoveredIndex >= 0 && hoveredIndex < displayItems.size()
+                && !BackpackHoverHandler.hasBackpackHovered()) {
             ItemStack hovered = displayItems.get(hoveredIndex);
             if (!hovered.isEmpty()) {
                 List<Text> tooltip = hovered.getTooltip(
