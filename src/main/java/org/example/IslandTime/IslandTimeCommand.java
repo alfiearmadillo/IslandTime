@@ -180,6 +180,95 @@ public class IslandTimeCommand {
                             return 1;
                         })));
 
+        // /chatrelay
+        dispatcher.register(literal("chatrelay")
+                .executes(ctx -> {
+                    MinecraftClient client = ctx.getSource().getClient();
+                    String url    = ChatRelayConfig.getChatWebhookUrl();
+                    int    port   = ChatRelayConfig.getPollPort();
+                    String secret = ChatRelayConfig.getPollSecret();
+
+                    client.player.sendMessage(
+                            Text.literal("─── Chat Relay Config ───").formatted(Formatting.AQUA), false);
+                    client.player.sendMessage(
+                            Text.literal("Webhook: ").formatted(Formatting.GRAY)
+                                    .append(Text.literal(url.isEmpty() ? "(not set)" : url)
+                                            .formatted(url.isEmpty() ? Formatting.YELLOW : Formatting.GREEN)),
+                            false);
+                    client.player.sendMessage(
+                            Text.literal("Poll port: ").formatted(Formatting.GRAY)
+                                    .append(Text.literal(String.valueOf(port)).formatted(Formatting.WHITE)),
+                            false);
+                    client.player.sendMessage(
+                            Text.literal("Poll secret: ").formatted(Formatting.GRAY)
+                                    .append(Text.literal(secret).formatted(Formatting.WHITE)),
+                            false);
+                    client.player.sendMessage(
+                            Text.literal("Use /chatrelay help for subcommands.").formatted(Formatting.DARK_GRAY), false);
+                    return 1;
+                })
+                .then(literal("help")
+                        .executes(ctx -> {
+                            MinecraftClient client = ctx.getSource().getClient();
+                            client.player.sendMessage(
+                                    Text.literal("─── /chatrelay subcommands ───").formatted(Formatting.AQUA), false);
+                            client.player.sendMessage(
+                                    Text.literal("/chatrelay webhook <url|clear>").formatted(Formatting.YELLOW)
+                                            .append(Text.literal(" — set/clear the outbound Discord webhook").formatted(Formatting.GRAY)),
+                                    false);
+                            client.player.sendMessage(
+                                    Text.literal("/chatrelay port <number>").formatted(Formatting.YELLOW)
+                                            .append(Text.literal(" — set localhost poll port (default 8765)").formatted(Formatting.GRAY)),
+                                    false);
+                            client.player.sendMessage(
+                                    Text.literal("/chatrelay secret <string>").formatted(Formatting.YELLOW)
+                                            .append(Text.literal(" — set the poll secret key").formatted(Formatting.GRAY)),
+                                    false);
+                            return 1;
+                        }))
+                .then(literal("webhook")
+                        .then(argument("url", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String url = StringArgumentType.getString(ctx, "url");
+                                    MinecraftClient client = ctx.getSource().getClient();
+                                    if (url.equalsIgnoreCase("clear")) {
+                                        ChatRelayConfig.setChatWebhookUrl("");
+                                        client.player.sendMessage(
+                                                Text.literal("Chat relay webhook cleared.").formatted(Formatting.GREEN), false);
+                                    } else if (url.startsWith("https://discord.com/api/webhooks/")) {
+                                        ChatRelayConfig.setChatWebhookUrl(url);
+                                        client.player.sendMessage(
+                                                Text.literal("Chat relay webhook set.").formatted(Formatting.GREEN), false);
+                                    } else {
+                                        client.player.sendMessage(
+                                                Text.literal("Invalid URL. Must start with https://discord.com/api/webhooks/")
+                                                        .formatted(Formatting.RED),
+                                                false);
+                                        return 0;
+                                    }
+                                    return 1;
+                                })))
+                .then(literal("port")
+                        .then(argument("port", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 65535))
+                                .executes(ctx -> {
+                                    int port = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "port");
+                                    ChatRelayConfig.setPollPort(port);
+                                    ctx.getSource().getClient().player.sendMessage(
+                                            Text.literal("Poll port set to " + port + ". Rejoin the server to apply.")
+                                                    .formatted(Formatting.GREEN),
+                                            false);
+                                    return 1;
+                                })))
+                .then(literal("secret")
+                        .then(argument("secret", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String secret = StringArgumentType.getString(ctx, "secret");
+                                    ChatRelayConfig.setPollSecret(secret);
+                                    ctx.getSource().getClient().player.sendMessage(
+                                            Text.literal("Poll secret updated.").formatted(Formatting.GREEN), false);
+                                    return 1;
+                                }))));
+
         // /trackitem
         dispatcher.register(literal("trackitem")
                 .executes(ctx -> {
@@ -622,6 +711,14 @@ public class IslandTimeCommand {
                 {"/favouritegui delete <name>", "Remove a previously saved container layout"},
                 {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
                 {"/favouritegui open <name>", "Alias for /favouritegui view <name>"},
+
+                // Page 6 - Chat relay
+                {"/chatrelay", "Show current chat relay config (webhook, port, secret)"},
+                {"/chatrelay webhook <url>", "Set the Discord webhook for outbound island chat relay"},
+                {"/chatrelay webhook clear", "Disable outbound chat relay"},
+                {"/chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
+                {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
+                {"/chatrelay help", "Show chat relay subcommand reference"},
         };
 
         int commandsPerPage = 7;
