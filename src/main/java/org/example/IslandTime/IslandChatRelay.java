@@ -49,6 +49,13 @@ public class IslandChatRelay {
     private static final Pattern VALID_NAME =
             Pattern.compile("^[A-Za-z0-9_]{3,16}$");
 
+    // Only accept player-chat messages that start with a level bracket or "From "/"To ".
+    // This rejects NPC/system lines like "[NPC] Jacob: ..." that would otherwise
+    // pass the name-colon check.
+    // Valid prefixes:  [25] ...   [104] [MVP+] ...   From PlayerName: ...   To PlayerName: ...
+    private static final Pattern VALID_PREFIX =
+            Pattern.compile("^(\\[\\d+\\]|From )");
+
     // Matches [SkyBlock] system announcements (visitor alerts, etc.)
     // e.g. "[SkyBlock] [MVP++] MarvellousG is visiting Your Island!"
     private static final Pattern SKYBLOCK_MSG =
@@ -152,6 +159,10 @@ public class IslandChatRelay {
 
         int colonIdx = raw.indexOf(": ");
         if (colonIdx <= 0) return; // no separator — not a player chat message
+
+        // Require the message to start with a level bracket or "From "/"To ".
+        // This prevents NPC/system lines like "[NPC] Jacob: ..." from leaking through.
+        if (!VALID_PREFIX.matcher(raw).find()) return;
 
         String prefix  = raw.substring(0, colonIdx);  // e.g. "[MVP+] alfiearmadillo"
         String content = raw.substring(colonIdx + 2); // everything after ": "
