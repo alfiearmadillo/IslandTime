@@ -65,6 +65,8 @@ public class IslandChatRelay {
             "Latest update:"                     + "|" + // patch note announcements
             "Your SkyBlock"                      + "|" + // profile/settings messages
             "Co-op invite"                       + "|" + // co-op system messages
+            "Duplicate Rabbits:"                 + "|" + // hoppity event
+            "will restart soon:"                 + "|" + // server reboots
             "\\[\\S+\\]\\s+\\S+\\s+(enabled|disabled|toggled|set|joined|left|" +
                 "loaded|activated|deactivated|updated|changed|turned|" +
                 "unlocked|purchased|sold|used|applied|opened|closed|" +
