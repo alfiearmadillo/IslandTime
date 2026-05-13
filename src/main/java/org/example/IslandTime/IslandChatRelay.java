@@ -21,13 +21,17 @@ import java.util.regex.Pattern;
  *   When the player is on their island, messages matching "PlayerName: text" are
  *   forwarded to the configured Discord webhook, excluding the local player's own
  *   messages. [SkyBlock] system messages (visitor alerts, etc.) are also forwarded.
+ *   Inbound whispers ("From PlayerName: text") are relayed with a [MSG] tag so
+ *   you know to reply with /r in Discord.
  *   HTTP POST is dispatched on a dedicated daemon thread.
  *
  * Inbound (Discord → island /ac):
  *   A background thread polls http://127.0.0.1:<PORT>/poll?key=<SECRET> every 1500 ms.
  *   Non-empty responses are forwarded as "/ac <message>" commands.
+ *   Messages prefixed with "/r " are sent as whisper replies instead.
+ *   If the player is not on their island, the message is consumed and a failure
+ *   notice is posted back to the webhook instead.
  *   Polling silently skips errors (bot not running, timeouts).
- *   Polling only runs while the player is on their island.
  *
  * Lifecycle:
  *   Call register() once from IslandTimeMod.onInitializeClient().
@@ -49,6 +53,25 @@ public class IslandChatRelay {
     // e.g. "[SkyBlock] [MVP++] MarvellousG is visiting Your Island!"
     private static final Pattern SKYBLOCK_MSG =
             Pattern.compile("^\\[SkyBlock\\]\\s+(.+)$");
+
+    // Filters out server/system announcements that are not real player chat.
+    // Catches messages like:
+    //   "Latest update: SkyBlock v0.24.5 CLICK"
+    //   "[MVP+] alfiearmadillo enabled Island Visits: Guild!"
+    //   "Your SkyBlock profile was loaded."
+    //   "Co-op invite from ..."
+    private static final Pattern SYSTEM_MSG = Pattern.compile(
+            "^(" +
+            "Latest update:"                     + "|" + // patch note announcements
+            "Your SkyBlock"                      + "|" + // profile/settings messages
+            "Co-op invite"                       + "|" + // co-op system messages
+            "\\[\\S+\\]\\s+\\S+\\s+(enabled|disabled|toggled|set|joined|left|" +
+                "loaded|activated|deactivated|updated|changed|turned|" +
+                "unlocked|purchased|sold|used|applied|opened|closed|" +
+                "accepted|declined|invited|kicked|promoted|demoted)" +
+            ")",
+            Pattern.CASE_INSENSITIVE
+    );
 
     // Single-thread executor for outbound webhook POSTs
     private static final ExecutorService webhookExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -107,6 +130,13 @@ public class IslandChatRelay {
         }
         // ─────────────────────────────────────────────────────────────────────
 
+        // ── Server/system announcements ───────────────────────────────────────
+        // Drop messages that look like server announcements rather than player
+        // chat, e.g. "Latest update: SkyBlock v0.24.5 CLICK" or
+        // "[MVP+] alfiearmadillo enabled Island Visits: Guild!"
+        if (SYSTEM_MSG.matcher(raw).find()) return;
+        // ─────────────────────────────────────────────────────────────────────
+
         // Strategy: find the first ": " separator.
         // Everything before it is the prefix (level + decorators + rank + username);
         // everything after is the message content.
@@ -117,8 +147,6 @@ public class IslandChatRelay {
         //   [104] [MVP+] utso: text
         //   [222] ⛂ [MVP+] DarkSoulsTwo: text
         //   [525] Σ [✌] [MVP+] alfiearmadillo: text
-        //
-        // Whispers ("From [MVP+] oRakann: text") are excluded by prefix check.
 
         int colonIdx = raw.indexOf(": ");
         if (colonIdx <= 0) return; // no separator — not a player chat message
@@ -128,8 +156,27 @@ public class IslandChatRelay {
 
         if (content.isEmpty()) return;
 
-        // Exclude whispers — Hypixel whispers always start with "From " or "To "
-        if (prefix.startsWith("From ") || prefix.startsWith("To ")) return;
+        // ── Whisper handling ──────────────────────────────────────────────────
+        // Outbound whispers ("To PlayerName: text") — skip entirely, not useful
+        if (prefix.startsWith("To ")) return;
+
+        // Inbound whispers ("From [RANK] PlayerName: text") — relay to Discord
+        // with a [MSG] tag so you know to reply with /r
+        if (prefix.startsWith("From ")) {
+            int lastSpace = prefix.lastIndexOf(' ');
+            String whisperSender = lastSpace >= 0 ? prefix.substring(lastSpace + 1) : prefix;
+            if (!VALID_NAME.matcher(whisperSender).matches()) return;
+
+            String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
+            if (webhookUrl == null || webhookUrl.isEmpty()) return;
+
+            final String finalUrl     = webhookUrl;
+            final String finalSender  = whisperSender;
+            final String finalContent = "[MSG] " + content;
+            webhookExecutor.submit(() -> postToWebhook(finalUrl, finalSender, finalContent));
+            return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // The username is the last token of the prefix
         int lastSpace   = prefix.lastIndexOf(' ');
@@ -216,9 +263,6 @@ public class IslandChatRelay {
     }
 
     private static void doPoll() {
-        // Only poll while on island — no point hitting localhost otherwise
-        if (!IslandTimeTracker.isCurrentlyOnIsland()) return;
-
         int    port   = ChatRelayConfig.getPollPort();
         String secret = ChatRelayConfig.getPollSecret();
 
@@ -242,7 +286,16 @@ public class IslandChatRelay {
                 while ((line = reader.readLine()) != null) sb.append(line);
                 String body = sb.toString().trim();
                 if (!body.isEmpty()) {
-                    dispatchAcCommand(body);
+                    if (!IslandTimeTracker.isCurrentlyOnIsland()) {
+                        // Not on island — consume the message but report back to Discord
+                        String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
+                        if (webhookUrl != null && !webhookUrl.isEmpty()) {
+                            final String failMsg = "Not on island, failed to send message: " + body;
+                            webhookExecutor.submit(() -> postToWebhook(webhookUrl, "IslandTime", failMsg));
+                        }
+                    } else {
+                        dispatchAcCommand(body);
+                    }
                 }
             }
         } catch (java.net.ConnectException e) {
