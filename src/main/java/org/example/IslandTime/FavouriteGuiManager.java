@@ -40,6 +40,29 @@ public class FavouriteGuiManager {
     private static final Map<String, SavedContainer> savedContainers = new HashMap<>();
 
     // -------------------------------------------------------------------------
+    // Tracking toggle — when false, tickScreenSnapshot() is a no-op so that
+    // /favouritegui save <name> has no snapshot data to work from.
+    // -------------------------------------------------------------------------
+
+    private static boolean trackingEnabled = true;
+
+    public static boolean isTrackingEnabled() {
+        return trackingEnabled;
+    }
+
+    public static void setTrackingEnabled(boolean enabled) {
+        trackingEnabled = enabled;
+        if (!enabled) {
+            // Discard any snapshot that was accumulated while tracking was on,
+            // so a subsequent /favouritegui save cannot use stale data.
+            lastSnapshotTitle = null;
+            lastSnapshotSize  = 0;
+            lastSnapshotItems = null;
+        }
+        save();
+    }
+
+    // -------------------------------------------------------------------------
     // Last-seen container snapshot — populated every tick while a container is
     // open so that /favouritegui save <name> works even after closing the GUI.
     // -------------------------------------------------------------------------
@@ -77,6 +100,7 @@ public class FavouriteGuiManager {
      * that saveCurrentContainer() can still be called after the GUI is closed.
      */
     public static void tickScreenSnapshot(MinecraftClient client) {
+        if (!trackingEnabled) return;
         if (client.player == null) return;
         if (!(client.currentScreen instanceof GenericContainerScreen containerScreen)) return;
         if (!(client.player.currentScreenHandler instanceof GenericContainerScreenHandler containerHandler)) return;
@@ -278,6 +302,7 @@ public class FavouriteGuiManager {
             Files.createDirectories(CONFIG_FILE.getParent());
 
             try (BufferedWriter writer = Files.newBufferedWriter(CONFIG_TMP)) {
+                writer.write("TRACKING_ENABLED:" + trackingEnabled + "\n");
                 for (SavedContainer container : savedContainers.values()) {
                     writer.write("CONTAINER\n");
                     writer.write(PREFIX_NAME  + container.name  + "\n");
@@ -328,6 +353,7 @@ public class FavouriteGuiManager {
         }
 
         savedContainers.clear();
+        trackingEnabled = true; // reset to default before reading
 
         try (BufferedReader reader = Files.newBufferedReader(CONFIG_FILE)) {
             String line;
@@ -339,6 +365,10 @@ public class FavouriteGuiManager {
             List<SavedItem> currentItems = null;
 
             while ((line = reader.readLine()) != null) {
+                if (line.startsWith("TRACKING_ENABLED:")) {
+                    trackingEnabled = Boolean.parseBoolean(line.substring("TRACKING_ENABLED:".length()));
+                    continue;
+                }
                 if (line.equals("CONTAINER")) {
                     section = "CONTAINER";
                     currentItems = new ArrayList<>();

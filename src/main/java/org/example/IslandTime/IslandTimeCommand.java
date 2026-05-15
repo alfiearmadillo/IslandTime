@@ -204,28 +204,9 @@ public class IslandTimeCommand {
                                     .append(Text.literal(secret).formatted(Formatting.WHITE)),
                             false);
                     client.player.sendMessage(
-                            Text.literal("Use /chatrelay help for subcommands.").formatted(Formatting.DARK_GRAY), false);
+                            Text.literal("Use /islandtime help 6 for subcommands.").formatted(Formatting.DARK_GRAY), false);
                     return 1;
                 })
-                .then(literal("help")
-                        .executes(ctx -> {
-                            MinecraftClient client = ctx.getSource().getClient();
-                            client.player.sendMessage(
-                                    Text.literal("─── /chatrelay subcommands ───").formatted(Formatting.AQUA), false);
-                            client.player.sendMessage(
-                                    Text.literal("/chatrelay webhook <url|clear>").formatted(Formatting.YELLOW)
-                                            .append(Text.literal(" — set/clear the outbound Discord webhook").formatted(Formatting.GRAY)),
-                                    false);
-                            client.player.sendMessage(
-                                    Text.literal("/chatrelay port <number>").formatted(Formatting.YELLOW)
-                                            .append(Text.literal(" — set localhost poll port (default 8765)").formatted(Formatting.GRAY)),
-                                    false);
-                            client.player.sendMessage(
-                                    Text.literal("/chatrelay secret <string>").formatted(Formatting.YELLOW)
-                                            .append(Text.literal(" — set the poll secret key").formatted(Formatting.GRAY)),
-                                    false);
-                            return 1;
-                        }))
                 .then(literal("webhook")
                         .then(argument("url", StringArgumentType.greedyString())
                                 .executes(ctx -> {
@@ -575,6 +556,30 @@ public class IslandTimeCommand {
                                     }
                                     return 1;
                                 })))
+                .then(literal("toggle")
+                        .executes(ctx -> {
+                            MinecraftClient client = ctx.getSource().getClient();
+                            boolean nowEnabled = !FavouriteGuiManager.isTrackingEnabled();
+                            FavouriteGuiManager.setTrackingEnabled(nowEnabled);
+                            if (nowEnabled) {
+                                client.player.sendMessage(
+                                        Text.literal("Favourite GUI tracking ")
+                                                .formatted(Formatting.GREEN)
+                                                .append(Text.literal("enabled").formatted(Formatting.GREEN))
+                                                .append(Text.literal(". Container snapshots will be kept for /favouritegui save.").formatted(Formatting.GRAY)),
+                                        false
+                                );
+                            } else {
+                                client.player.sendMessage(
+                                        Text.literal("Favourite GUI tracking ")
+                                                .formatted(Formatting.YELLOW)
+                                                .append(Text.literal("disabled").formatted(Formatting.RED))
+                                                .append(Text.literal(". Containers will no longer be snapshotted — /favouritegui save will have no data to work from.").formatted(Formatting.GRAY)),
+                                        false
+                                );
+                            }
+                            return 1;
+                        }))
                 .then(literal("delete")
                         .then(argument("name", StringArgumentType.word())
                                 .suggests((ctx, builder) -> {
@@ -711,6 +716,8 @@ public class IslandTimeCommand {
                 {"/favouritegui delete <name>", "Remove a previously saved container layout"},
                 {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
                 {"/favouritegui open <name>", "Alias for /favouritegui view <name>"},
+                {"/favouritegui toggle", "Toggle container snapshot tracking on/off. " +
+                        "When off, opening containers is not tracked so /favouritegui save will have no data to work from."},
 
                 // Page 6 - Chat relay
                 {"/chatrelay", "Show current chat relay config (webhook, port, secret)"},
@@ -718,7 +725,6 @@ public class IslandTimeCommand {
                 {"/chatrelay webhook clear", "Disable outbound chat relay"},
                 {"/chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
                 {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
-                {"/chatrelay help", "Show chat relay subcommand reference"},
         };
 
         int commandsPerPage = 7;
