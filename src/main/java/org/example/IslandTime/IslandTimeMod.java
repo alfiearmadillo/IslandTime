@@ -32,6 +32,7 @@ public class IslandTimeMod implements ClientModInitializer {
             MinionFuelTracker.checkFuelSlot();
             FavouriteGuiManager.tickScreenSnapshot(client);
             ConfigManager.tick(client);  // Sync config when GUI closes
+            IslandPlayerTracker.tick(client);  // Track player join/leave
 
             boolean isOnIsland      = IslandTimeTracker.isCurrentlyOnIsland();
             boolean statsIncreasing = ItemTracker.areStatsIncreasing();

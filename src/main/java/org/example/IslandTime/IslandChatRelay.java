@@ -82,6 +82,26 @@ public class IslandChatRelay {
             Pattern.CASE_INSENSITIVE
     );
 
+    // Detects chat error messages from the server that should be relayed back to Discord
+    // Examples:
+    //   "You cannot say the same message twice!"
+    //   "You may not use links in your messages!"
+    //   "This player has message notifications disabled!"
+    private static final Pattern CHAT_ERROR = Pattern.compile(
+            "^(You cannot say the same message twice!|" +
+            "You may not use links in your messages!|" +
+            "This player has message notifications disabled!|" +
+            "You cannot message this player\\.|" +
+            "You are sending messages too quickly!|" +
+            "Your message was blocked!|" +
+            "You cannot use that command right now!)",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    // Track the last message we attempted to send so we can correlate errors
+    private static volatile String lastSentMessage = "";
+    private static volatile long lastSentTime = 0;
+
     // Single-thread executor for outbound webhook POSTs
     private static final ExecutorService webhookExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "IslandTime-ChatRelay-Webhook");
@@ -123,6 +143,28 @@ public class IslandChatRelay {
 
     private static void processOutbound(Text message) {
         String raw = FORMAT_STRIP.matcher(message.getString()).replaceAll("").trim();
+
+        // ── Chat error messages ───────────────────────────────────────────────
+        // Check if this is a chat error message and relay it back to Discord
+        Matcher errorMatcher = CHAT_ERROR.matcher(raw);
+        if (errorMatcher.find()) {
+            String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
+            if (webhookUrl != null && !webhookUrl.isEmpty()) {
+                // Include context about what message triggered the error if recent
+                String errorMsg = raw;
+                long timeSinceLastSent = System.currentTimeMillis() - lastSentTime;
+                if (timeSinceLastSent < 5000 && !lastSentMessage.isEmpty()) {
+                    errorMsg = "ERROR: " + raw + " (attempted: \"" + lastSentMessage + "\")";
+                } else {
+                    errorMsg = "ERROR: " + raw;
+                }
+                final String finalUrl = webhookUrl;
+                final String finalError = errorMsg;
+                webhookExecutor.submit(() -> postToWebhook(finalUrl, "IslandTime", finalError));
+            }
+            return; // don't process as regular chat
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // ── [SkyBlock] system messages (visitor alerts, etc.) ─────────────────
         // e.g. "[SkyBlock] [MVP++] MarvellousG is visiting Your Island!"
@@ -213,6 +255,14 @@ public class IslandChatRelay {
         final String finalContent = content;
 
         webhookExecutor.submit(() -> postToWebhook(finalUrl, finalSender, finalContent));
+    }
+
+    /**
+     * Public method to send a webhook message asynchronously from other parts of the mod.
+     * This is used by IslandPlayerTracker to send player leave notifications.
+     */
+    public static void sendWebhookAsync(String webhookUrl, String username, String content) {
+        webhookExecutor.submit(() -> postToWebhook(webhookUrl, username, content));
     }
 
     /**
@@ -335,9 +385,14 @@ public class IslandChatRelay {
         final String command;
         if (message.startsWith("/r ")) {
             command = "r " + message.substring(3); // strip leading "/r "
+            // Track the message content for error correlation
+            lastSentMessage = message.substring(3);
         } else {
             command = "ac " + message;
+            // Track the message content for error correlation
+            lastSentMessage = message;
         }
+        lastSentTime = System.currentTimeMillis();
 
         mc.execute(() -> mc.getNetworkHandler().sendChatCommand(command));
     }
