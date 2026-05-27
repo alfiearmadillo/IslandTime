@@ -21,12 +21,12 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.141.3+1.21.11")
 
     // MoulConfig - using NotEnoughUpdates's Maven repository
-    // Note: The artifact format is "modern-{mcVersion}" where mcVersion matches the game version
-    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.11:4.6.0") {
+    // Using modern-1.21.1 which is compatible with all 1.21.x versions
+    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0") {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx")
     }
-    include("org.notenoughupdates.moulconfig:modern-1.21.11:4.6.0")
+    include("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0")
 }
 
 java {
