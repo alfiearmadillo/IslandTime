@@ -24,8 +24,8 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:0.18.4")
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.141.3+1.21.11")
 
-    // Try MoulConfig from JitPack as fallback
-    modImplementation(include("com.github.NotEnoughUpdates:MoulConfig:3.0.0-beta.14")!!)
+    // MoulConfig - try direct GitHub repo
+    modImplementation(include("com.github.nea89o:MoulConfig:3.0.0-beta.14")!!)
 }
 
 java {
