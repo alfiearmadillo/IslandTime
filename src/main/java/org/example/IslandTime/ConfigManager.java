@@ -110,17 +110,21 @@ public class ConfigManager {
     public static void syncFromExistingConfigs() {
         if (config == null) return;
 
-        // Tracking toggles
-        config.tracking.islandTimeEnabled = TrackingToggleConfig.isIslandTimeEnabled();
-        config.tracking.fuelCycleEnabled = TrackingToggleConfig.isFuelCycleEnabled();
-        config.tracking.favouriteGuiEnabled = FavouriteGuiManager.isTrackingEnabled();
+        // Island Time tracking
+        config.islandTime.enabled = TrackingToggleConfig.isIslandTimeEnabled();
 
-        // Webhooks
+        // Fuel Cycles tracking
+        config.fuelCycles.enabled = TrackingToggleConfig.isFuelCycleEnabled();
+
+        // Favourite GUI tracking
+        config.favouriteGui.enabled = FavouriteGuiManager.isTrackingEnabled();
+
+        // Discord webhooks
         String webhook = DiscordWebhookManager.getWebhook();
-        config.webhooksAndAlerts.webhookUrl = webhook != null ? webhook : "";
+        config.discord.webhookUrl = webhook != null ? webhook : "";
 
         String userId = DiscordWebhookManager.getDiscordUserId();
-        config.webhooksAndAlerts.discordUserId = userId != null ? userId : "";
+        config.discord.discordUserId = userId != null ? userId : "";
 
         // Alert speeds
         config.alertSpeeds.trackedItemSpeed = convertAlertSpeedToInt(ItemTracker.getAlertSpeed().name());
@@ -147,23 +151,27 @@ public class ConfigManager {
     public static void syncToExistingConfigs() {
         if (config == null) return;
 
-        // Tracking toggles
-        if (TrackingToggleConfig.isIslandTimeEnabled() != config.tracking.islandTimeEnabled) {
-            TrackingToggleConfig.setIslandTimeEnabled(config.tracking.islandTimeEnabled);
-        }
-        if (TrackingToggleConfig.isFuelCycleEnabled() != config.tracking.fuelCycleEnabled) {
-            TrackingToggleConfig.setFuelCycleEnabled(config.tracking.fuelCycleEnabled);
-        }
-        if (FavouriteGuiManager.isTrackingEnabled() != config.tracking.favouriteGuiEnabled) {
-            FavouriteGuiManager.setTrackingEnabled(config.tracking.favouriteGuiEnabled);
+        // Island Time tracking
+        if (TrackingToggleConfig.isIslandTimeEnabled() != config.islandTime.enabled) {
+            TrackingToggleConfig.setIslandTimeEnabled(config.islandTime.enabled);
         }
 
-        // Webhooks
-        if (!DiscordWebhookManager.getWebhook().equals(config.webhooksAndAlerts.webhookUrl)) {
-            DiscordWebhookManager.setWebhook(config.webhooksAndAlerts.webhookUrl);
+        // Fuel Cycles tracking
+        if (TrackingToggleConfig.isFuelCycleEnabled() != config.fuelCycles.enabled) {
+            TrackingToggleConfig.setFuelCycleEnabled(config.fuelCycles.enabled);
         }
-        if (!DiscordWebhookManager.getDiscordUserId().equals(config.webhooksAndAlerts.discordUserId)) {
-            DiscordWebhookManager.setDiscordUserId(config.webhooksAndAlerts.discordUserId);
+
+        // Favourite GUI tracking
+        if (FavouriteGuiManager.isTrackingEnabled() != config.favouriteGui.enabled) {
+            FavouriteGuiManager.setTrackingEnabled(config.favouriteGui.enabled);
+        }
+
+        // Discord webhooks
+        if (!DiscordWebhookManager.getWebhook().equals(config.discord.webhookUrl)) {
+            DiscordWebhookManager.setWebhook(config.discord.webhookUrl);
+        }
+        if (!DiscordWebhookManager.getDiscordUserId().equals(config.discord.discordUserId)) {
+            DiscordWebhookManager.setDiscordUserId(config.discord.discordUserId);
         }
 
         // Alert speeds
