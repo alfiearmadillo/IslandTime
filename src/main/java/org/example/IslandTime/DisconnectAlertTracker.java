@@ -25,6 +25,9 @@ public class DisconnectAlertTracker {
     /** Grace period before the first alert is sent. */
     private static final long INITIAL_ALERT_DELAY_MS = 10_000;
 
+    /** How often to check connection status (1 second). */
+    private static final long CHECK_INTERVAL_MS = 1_000;
+
     public enum AlertSpeed {
         OFF(0),
         FAST(5 * 60_000),
@@ -42,6 +45,7 @@ public class DisconnectAlertTracker {
     private static long    timeDisconnected  = 0;
     private static long    lastAlertSentTime = 0;
     private static boolean hasAlerted        = false;
+    private static long    lastCheckTime     = 0;
 
     public static AlertSpeed getAlertSpeed() { return disconnectAlertSpeed; }
 
@@ -53,6 +57,11 @@ public class DisconnectAlertTracker {
     }
 
     public static void tick(MinecraftClient client) {
+        // Only check once per second for performance
+        long now = System.currentTimeMillis();
+        if (now - lastCheckTime < CHECK_INTERVAL_MS) return;
+        lastCheckTime = now;
+
         boolean isConnected = isConnectedToServer(client);
 
         if (isConnected && !hasEverConnected) { hasEverConnected = true; wasConnected = true; }
