@@ -8,7 +8,14 @@ version = "1.5.0"
 repositories {
     mavenCentral()
     maven("https://maven.fabricmc.net/")
-    maven("https://repo.nea.moe/releases/")
+    maven {
+        url = uri("https://repo.nea.moe/releases")
+        name = "neaMaven"
+    }
+    maven {
+        url = uri("https://jitpack.io")
+        name = "jitpack"
+    }
 }
 
 dependencies {
@@ -17,7 +24,8 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:0.18.4")
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.141.3+1.21.11")
 
-    modImplementation(include("moe.nea:moulconfig:3.0.0-beta.14")!!)
+    // Try MoulConfig from JitPack as fallback
+    modImplementation(include("com.github.NotEnoughUpdates:MoulConfig:3.0.0-beta.14")!!)
 }
 
 java {
