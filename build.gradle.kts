@@ -20,12 +20,12 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:0.18.4")
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.141.3+1.21.11")
 
-    // MoulConfig - using exact Minecraft version artifact
-    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.11:4.6.0") {
+    // MoulConfig - using 1.21.1 base version (compatible with 1.21.x)
+    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0") {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx")
     }
-    include("org.notenoughupdates.moulconfig:modern-1.21.11:4.6.0")
+    include("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0")
 }
 
 java {
