@@ -317,6 +317,13 @@ public class IslandTimeCommand {
                     return 1;
                 })
                 .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
                             MinecraftClient client = ctx.getSource().getClient();
@@ -353,6 +360,13 @@ public class IslandTimeCommand {
                     return 1;
                 })
                 .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
                             MinecraftClient client = ctx.getSource().getClient();
@@ -397,6 +411,13 @@ public class IslandTimeCommand {
                     return 1;
                 })
                 .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
                             MinecraftClient client = ctx.getSource().getClient();
@@ -868,7 +889,7 @@ public class IslandTimeCommand {
                 new io.github.notenoughupdates.moulconfig.gui.GuiContext(editorComponent);
             io.github.notenoughupdates.moulconfig.platform.MoulConfigScreenComponent screen =
                 new io.github.notenoughupdates.moulconfig.platform.MoulConfigScreenComponent(
-                    net.minecraft.text.Text.literal("Island Time Configuration"),
+                    net.minecraft.text.Text.literal("IslandTime (1.6.0)"),
                     guiContext,
                     client.currentScreen
                 );

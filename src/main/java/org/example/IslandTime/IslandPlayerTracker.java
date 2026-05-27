@@ -18,6 +18,9 @@ public class IslandPlayerTracker {
     /** How often to check for player changes (1 second). */
     private static final long CHECK_INTERVAL_MS = 1_000;
 
+    /** Delay before starting to track player departures after entering island (5 seconds). */
+    private static final long INITIAL_DELAY_MS = 5_000;
+
     // Set of player names currently on the island (excluding the local player)
     private static final Set<String> currentPlayers = ConcurrentHashMap.newKeySet();
 
@@ -26,6 +29,9 @@ public class IslandPlayerTracker {
 
     // Track last check time for performance optimization
     private static long lastCheckTime = 0;
+
+    // Track when we entered the island
+    private static long islandEntryTime = 0;
 
     /**
      * Call this from the client tick when on the island.
@@ -69,6 +75,17 @@ public class IslandPlayerTracker {
             currentPlayers.clear();
             currentPlayers.addAll(newPlayers);
             initialized = true;
+            islandEntryTime = System.currentTimeMillis(); // Record when we entered
+            return;
+        }
+
+        // Don't send notifications for the first 5 seconds after entering the island
+        // This prevents false notifications from NPCs or initial player list changes
+        long timeSinceEntry = System.currentTimeMillis() - islandEntryTime;
+        if (timeSinceEntry < INITIAL_DELAY_MS) {
+            // Still within the grace period - update the player list silently
+            currentPlayers.clear();
+            currentPlayers.addAll(newPlayers);
             return;
         }
 
@@ -92,6 +109,7 @@ public class IslandPlayerTracker {
     private static void reset() {
         currentPlayers.clear();
         initialized = false;
+        islandEntryTime = 0;
     }
 
     /**

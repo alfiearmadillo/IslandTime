@@ -78,15 +78,13 @@ public class IslandTimeConfig extends Config {
 
     public static class ItemTracking {
         @Expose
-        @ConfigOption(name = "Info", desc = "Use /trackitem set while holding an item to track it.\nUse /trackitem to view current tracked item.\nUse /trackitem clear to stop tracking.")
+        @ConfigOption(name = "Tracked Item UUID", desc = "UUID of the currently tracked item. Use /trackitem set while holding an item to set this.")
         @ConfigEditorText
-        public String info = "Use commands to configure";
-
-        // Hidden fields for internal tracking (not displayed in GUI)
-        @Expose
         public String trackedUuid = "";
 
         @Expose
+        @ConfigOption(name = "Tracked Item Name", desc = "Display name of the tracked item (read-only, set via commands)")
+        @ConfigEditorText
         public String trackedItemName = "None";
     }
 
@@ -97,9 +95,9 @@ public class IslandTimeConfig extends Config {
         public String chatWebhookUrl = "";
 
         @Expose
-        @ConfigOption(name = "Poll Port", desc = "Port of the companion bot's HTTP server")
-        @ConfigEditorSlider(minValue = 1, maxValue = 65535, minStep = 1)
-        public int pollPort = 8765;
+        @ConfigOption(name = "Poll Port", desc = "Port of the companion bot's HTTP server (1-65535)")
+        @ConfigEditorText
+        public String pollPortString = "8765";
 
         @Expose
         @ConfigOption(name = "Poll Secret", desc = "Shared secret key for the poll endpoint")

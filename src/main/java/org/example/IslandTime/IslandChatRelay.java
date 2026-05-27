@@ -157,6 +157,15 @@ public class IslandChatRelay {
 
                 // If it's not from us and not a [SkyBlock] system message, it's likely an error
                 if (!isFromUs && !SKYBLOCK_MSG.matcher(raw).find()) {
+                    // Filter out messages with 10+ hyphens (these are usually formatting lines like "----------")
+                    // Count hyphens in the raw message
+                    long hyphenCount = raw.chars().filter(ch -> ch == '-').count();
+                    if (hyphenCount >= 10) {
+                        // This is likely a formatting line, not an actual error
+                        waitingForEcho = false;
+                        return;
+                    }
+
                     // This is likely an error message - relay it to Discord
                     String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
                     if (webhookUrl != null && !webhookUrl.isEmpty()) {

@@ -135,7 +135,7 @@ public class ConfigManager {
 
         // Chat relay
         config.chatRelay.chatWebhookUrl = ChatRelayConfig.getChatWebhookUrl();
-        config.chatRelay.pollPort = ChatRelayConfig.getPollPort();
+        config.chatRelay.pollPortString = String.valueOf(ChatRelayConfig.getPollPort());
         config.chatRelay.pollSecret = ChatRelayConfig.getPollSecret();
 
         saveToFile();
@@ -186,8 +186,13 @@ public class ConfigManager {
         if (!ChatRelayConfig.getChatWebhookUrl().equals(config.chatRelay.chatWebhookUrl)) {
             ChatRelayConfig.setChatWebhookUrl(config.chatRelay.chatWebhookUrl);
         }
-        if (ChatRelayConfig.getPollPort() != config.chatRelay.pollPort) {
-            ChatRelayConfig.setPollPort(config.chatRelay.pollPort);
+        try {
+            int portValue = Integer.parseInt(config.chatRelay.pollPortString);
+            if (portValue >= 1 && portValue <= 65535 && ChatRelayConfig.getPollPort() != portValue) {
+                ChatRelayConfig.setPollPort(portValue);
+            }
+        } catch (NumberFormatException e) {
+            // Invalid port number, keep existing value
         }
         if (!ChatRelayConfig.getPollSecret().equals(config.chatRelay.pollSecret)) {
             ChatRelayConfig.setPollSecret(config.chatRelay.pollSecret);
