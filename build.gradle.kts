@@ -21,11 +21,11 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.141.3+1.21.11")
 
     // MoulConfig - following SkyHanni's approach
-    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.1:2.0.0-alpha.11") {
+    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0") {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx")
     }
-    include("org.notenoughupdates.moulconfig:modern-1.21.1:2.0.0-alpha.11")
+    include("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0")
 }
 
 java {
