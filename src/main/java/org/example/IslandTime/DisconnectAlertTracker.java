@@ -87,7 +87,6 @@ public class DisconnectAlertTracker {
         if (disconnectAlertSpeed == AlertSpeed.OFF) return;
 
         if (!isConnected && !wasConnected) {
-            long now                 = System.currentTimeMillis();
             long disconnectedDuration = now - timeDisconnected;
 
             if (!hasAlerted && disconnectedDuration >= INITIAL_ALERT_DELAY_MS) {

@@ -857,9 +857,16 @@ public class IslandTimeCommand {
     private static void openConfigGui() {
         MinecraftClient client = MinecraftClient.getInstance();
         // Sync from existing configs before opening GUI to ensure latest values
+        // Sync current config values from existing configs
         ConfigManager.syncFromExistingConfigs();
         // Open the MoulConfig GUI
-        client.send(() -> client.setScreen(ConfigManager.getConfig().makeScreen(null)));
+        client.send(() -> {
+            io.github.notenoughupdates.moulconfig.gui.MoulConfigEditor<?> editor =
+                new io.github.notenoughupdates.moulconfig.gui.MoulConfigEditor<>(ConfigManager.getProcessor());
+            io.github.notenoughupdates.moulconfig.gui.GuiScreenElementWrapper screen =
+                new io.github.notenoughupdates.moulconfig.gui.GuiScreenElementWrapper(editor);
+            client.setScreen(screen);
+        });
         // Schedule a sync after the GUI is closed to apply any changes
         // This will happen on the next tick when the screen is null
     }
