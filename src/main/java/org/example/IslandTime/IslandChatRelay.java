@@ -82,23 +82,10 @@ public class IslandChatRelay {
             Pattern.CASE_INSENSITIVE
     );
 
-    // Detects chat error messages from the server that should be relayed back to Discord
-    // Examples:
-    //   "You cannot say the same message twice!"
-    //   "You may not use links in your messages!"
-    //   "This player has message notifications disabled!"
-    private static final Pattern CHAT_ERROR = Pattern.compile(
-            "^(You cannot say the same message twice!|" +
-            "You may not use links in your messages!|" +
-            "This player has message notifications disabled!|" +
-            "You cannot message this player\\.|" +
-            "You are sending messages too quickly!|" +
-            "Your message was blocked!|" +
-            "You cannot use that command right now!)",
-            Pattern.CASE_INSENSITIVE
-    );
-
-    // Track the last message we attempted to send so we can correlate errors
+    // Track when we send a message and expect to see it echoed back
+    // If the next message is not from us, it's probably an error
+    private static volatile boolean waitingForEcho = false;
+    private static volatile String expectedPlayerName = "";
     private static volatile String lastSentMessage = "";
     private static volatile long lastSentTime = 0;
 
@@ -144,25 +131,56 @@ public class IslandChatRelay {
     private static void processOutbound(Text message) {
         String raw = FORMAT_STRIP.matcher(message.getString()).replaceAll("").trim();
 
-        // ── Chat error messages ───────────────────────────────────────────────
-        // Check if this is a chat error message and relay it back to Discord
-        Matcher errorMatcher = CHAT_ERROR.matcher(raw);
-        if (errorMatcher.find()) {
-            String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
-            if (webhookUrl != null && !webhookUrl.isEmpty()) {
-                // Include context about what message triggered the error if recent
-                String errorMsg = raw;
-                long timeSinceLastSent = System.currentTimeMillis() - lastSentTime;
-                if (timeSinceLastSent < 5000 && !lastSentMessage.isEmpty()) {
-                    errorMsg = "ERROR: " + raw + " (attempted: \"" + lastSentMessage + "\")";
-                } else {
-                    errorMsg = "ERROR: " + raw;
+        // ── Echo detection after sending a message ───────────────────────────
+        // When we send a message, we expect to see it echoed back from our player.
+        // If the next message is NOT from us within a short time window, it's likely
+        // an error message from the server that should be relayed to Discord.
+        if (waitingForEcho) {
+            long timeSinceLastSent = System.currentTimeMillis() - lastSentTime;
+
+            // Only check within a 3 second window
+            if (timeSinceLastSent < 3000) {
+                // Check if this message is from us (the echo of what we sent)
+                boolean isFromUs = false;
+
+                // Strategy: find the first ": " separator and extract the sender name
+                int colonIdx = raw.indexOf(": ");
+                if (colonIdx > 0 && VALID_PREFIX.matcher(raw).find()) {
+                    String prefix = raw.substring(0, colonIdx);
+                    int lastSpace = prefix.lastIndexOf(' ');
+                    String senderName = lastSpace >= 0 ? prefix.substring(lastSpace + 1) : prefix;
+
+                    if (senderName.equals(expectedPlayerName)) {
+                        isFromUs = true;
+                    }
                 }
-                final String finalUrl = webhookUrl;
-                final String finalError = errorMsg;
-                webhookExecutor.submit(() -> postToWebhook(finalUrl, "IslandTime", finalError));
+
+                // If it's not from us and not a [SkyBlock] system message, it's likely an error
+                if (!isFromUs && !SKYBLOCK_MSG.matcher(raw).find()) {
+                    // This is likely an error message - relay it to Discord
+                    String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
+                    if (webhookUrl != null && !webhookUrl.isEmpty()) {
+                        String errorMsg = "ERROR: " + raw;
+                        if (!lastSentMessage.isEmpty()) {
+                            errorMsg += " (attempted: \"" + lastSentMessage + "\")";
+                        }
+                        final String finalUrl = webhookUrl;
+                        final String finalError = errorMsg;
+                        webhookExecutor.submit(() -> postToWebhook(finalUrl, "IslandTime", finalError));
+                    }
+                    // Reset the echo waiting state
+                    waitingForEcho = false;
+                    return; // don't process as regular chat
+                }
+
+                // If it's from us, reset the waiting state and continue normal processing
+                if (isFromUs) {
+                    waitingForEcho = false;
+                }
+            } else {
+                // Timeout - reset the waiting state
+                waitingForEcho = false;
             }
-            return; // don't process as regular chat
         }
         // ─────────────────────────────────────────────────────────────────────
 
@@ -392,7 +410,11 @@ public class IslandChatRelay {
             // Track the message content for error correlation
             lastSentMessage = message;
         }
+
+        // Set up echo detection - we expect to see this message echoed back
         lastSentTime = System.currentTimeMillis();
+        expectedPlayerName = mc.player.getName().getString();
+        waitingForEcho = true;
 
         mc.execute(() -> mc.getNetworkHandler().sendChatCommand(command));
     }
