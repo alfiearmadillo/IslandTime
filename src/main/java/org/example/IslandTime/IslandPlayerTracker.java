@@ -59,9 +59,8 @@ public class IslandPlayerTracker {
         // Build set of current player names (excluding local player)
         for (PlayerListEntry entry : playerList) {
             com.mojang.authlib.GameProfile profile = entry.getProfile();
-            String name = profile.getName();
-            if (name != null && !name.equals(localPlayerName)) {
-                newPlayers.add(name);
+            if (profile != null && profile.name() != null && !profile.name().equals(localPlayerName)) {
+                newPlayers.add(profile.name());
             }
         }
 

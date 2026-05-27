@@ -155,7 +155,7 @@ public class ConfigManager {
             TrackingToggleConfig.setFuelCycleEnabled(config.tracking.fuelCycleEnabled);
         }
         if (FavouriteGuiManager.isTrackingEnabled() != config.tracking.favouriteGuiEnabled) {
-            FavouriteGuiManager.setTracking(config.tracking.favouriteGuiEnabled);
+            FavouriteGuiManager.setTrackingEnabled(config.tracking.favouriteGuiEnabled);
         }
 
         // Webhooks
@@ -169,17 +169,17 @@ public class ConfigManager {
         // Alert speeds
         String trackedItemSpeed = convertIntToAlertSpeed(config.alertSpeeds.trackedItemSpeed);
         if (!ItemTracker.getAlertSpeed().name().equals(trackedItemSpeed)) {
-            ItemTracker.setAlertSpeed(AlertSpeedConfig.AlertSpeed.valueOf(trackedItemSpeed));
+            ItemTracker.setAlertSpeed(ItemTracker.AlertSpeed.valueOf(trackedItemSpeed));
         }
 
         String islandSpeed = convertIntToAlertSpeed(config.alertSpeeds.islandSpeed);
         if (!IslandAlertTracker.getAlertSpeed().name().equals(islandSpeed)) {
-            IslandAlertTracker.setAlertSpeed(AlertSpeedConfig.AlertSpeed.valueOf(islandSpeed));
+            IslandAlertTracker.setAlertSpeed(IslandAlertTracker.AlertSpeed.valueOf(islandSpeed));
         }
 
         String disconnectSpeed = convertIntToAlertSpeed(config.alertSpeeds.disconnectSpeed);
         if (!DisconnectAlertTracker.getAlertSpeed().name().equals(disconnectSpeed)) {
-            DisconnectAlertTracker.setAlertSpeed(AlertSpeedConfig.AlertSpeed.valueOf(disconnectSpeed));
+            DisconnectAlertTracker.setAlertSpeed(DisconnectAlertTracker.AlertSpeed.valueOf(disconnectSpeed));
         }
 
         // Chat relay

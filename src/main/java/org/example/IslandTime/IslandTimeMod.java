@@ -59,7 +59,7 @@ public class IslandTimeMod implements ClientModInitializer {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("IslandTimeMod shutting down...");
 
-            ConfigManager.saveAll();         // Save MoulConfig
+            ConfigManager.saveToFile();      // Save MoulConfig
             IslandTimeTracker.save();
             FuelCycleTracker.save();
             ItemTracker.save();
