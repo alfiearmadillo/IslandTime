@@ -30,12 +30,17 @@ public class IslandTimeCommand {
 
     private static void registerCommand(CommandDispatcher<FabricClientCommandSource> dispatcher) {
 
-        // /islandtime — show recent, lookup a date, or show help
+        // /islandtime — open MoulConfig GUI
         dispatcher.register(literal("islandtime")
                 .executes(ctx -> {
-                    showRecent();
+                    openConfigGui();
                     return 1;
                 })
+                .then(literal("recent")
+                        .executes(ctx -> {
+                            showRecent();
+                            return 1;
+                        }))
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
@@ -673,34 +678,35 @@ public class IslandTimeCommand {
     private static void showHelp(MinecraftClient client, int page) {
         String[][] commands = {
                 // Page 1 - Basic commands
-                {"/islandtime", "Show last 7 days of island time"},
+                {"/islandtime", "Open the configuration GUI (all settings in one place)"},
+                {"/islandtime recent", "Show last 7 days of island time"},
                 {"/islandtime <DD-MM-YY>", "Show specific date (e.g., /islandtime 1-1-26)"},
                 {"/islandtime help [page]", "Show this help page"},
                 {"/fueltime", "Show current and recent fuel cycle stats (last 4 cycles)"},
                 {"/fueltime <cycle>", "Show details for a specific cycle number (e.g., /fueltime 6)"},
                 {"/fueltime debug", "Inject a fake completed cycle and attempt save (for diagnostics)"},
-                {"/webhook", "Show current webhook URL"},
 
                 // Page 2 - Webhook & tracking
+                {"/webhook", "Show current webhook URL"},
                 {"/webhook <url>", "Set webhook URL (for Discord alerts)"},
                 {"/webhook clear", "Remove webhook"},
                 {"/discordping", "Show current Discord user ID for webhook pings"},
                 {"/discordping <userid>", "Set Discord user ID to ping in webhook alerts"},
                 {"/discordping clear", "Remove Discord ping (webhooks won't ping anyone)"},
                 {"/trackitem", "Show currently tracked item"},
-                {"/trackitem set", "Track the item in your main hand (must have UUID + stats_book)"},
 
-                // Page 3 - Alert settings
+                // Page 3 - Item tracking
+                {"/trackitem set", "Track the item in your main hand (must have UUID + stats_book)"},
                 {"/trackitem clear", "Stop tracking the current item"},
                 {"/trackedalertspeed", "Show current tracked item alert speed and options"},
                 {"/trackedalertspeed <speed>", "Set tracked item alert speed (off/fast/normal/slow)"},
                 {"/islandalertspeed", "Show current island alert speed and options"},
                 {"/islandalertspeed <speed>", "Set island alert speed (off/fast/normal/slow)"},
                 {"/disconnectalertspeed", "Show current disconnect alert speed and options"},
+
+                // Page 4 - Alert settings & tracking toggles
                 {"/disconnectalertspeed <speed>", "Set disconnect alert speed (off/fast/normal/slow). " +
                         "Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
-
-                // Page 4 - Tracking toggles
                 {"/trackislandtime", "Show whether island-time tracking is on or off"},
                 {"/trackislandtime <on|off>", "Enable or disable island-time tracking. " +
                         "Disabling preserves all existing data and finishes the current day, " +
@@ -842,6 +848,20 @@ public class IslandTimeCommand {
         int year  = Integer.parseInt(parts[2]);
         if (year < 100) year += 2000;
         return LocalDate.of(year, month, day);
+    }
+
+    // -------------------------------------------------------------------------
+    // Config GUI
+    // -------------------------------------------------------------------------
+
+    private static void openConfigGui() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        // Sync from existing configs before opening GUI to ensure latest values
+        ConfigManager.syncFromExistingConfigs();
+        // Open the MoulConfig GUI
+        client.send(() -> client.setScreen(ConfigManager.getConfig().makeScreen(null)));
+        // Schedule a sync after the GUI is closed to apply any changes
+        // This will happen on the next tick when the screen is null
     }
 
     private static void formatLineColored(MinecraftClient client, String date, long ms, boolean isToday) {

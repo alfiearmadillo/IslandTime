@@ -23,11 +23,15 @@ public class IslandTimeMod implements ClientModInitializer {
         ChatRelayConfig.load();
         IslandChatRelay.register();
 
+        // Initialize MoulConfig
+        ConfigManager.initialize();
+
         // Register tick events
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             IslandTimeTracker.tick(client);
             MinionFuelTracker.checkFuelSlot();
             FavouriteGuiManager.tickScreenSnapshot(client);
+            ConfigManager.tick(client);  // Sync config when GUI closes
 
             boolean isOnIsland      = IslandTimeTracker.isCurrentlyOnIsland();
             boolean statsIncreasing = ItemTracker.areStatsIncreasing();
@@ -54,6 +58,7 @@ public class IslandTimeMod implements ClientModInitializer {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("IslandTimeMod shutting down...");
 
+            ConfigManager.saveAll();         // Save MoulConfig
             IslandTimeTracker.save();
             FuelCycleTracker.save();
             ItemTracker.save();
