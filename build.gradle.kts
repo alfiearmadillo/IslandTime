@@ -1,6 +1,14 @@
-plugins {
-    id("fabric-loom") version "1.15-SNAPSHOT"
+buildscript {
+    repositories {
+        maven("https://maven.fabricmc.net/")
+        mavenCentral()
+    }
+    dependencies {
+        classpath("net.fabricmc:fabric-loom:1.8-SNAPSHOT")
+    }
 }
+
+apply(plugin = "fabric-loom")
 
 group = "org.example"
 version = "1.5.0"
@@ -9,8 +17,11 @@ repositories {
     mavenCentral()
     maven("https://maven.fabricmc.net/")
     maven {
-        url = uri("https://repo.nea.moe/releases")
-        name = "neaMaven"
+        url = uri("https://maven.azureaaron.net/releases")
+        name = "azureaaronMaven"
+        content {
+            includeGroup("net.azureaaron")
+        }
     }
 }
 
@@ -20,13 +31,9 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:0.18.4")
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.141.3+1.21.11")
 
-    // MoulConfig - using NotEnoughUpdates's Maven repository
-    // Using modern-1.21.1 which is compatible with all 1.21.x versions
-    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0") {
-        exclude(group = "org.jetbrains.kotlin")
-        exclude(group = "org.jetbrains.kotlinx")
-    }
-    include("org.notenoughupdates.moulconfig:modern-1.21.1:4.6.0")
+    // Dandelion (shades in MoulConfig) - following Skyblocker's approach
+    modImplementation("net.azureaaron:dandelion:2.0.0")
+    include("net.azureaaron:dandelion:2.0.0")
 }
 
 java {
