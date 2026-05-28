@@ -321,10 +321,12 @@ public class IslandChatRelay {
             String json = "{\"username\":" + escapeJson(username)
                         + ",\"content\":"  + escapeJson(content);
 
-            // Add avatar URL for player heads (uses crafatar.com)
+            // Add avatar URL for player heads using official Mojang API
             // Skip for system usernames like "SkyBlock", "IslandTime"
             if (!username.equals("SkyBlock") && !username.equals("IslandTime")) {
-                String avatarUrl = "https://crafatar.com/avatars/" + username + "?overlay=true";
+                // Use mc-heads.net which proxies the official Mojang API and handles UUID lookups
+                // This is more reliable than crafatar and uses Mojang's official session server
+                String avatarUrl = "https://mc-heads.net/avatar/" + username;
                 json += ",\"avatar_url\":" + escapeJson(avatarUrl);
             }
 
