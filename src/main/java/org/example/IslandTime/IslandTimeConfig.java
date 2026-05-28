@@ -10,11 +10,6 @@ import com.google.gson.annotations.Expose;
  */
 public class IslandTimeConfig extends Config {
 
-    @Override
-    public String getTitle() {
-        return "IslandTime (1.6.0)";
-    }
-
     @Expose
     @Category(name = "Island Time", desc = "Track time spent on your private island")
     public IslandTime islandTime = new IslandTime();
@@ -49,9 +44,9 @@ public class IslandTimeConfig extends Config {
 
     public static class IslandTime {
         @Expose
-        @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island")
-        @ConfigEditorButton(runnableId = "viewIslandTime", buttonText = "View Stats")
-        public Runnable viewStatsButton;
+        @ConfigOption(name = "About", desc = "Use /islandtime recent to view time spent on your private island")
+        @ConfigEditorText
+        public String about = "Use /islandtime recent";
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Track time spent on your private island")
@@ -61,9 +56,9 @@ public class IslandTimeConfig extends Config {
 
     public static class FuelCycles {
         @Expose
-        @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions")
-        @ConfigEditorButton(runnableId = "viewFuelTime", buttonText = "View Fuel Time")
-        public Runnable viewFuelTimeButton;
+        @ConfigOption(name = "About", desc = "Use /fueltime to view fuel cycles for your minions")
+        @ConfigEditorText
+        public String about = "Use /fueltime";
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Track fuel cycles for your minions")
@@ -73,9 +68,9 @@ public class IslandTimeConfig extends Config {
 
     public static class FavouriteGui {
         @Expose
-        @ConfigOption(name = "List Saved Containers", desc = "Click to view all saved container snapshots")
-        @ConfigEditorButton(runnableId = "listFavouriteGuis", buttonText = "List Saved")
-        public Runnable listGuisButton;
+        @ConfigOption(name = "About", desc = "Use /favouritegui to save and view container snapshots")
+        @ConfigEditorText
+        public String about = "Use /favouritegui";
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Enable container snapshots for /favouritegui save")
@@ -85,9 +80,9 @@ public class IslandTimeConfig extends Config {
 
     public static class ItemTracking {
         @Expose
-        @ConfigOption(name = "View Tracked Item", desc = "Click to view currently tracked item")
-        @ConfigEditorButton(runnableId = "viewTrackedItem", buttonText = "View Tracked")
-        public Runnable viewTrackedButton;
+        @ConfigOption(name = "About", desc = "Use /trackitem to view or set the currently tracked item")
+        @ConfigEditorText
+        public String about = "Use /trackitem";
 
         @Expose
         @ConfigOption(name = "Tracked Item UUID", desc = "UUID of the currently tracked item (read-only, use /trackitem set)")
@@ -131,9 +126,9 @@ public class IslandTimeConfig extends Config {
 
     public static class ChatRelay {
         @Expose
-        @ConfigOption(name = "View Settings", desc = "Click to view chat relay settings")
-        @ConfigEditorButton(runnableId = "viewChatRelay", buttonText = "View Settings")
-        public Runnable viewSettingsButton;
+        @ConfigOption(name = "About", desc = "Use /chatrelay to configure the chat relay system")
+        @ConfigEditorText
+        public String about = "Use /chatrelay";
 
         @Expose
         @ConfigOption(name = "Chat Webhook URL", desc = "Discord webhook for island chat relay (leave empty to disable). Must start with: https://discord.com/api/webhooks/")
@@ -153,8 +148,8 @@ public class IslandTimeConfig extends Config {
 
     public static class Extras {
         @Expose
-        @ConfigOption(name = "Help", desc = "Click to view all available commands")
-        @ConfigEditorButton(runnableId = "viewHelp", buttonText = "View Help")
-        public Runnable helpButton;
+        @ConfigOption(name = "Help", desc = "Use /islandtime help to view all available commands")
+        @ConfigEditorText
+        public String help = "Use /islandtime help";
     }
 }

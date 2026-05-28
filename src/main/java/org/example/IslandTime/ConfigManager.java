@@ -34,44 +34,6 @@ public class ConfigManager {
         processor = new MoulConfigProcessor<>(config);
         BuiltinMoulConfigGuis.addProcessors(processor);
 
-        // Register button handlers
-        processor.registerRunnable("viewIslandTime", () -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null) {
-                client.execute(() -> client.player.networkHandler.sendChatCommand("islandtime recent"));
-            }
-        });
-        processor.registerRunnable("viewFuelTime", () -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null) {
-                client.execute(() -> client.player.networkHandler.sendChatCommand("fueltime"));
-            }
-        });
-        processor.registerRunnable("listFavouriteGuis", () -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null) {
-                client.execute(() -> client.player.networkHandler.sendChatCommand("favouritegui"));
-            }
-        });
-        processor.registerRunnable("viewTrackedItem", () -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null) {
-                client.execute(() -> client.player.networkHandler.sendChatCommand("trackitem"));
-            }
-        });
-        processor.registerRunnable("viewChatRelay", () -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null) {
-                client.execute(() -> client.player.networkHandler.sendChatCommand("chatrelay"));
-            }
-        });
-        processor.registerRunnable("viewHelp", () -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player != null) {
-                client.execute(() -> client.player.networkHandler.sendChatCommand("islandtime help"));
-            }
-        });
-
         ConfigProcessorDriver driver = new ConfigProcessorDriver(processor);
         driver.processConfig(config);
 
