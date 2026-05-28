@@ -145,7 +145,6 @@ public class IslandPlayerTracker {
         //   - NPCs: "§bSam" (contains §)
         //   - Any other entities with special characters
         if (!VALID_USERNAME_PATTERN.matcher(playerName).matches()) {
-            System.out.println("[IslandPlayerTracker] Filtered invalid username characters: " + playerName);
             return true;
         }
 
