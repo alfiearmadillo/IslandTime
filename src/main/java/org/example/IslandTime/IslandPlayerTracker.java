@@ -5,6 +5,7 @@ import net.minecraft.client.network.PlayerListEntry;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * Tracks players on the island by monitoring the client's player list.
@@ -20,6 +21,9 @@ public class IslandPlayerTracker {
 
     /** Delay before starting to track player departures after entering island (5 seconds). */
     private static final long INITIAL_DELAY_MS = 5_000;
+
+    /** Pattern to match minion/NPC names (e.g., !C-a, !A-b, !D-f) to exclude them from tracking. */
+    private static final Pattern MINION_PATTERN = Pattern.compile("^![A-Z]-[a-z]+$");
 
     // Set of player names currently on the island (excluding the local player)
     private static final Set<String> currentPlayers = ConcurrentHashMap.newKeySet();
@@ -62,10 +66,12 @@ public class IslandPlayerTracker {
         
         String localPlayerName = client.player.getName().getString();
         
-        // Build set of current player names (excluding local player)
+        // Build set of current player names (excluding local player and minions/NPCs)
         for (PlayerListEntry entry : playerList) {
             com.mojang.authlib.GameProfile profile = entry.getProfile();
-            if (profile != null && profile.name() != null && !profile.name().equals(localPlayerName)) {
+            if (profile != null && profile.name() != null
+                && !profile.name().equals(localPlayerName)
+                && !isMinionOrNPC(profile.name())) {
                 newPlayers.add(profile.name());
             }
         }
@@ -113,6 +119,17 @@ public class IslandPlayerTracker {
     }
 
     /**
+     * Check if a player name matches the pattern for minions/NPCs.
+     * Minions typically have names like !C-a, !A-b, !D-f (exclamation mark, capital letter, dash, lowercase letter(s)).
+     *
+     * @param playerName The player name to check
+     * @return true if the name appears to be a minion/NPC, false if it's likely a real player
+     */
+    private static boolean isMinionOrNPC(String playerName) {
+        return MINION_PATTERN.matcher(playerName).matches();
+    }
+
+    /**
      * Send a notification to the Discord webhook that a player has left.
      */
     private static void notifyPlayerLeft(String playerName) {
@@ -120,7 +137,7 @@ public class IslandPlayerTracker {
         if (webhookUrl == null || webhookUrl.isEmpty()) return;
 
         String message = playerName + " left the island";
-        
+
         // Use the same webhook posting mechanism as the chat relay
         // This is called from the game thread, so we'll need to make it async
         IslandChatRelay.sendWebhookAsync(webhookUrl, "IslandTime", message);
