@@ -59,6 +59,35 @@ public class IslandTimeCommand {
                         }))
         );
 
+        // /it — alias for /islandtime
+        dispatcher.register(literal("it")
+                .executes(ctx -> {
+                    openConfigGui();
+                    return 1;
+                })
+                .then(literal("recent")
+                        .executes(ctx -> {
+                            showRecent();
+                            return 1;
+                        }))
+                .then(literal("help")
+                        .executes(ctx -> {
+                            showHelp(ctx.getSource().getClient(), 1);
+                            return 1;
+                        })
+                        .then(argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                                .executes(ctx -> {
+                                    int page = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page");
+                                    showHelp(ctx.getSource().getClient(), page);
+                                    return 1;
+                                })))
+                .then(argument("date", StringArgumentType.word())
+                        .executes(ctx -> {
+                            showSpecificDate(StringArgumentType.getString(ctx, "date"));
+                            return 1;
+                        }))
+        );
+
         // /fueltime
         dispatcher.register(literal("fueltime")
                 .executes(ctx -> {

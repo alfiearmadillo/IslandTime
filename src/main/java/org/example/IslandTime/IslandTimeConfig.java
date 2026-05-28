@@ -44,9 +44,9 @@ public class IslandTimeConfig extends Config {
 
     public static class IslandTime {
         @Expose
-        @ConfigOption(name = "About", desc = "Tracks time spent on your private island. View with /islandtime or /islandtime <date>")
-        @ConfigEditorText
-        public String info = "Use /islandtime to view your stats";
+        @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island")
+        @ConfigEditorButton(runnableId = "viewIslandTime", buttonText = "View Stats")
+        public Runnable viewStatsButton;
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Track time spent on your private island")
@@ -56,9 +56,9 @@ public class IslandTimeConfig extends Config {
 
     public static class FuelCycles {
         @Expose
-        @ConfigOption(name = "About", desc = "Tracks fuel cycles for your minions. View with /fueltime")
-        @ConfigEditorText
-        public String info = "Use /fueltime to view your cycles";
+        @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions")
+        @ConfigEditorButton(runnableId = "viewFuelTime", buttonText = "View Fuel Time")
+        public Runnable viewFuelTimeButton;
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Track fuel cycles for your minions")
@@ -68,9 +68,9 @@ public class IslandTimeConfig extends Config {
 
     public static class FavouriteGui {
         @Expose
-        @ConfigOption(name = "About", desc = "Save container snapshots. Use /favouritegui to list saved containers, /favouritegui save <name> to save one")
-        @ConfigEditorText
-        public String info = "Use /favouritegui to manage saved containers";
+        @ConfigOption(name = "List Saved Containers", desc = "Click to view all saved container snapshots")
+        @ConfigEditorButton(runnableId = "listFavouriteGuis", buttonText = "List Saved")
+        public Runnable listGuisButton;
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Enable container snapshots for /favouritegui save")
@@ -80,17 +80,17 @@ public class IslandTimeConfig extends Config {
 
     public static class ItemTracking {
         @Expose
-        @ConfigOption(name = "About", desc = "Track specific items. Use /trackitem set while holding an item, /trackitem to view, /trackitem clear to stop")
-        @ConfigEditorText
-        public String info = "Use /trackitem to manage tracking";
+        @ConfigOption(name = "View Tracked Item", desc = "Click to view currently tracked item")
+        @ConfigEditorButton(runnableId = "viewTrackedItem", buttonText = "View Tracked")
+        public Runnable viewTrackedButton;
 
         @Expose
-        @ConfigOption(name = "Tracked Item UUID", desc = "UUID of the currently tracked item. Use /trackitem set while holding an item to set this.")
+        @ConfigOption(name = "Tracked Item UUID", desc = "UUID of the currently tracked item (read-only, use /trackitem set)")
         @ConfigEditorText
         public String trackedUuid = "";
 
         @Expose
-        @ConfigOption(name = "Tracked Item Name", desc = "Display name of the tracked item (read-only, set via commands)")
+        @ConfigOption(name = "Tracked Item Name", desc = "Display name of the tracked item (read-only, use /trackitem set)")
         @ConfigEditorText
         public String trackedItemName = "None";
     }
@@ -126,9 +126,9 @@ public class IslandTimeConfig extends Config {
 
     public static class ChatRelay {
         @Expose
-        @ConfigOption(name = "About", desc = "Relay island chat to Discord. Configure with /chatrelay commands")
-        @ConfigEditorText
-        public String info = "Use /chatrelay to view settings";
+        @ConfigOption(name = "View Settings", desc = "Click to view chat relay settings")
+        @ConfigEditorButton(runnableId = "viewChatRelay", buttonText = "View Settings")
+        public Runnable viewSettingsButton;
 
         @Expose
         @ConfigOption(name = "Chat Webhook URL", desc = "Discord webhook for island chat relay (leave empty to disable). Must start with: https://discord.com/api/webhooks/")
@@ -148,28 +148,8 @@ public class IslandTimeConfig extends Config {
 
     public static class Extras {
         @Expose
-        @ConfigOption(name = "Help Command", desc = "View all available commands and help pages")
-        @ConfigEditorText
-        public String helpCommand = "/islandtime help";
-
-        @Expose
-        @ConfigOption(name = "Webhook Command", desc = "View or set the Discord webhook URL")
-        @ConfigEditorText
-        public String webhookCommand = "/webhook [url]";
-
-        @Expose
-        @ConfigOption(name = "Discord Ping Command", desc = "View or set Discord user ID for pings")
-        @ConfigEditorText
-        public String discordPingCommand = "/discordping [id]";
-
-        @Expose
-        @ConfigOption(name = "Alert Speed Commands", desc = "Configure alert speeds for different events")
-        @ConfigEditorText
-        public String alertSpeedCommands = "/trackedalertspeed, /islandalertspeed, /disconnectalertspeed";
-
-        @Expose
-        @ConfigOption(name = "Toggle Commands", desc = "Enable or disable tracking features")
-        @ConfigEditorText
-        public String toggleCommands = "/trackislandtime <on|off>, /trackfuelcycles <on|off>";
+        @ConfigOption(name = "Help", desc = "Click to view all available commands")
+        @ConfigEditorButton(runnableId = "viewHelp", buttonText = "View Help")
+        public Runnable helpButton;
     }
 }

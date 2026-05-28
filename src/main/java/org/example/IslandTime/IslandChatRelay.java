@@ -84,10 +84,13 @@ public class IslandChatRelay {
 
     // Track when we send a message and expect to see it echoed back
     // If the next message is not from us, it's probably an error
+    // We check the first TWO messages after sending (errors often span 2 lines)
     private static volatile boolean waitingForEcho = false;
     private static volatile String expectedPlayerName = "";
     private static volatile String lastSentMessage = "";
     private static volatile long lastSentTime = 0;
+    private static volatile int messagesSeenSinceSend = 0;
+    private static volatile String firstMessageAfterSend = "";
 
     // Single-thread executor for outbound webhook POSTs
     private static final ExecutorService webhookExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -133,13 +136,15 @@ public class IslandChatRelay {
 
         // ── Echo detection after sending a message ───────────────────────────
         // When we send a message, we expect to see it echoed back from our player.
-        // If the next message is NOT from us within a short time window, it's likely
-        // an error message from the server that should be relayed to Discord.
+        // If the first message is NOT from us, check the second message.
+        // Errors often come in pairs (line above + line below the error).
         if (waitingForEcho) {
             long timeSinceLastSent = System.currentTimeMillis() - lastSentTime;
 
             // Only check within a 3 second window
             if (timeSinceLastSent < 3000) {
+                messagesSeenSinceSend++;
+
                 // Check if this message is from us (the echo of what we sent)
                 boolean isFromUs = false;
 
@@ -155,40 +160,44 @@ public class IslandChatRelay {
                     }
                 }
 
-                // If it's not from us and not a [SkyBlock] system message, it's likely an error
-                if (!isFromUs && !SKYBLOCK_MSG.matcher(raw).find()) {
-                    // Filter out messages with 10+ hyphens (these are usually formatting lines like "----------")
-                    // Count hyphens in the raw message
-                    long hyphenCount = raw.chars().filter(ch -> ch == '-').count();
-                    if (hyphenCount >= 10) {
-                        // This is likely a formatting line, not an actual error
-                        waitingForEcho = false;
-                        return;
-                    }
-
-                    // This is likely an error message - relay it to Discord
-                    String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
-                    if (webhookUrl != null && !webhookUrl.isEmpty()) {
-                        String errorMsg = "ERROR: " + raw;
-                        if (!lastSentMessage.isEmpty()) {
-                            errorMsg += " (attempted: \"" + lastSentMessage + "\")";
-                        }
-                        final String finalUrl = webhookUrl;
-                        final String finalError = errorMsg;
-                        webhookExecutor.submit(() -> postToWebhook(finalUrl, "IslandTime", finalError));
-                    }
-                    // Reset the echo waiting state
-                    waitingForEcho = false;
-                    return; // don't process as regular chat
-                }
-
                 // If it's from us, reset the waiting state and continue normal processing
                 if (isFromUs) {
                     waitingForEcho = false;
+                    messagesSeenSinceSend = 0;
+                    firstMessageAfterSend = "";
+                } else if (messagesSeenSinceSend == 1) {
+                    // First message after send - store it and wait for second message
+                    firstMessageAfterSend = raw;
+                } else if (messagesSeenSinceSend == 2) {
+                    // Second message - if neither first nor second is from us, send second as error
+                    if (!SKYBLOCK_MSG.matcher(raw).find()) {
+                        // Filter out messages with 10+ hyphens
+                        long hyphenCount = raw.chars().filter(ch -> ch == '-').count();
+                        if (hyphenCount < 10) {
+                            // Send the SECOND message as the error (more likely to be the actual error)
+                            String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
+                            if (webhookUrl != null && !webhookUrl.isEmpty()) {
+                                String errorMsg = "ERROR: " + raw;
+                                if (!lastSentMessage.isEmpty()) {
+                                    errorMsg += " (attempted: \"" + lastSentMessage + "\")";
+                                }
+                                final String finalUrl = webhookUrl;
+                                final String finalError = errorMsg;
+                                webhookExecutor.submit(() -> postToWebhook(finalUrl, "IslandTime", finalError));
+                            }
+                        }
+                    }
+                    // Reset after checking second message
+                    waitingForEcho = false;
+                    messagesSeenSinceSend = 0;
+                    firstMessageAfterSend = "";
+                    return; // don't process as regular chat
                 }
             } else {
                 // Timeout - reset the waiting state
                 waitingForEcho = false;
+                messagesSeenSinceSend = 0;
+                firstMessageAfterSend = "";
             }
         }
         // ─────────────────────────────────────────────────────────────────────
@@ -308,9 +317,18 @@ public class IslandChatRelay {
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(5000);
 
-            // Build payload manually — keeps zero new dependencies
+            // Build payload with avatar URL for player heads
             String json = "{\"username\":" + escapeJson(username)
-                        + ",\"content\":"  + escapeJson(content) + "}";
+                        + ",\"content\":"  + escapeJson(content);
+
+            // Add avatar URL for player heads (uses crafatar.com)
+            // Skip for system usernames like "SkyBlock", "IslandTime"
+            if (!username.equals("SkyBlock") && !username.equals("IslandTime")) {
+                String avatarUrl = "https://crafatar.com/avatars/" + username + "?overlay=true";
+                json += ",\"avatar_url\":" + escapeJson(avatarUrl);
+            }
+
+            json += "}";
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(json.getBytes(StandardCharsets.UTF_8));
