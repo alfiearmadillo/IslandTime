@@ -43,10 +43,17 @@ public class IslandTimeConfig extends Config {
     public Extras extras = new Extras();
 
     public static class IslandTime {
-        @Expose
-        @ConfigOption(name = "About", desc = "Use /islandtime recent to view time spent on your private island")
-        @ConfigEditorText
-        public String about = "Use /islandtime recent";
+        @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island")
+        @ConfigEditorButton(buttonText = "View Stats")
+        public Runnable viewStatsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("islandtime recent");
+                }
+            }
+        };
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Track time spent on your private island")
@@ -55,10 +62,17 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @Expose
-        @ConfigOption(name = "About", desc = "Use /fueltime to view fuel cycles for your minions")
-        @ConfigEditorText
-        public String about = "Use /fueltime";
+        @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions")
+        @ConfigEditorButton(buttonText = "View Fuel Time")
+        public Runnable viewFuelTimeButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("fueltime");
+                }
+            }
+        };
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Track fuel cycles for your minions")
@@ -67,10 +81,17 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FavouriteGui {
-        @Expose
-        @ConfigOption(name = "About", desc = "Use /favouritegui to save and view container snapshots")
-        @ConfigEditorText
-        public String about = "Use /favouritegui";
+        @ConfigOption(name = "List Saved Containers", desc = "Click to view all saved container snapshots")
+        @ConfigEditorButton(buttonText = "List Saved")
+        public Runnable listGuisButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("favouritegui");
+                }
+            }
+        };
 
         @Expose
         @ConfigOption(name = "Enable Tracking", desc = "Enable container snapshots for /favouritegui save")
@@ -79,10 +100,17 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class ItemTracking {
-        @Expose
-        @ConfigOption(name = "About", desc = "Use /trackitem to view or set the currently tracked item")
-        @ConfigEditorText
-        public String about = "Use /trackitem";
+        @ConfigOption(name = "View Tracked Item", desc = "Click to view currently tracked item")
+        @ConfigEditorButton(buttonText = "View Tracked")
+        public Runnable viewTrackedButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("trackitem");
+                }
+            }
+        };
 
         @Expose
         @ConfigOption(name = "Tracked Item UUID", desc = "UUID of the currently tracked item (read-only, use /trackitem set)")
@@ -125,10 +153,17 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class ChatRelay {
-        @Expose
-        @ConfigOption(name = "About", desc = "Use /chatrelay to configure the chat relay system")
-        @ConfigEditorText
-        public String about = "Use /chatrelay";
+        @ConfigOption(name = "View Settings", desc = "Click to view chat relay settings")
+        @ConfigEditorButton(buttonText = "View Settings")
+        public Runnable viewSettingsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("chatrelay");
+                }
+            }
+        };
 
         @Expose
         @ConfigOption(name = "Chat Webhook URL", desc = "Discord webhook for island chat relay (leave empty to disable). Must start with: https://discord.com/api/webhooks/")
@@ -147,9 +182,16 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class Extras {
-        @Expose
-        @ConfigOption(name = "Help", desc = "Use /islandtime help to view all available commands")
-        @ConfigEditorText
-        public String help = "Use /islandtime help";
+        @ConfigOption(name = "Help", desc = "Click to view all available commands")
+        @ConfigEditorButton(buttonText = "View Help")
+        public Runnable helpButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("islandtime help");
+                }
+            }
+        };
     }
 }
