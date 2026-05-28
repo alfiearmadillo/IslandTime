@@ -22,14 +22,8 @@ public class IslandPlayerTracker {
     /** Delay before starting to track player departures after entering island (5 seconds). */
     private static final long INITIAL_DELAY_MS = 5_000;
 
-    /** Pattern to match minion/NPC names (e.g., !C-a, !A-b, !D-f) to exclude them from tracking. */
-    private static final Pattern MINION_PATTERN = Pattern.compile("^![A-Z]-[a-z]+$");
-
-    /** Pattern to match Minecraft color/formatting codes (§ followed by any character). */
-    private static final Pattern COLOR_CODE_PATTERN = Pattern.compile("§.");
-
-    /** Pattern to match bot-like names (10 lowercase alphanumeric characters, like "2su5ddf0n8"). */
-    private static final Pattern BOT_NAME_PATTERN = Pattern.compile("^[a-z0-9]{10}$");
+    /** Pattern to match valid Minecraft usernames (only a-z, A-Z, 0-9, and underscore). */
+    private static final Pattern VALID_USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
 
     // Set of player names currently on the island (excluding the local player)
     private static final Set<String> currentPlayers = ConcurrentHashMap.newKeySet();
@@ -127,10 +121,12 @@ public class IslandPlayerTracker {
     /**
      * Check if a player profile matches the pattern for minions/NPCs/bots.
      * Uses multiple heuristics:
-     * 1. Minion pattern: !C-a, !A-b, !D-f (exclamation mark, capital letter, dash, lowercase letter(s))
-     * 2. Color codes: Names with § character (real players cannot have these)
-     * 3. Bot name pattern: 10-character lowercase alphanumeric strings (e.g., "2su5ddf0n8")
-     * 4. UUID validation: Check if UUID looks like a real Mojang player UUID (version 4)
+     * 1. Character validation: Valid Minecraft usernames only contain [a-zA-Z0-9_]
+     *    - Filters minions like "!C-a" (has !, -)
+     *    - Filters NPCs like "§bSam" (has §)
+     *    - Any other special characters indicate non-player entities
+     * 2. UUID validation: Check if UUID looks like a real Mojang player UUID (version 4)
+     *    - Logs UUID version for debugging to verify if bots use non-v4 UUIDs
      *
      * @param profile The player's GameProfile to check
      * @return true if the profile appears to be a minion/NPC/bot, false if it's likely a real player
@@ -142,32 +138,22 @@ public class IslandPlayerTracker {
 
         String playerName = profile.name();
 
-        // Check for minion pattern (!C-a, !A-b, etc.)
-        if (MINION_PATTERN.matcher(playerName).matches()) {
-            System.out.println("[IslandPlayerTracker] Filtered minion: " + playerName);
-            return true;
-        }
-
-        // Check for Minecraft color/formatting codes (§) - real players cannot have these in their names
-        // NPCs and server-generated entities often have colored names
-        if (COLOR_CODE_PATTERN.matcher(playerName).find()) {
-            System.out.println("[IslandPlayerTracker] Filtered NPC with color code: " + playerName);
-            return true;
-        }
-
-        // Check for bot-like name pattern (10 lowercase alphanumeric characters)
-        // Real player names typically have capitals, underscores, or recognizable words
-        if (BOT_NAME_PATTERN.matcher(playerName).matches()) {
-            System.out.println("[IslandPlayerTracker] Filtered bot-like name: " + playerName);
+        // Check if name contains only valid Minecraft username characters
+        // Valid usernames can only have: a-z, A-Z, 0-9, and underscore
+        // This filters out:
+        //   - Minions: "!C-a" (contains ! and -)
+        //   - NPCs: "§bSam" (contains §)
+        //   - Any other entities with special characters
+        if (!VALID_USERNAME_PATTERN.matcher(playerName).matches()) {
+            System.out.println("[IslandPlayerTracker] Filtered invalid username characters: " + playerName);
             return true;
         }
 
         // Check UUID validity - real Mojang player UUIDs are version 4 (random) UUIDs
         // NPCs/bots may have version 2 UUIDs or non-standard patterns
+        // Log the UUID version to help identify if bots are using non-v4 UUIDs
         if (profile.getId() != null) {
             java.util.UUID uuid = profile.getId();
-            // Version 4 UUIDs have the format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-            // where the 13th character (version) is '4' and 17th character (variant) is 8, 9, a, or b
             int version = uuid.version();
             if (version != 4) {
                 // Real players have version 4 UUIDs, bots/NPCs often have version 2 or other versions
