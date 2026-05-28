@@ -43,7 +43,7 @@ public class IslandTimeConfig extends Config {
     public Extras extras = new Extras();
 
     public static class IslandTime {
-        @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island")
+        @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island (last 7 days). You can also use /islandtime <date> to view a specific date (e.g., /islandtime 1-1-26)")
         @ConfigEditorButton(buttonText = " View Stats ")
         public Runnable viewStatsButton = new Runnable() {
             @Override
@@ -62,7 +62,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions")
+        @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions (last 4 cycles). You can also use /fueltime <cycle> to view a specific cycle number (e.g., /fueltime 6)")
         @ConfigEditorButton(buttonText = " View Fuel Time ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
@@ -81,7 +81,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FavouriteGui {
-        @ConfigOption(name = "List Saved Containers", desc = "Click to view all saved container snapshots")
+        @ConfigOption(name = "List Saved Containers", desc = "Click to view all saved container snapshots. You can also use /favouritegui save <name> to save, /favouritegui view <name> to open, or /favouritegui delete <name> to remove saved containers")
         @ConfigEditorButton(buttonText = " List Saved ")
         public Runnable listGuisButton = new Runnable() {
             @Override
@@ -144,14 +144,38 @@ public class IslandTimeConfig extends Config {
 
     public static class Discord {
         @Expose
-        @ConfigOption(name = "Webhook URL", desc = "Discord webhook URL for alerts (leave empty to disable). Must start with: https://discord.com/api/webhooks/")
+        @ConfigOption(name = "Webhook URL", desc = "Discord webhook URL for alerts (leave empty to disable). Must start with: https://discord.com/api/webhooks/\nYou can also use /webhook <url> to set or /webhook clear to remove")
         @ConfigEditorText
         public String webhookUrl = "";
 
+        @ConfigOption(name = "Clear Webhook", desc = "Click to clear the webhook URL")
+        @ConfigEditorButton(buttonText = " Clear Webhook ")
+        public Runnable clearWebhookButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("webhook clear");
+                }
+            }
+        };
+
         @Expose
-        @ConfigOption(name = "User ID for Pings", desc = "Your Discord user ID for webhook pings (leave empty to disable pings). Must be numeric.")
+        @ConfigOption(name = "User ID for Pings", desc = "Your Discord user ID for webhook pings (leave empty to disable pings). Must be numeric.\nYou can also use /discordping <userid> to set or /discordping clear to remove")
         @ConfigEditorText
         public String discordUserId = "";
+
+        @ConfigOption(name = "Clear Ping ID", desc = "Click to clear the Discord user ID for pings")
+        @ConfigEditorButton(buttonText = " Clear Ping ID ")
+        public Runnable clearPingButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("discordping clear");
+                }
+            }
+        };
     }
 
     public static class AlertSpeeds {
@@ -189,6 +213,18 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorText
         public String chatWebhookUrl = "";
 
+        @ConfigOption(name = "Clear Chat Webhook", desc = "Click to clear the chat relay webhook URL")
+        @ConfigEditorButton(buttonText = " Clear Chat Webhook ")
+        public Runnable clearChatWebhookButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("chatrelay webhook clear");
+                }
+            }
+        };
+
         @Expose
         @ConfigOption(name = "Poll Port", desc = "Port of the companion bot's HTTP server (1-65535)")
         @ConfigEditorText
@@ -201,7 +237,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class Extras {
-        @ConfigOption(name = "Help", desc = "Click to view all available commands")
+        @ConfigOption(name = "Help", desc = "Click to view all available commands. You can also use /islandtime help <page> to view specific help pages (1-6)")
         @ConfigEditorButton(buttonText = " View Help ")
         public Runnable helpButton = new Runnable() {
             @Override
