@@ -152,8 +152,8 @@ public class IslandPlayerTracker {
         // Check UUID validity - real Mojang player UUIDs are version 4 (random) UUIDs
         // NPCs/bots may have version 2 UUIDs or non-standard patterns
         // Log the UUID version to help identify if bots are using non-v4 UUIDs
-        if (profile.getId() != null) {
-            java.util.UUID uuid = profile.getId();
+        if (profile.id() != null) {
+            java.util.UUID uuid = profile.id();
             int version = uuid.version();
             if (version != 4) {
                 // Real players have version 4 UUIDs, bots/NPCs often have version 2 or other versions
