@@ -25,6 +25,9 @@ public class IslandPlayerTracker {
     /** Pattern to match minion/NPC names (e.g., !C-a, !A-b, !D-f) to exclude them from tracking. */
     private static final Pattern MINION_PATTERN = Pattern.compile("^![A-Z]-[a-z]+$");
 
+    /** Pattern to match Minecraft color/formatting codes (§ followed by any character). */
+    private static final Pattern COLOR_CODE_PATTERN = Pattern.compile("§.");
+
     // Set of player names currently on the island (excluding the local player)
     private static final Set<String> currentPlayers = ConcurrentHashMap.newKeySet();
 
@@ -121,12 +124,27 @@ public class IslandPlayerTracker {
     /**
      * Check if a player name matches the pattern for minions/NPCs.
      * Minions typically have names like !C-a, !A-b, !D-f (exclamation mark, capital letter, dash, lowercase letter(s)).
+     * NPCs often have Minecraft color codes in their names (§ followed by a format character).
      *
      * @param playerName The player name to check
      * @return true if the name appears to be a minion/NPC, false if it's likely a real player
      */
     private static boolean isMinionOrNPC(String playerName) {
-        return MINION_PATTERN.matcher(playerName).matches();
+        if (playerName == null || playerName.isEmpty()) return true;
+
+        // Check for minion pattern (!C-a, !A-b, etc.)
+        if (MINION_PATTERN.matcher(playerName).matches()) {
+            return true;
+        }
+
+        // Check for Minecraft color/formatting codes (§) - real players cannot have these in their names
+        // NPCs and server-generated entities often have colored names
+        if (COLOR_CODE_PATTERN.matcher(playerName).find()) {
+            System.out.println("[IslandPlayerTracker] Filtered NPC with color code: " + playerName);
+            return true;
+        }
+
+        return false;
     }
 
     /**
