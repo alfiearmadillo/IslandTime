@@ -44,7 +44,7 @@ public class IslandTimeConfig extends Config {
 
     public static class IslandTime {
         @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island")
-        @ConfigEditorButton(buttonText = "View Stats")
+        @ConfigEditorButton(buttonText = " View Stats ")
         public Runnable viewStatsButton = new Runnable() {
             @Override
             public void run() {
@@ -63,7 +63,7 @@ public class IslandTimeConfig extends Config {
 
     public static class FuelCycles {
         @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions")
-        @ConfigEditorButton(buttonText = "View Fuel Time")
+        @ConfigEditorButton(buttonText = " View Fuel Time ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
             public void run() {
@@ -82,7 +82,7 @@ public class IslandTimeConfig extends Config {
 
     public static class FavouriteGui {
         @ConfigOption(name = "List Saved Containers", desc = "Click to view all saved container snapshots")
-        @ConfigEditorButton(buttonText = "List Saved")
+        @ConfigEditorButton(buttonText = " List Saved ")
         public Runnable listGuisButton = new Runnable() {
             @Override
             public void run() {
@@ -101,7 +101,7 @@ public class IslandTimeConfig extends Config {
 
     public static class ItemTracking {
         @ConfigOption(name = "View Tracked Item", desc = "Click to view currently tracked item")
-        @ConfigEditorButton(buttonText = "View Tracked")
+        @ConfigEditorButton(buttonText = " View Tracked ")
         public Runnable viewTrackedButton = new Runnable() {
             @Override
             public void run() {
@@ -112,15 +112,34 @@ public class IslandTimeConfig extends Config {
             }
         };
 
-        @Expose
-        @ConfigOption(name = "Tracked Item UUID", desc = "UUID of the currently tracked item (read-only, use /trackitem set)")
-        @ConfigEditorText
-        public String trackedUuid = "";
+        @ConfigOption(name = "Set Tracked Item", desc = "Hold an item and click to track it")
+        @ConfigEditorButton(buttonText = " Set from Held Item ")
+        public Runnable setTrackedButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("trackitem set");
+                }
+            }
+        };
+
+        @ConfigOption(name = "Clear Tracked Item", desc = "Click to stop tracking the current item")
+        @ConfigEditorButton(buttonText = " Clear Tracked Item ")
+        public Runnable clearTrackedButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                if (client.player != null) {
+                    client.player.networkHandler.sendChatCommand("trackitem clear");
+                }
+            }
+        };
 
         @Expose
-        @ConfigOption(name = "Tracked Item Name", desc = "Display name of the tracked item (read-only, use /trackitem set)")
+        @ConfigOption(name = "Tracked Item UUID", desc = "UUID of the currently tracked item. You can also manually paste a UUID here.")
         @ConfigEditorText
-        public String trackedItemName = "None";
+        public String trackedUuid = "";
     }
 
     public static class Discord {
@@ -154,7 +173,7 @@ public class IslandTimeConfig extends Config {
 
     public static class ChatRelay {
         @ConfigOption(name = "View Settings", desc = "Click to view chat relay settings")
-        @ConfigEditorButton(buttonText = "View Settings")
+        @ConfigEditorButton(buttonText = " View Settings ")
         public Runnable viewSettingsButton = new Runnable() {
             @Override
             public void run() {
@@ -183,7 +202,7 @@ public class IslandTimeConfig extends Config {
 
     public static class Extras {
         @ConfigOption(name = "Help", desc = "Click to view all available commands")
-        @ConfigEditorButton(buttonText = "View Help")
+        @ConfigEditorButton(buttonText = " View Help ")
         public Runnable helpButton = new Runnable() {
             @Override
             public void run() {

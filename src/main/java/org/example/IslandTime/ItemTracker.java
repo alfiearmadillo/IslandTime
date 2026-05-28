@@ -119,6 +119,22 @@ public class ItemTracker {
     public static boolean   isTracking()         { return trackedUuid != null; }
     public static AlertSpeed getAlertSpeed()     { return trackedAlertSpeed; }
 
+    public static void setTrackedUuid(String uuid) {
+        if (uuid == null || uuid.trim().isEmpty()) {
+            clearTrackedItem();
+        } else {
+            trackedUuid = uuid.trim();
+            trackedItemName = "Manually Set Item";
+            lastStatsValue = 0;
+            lastIncrementTime = System.currentTimeMillis();
+            lastCheckTime = System.currentTimeMillis();
+            lastAlertTime = 0;
+            hasAlerted = false;
+            statsIncreasingLastCheck = false;
+            save();
+        }
+    }
+
     public static void setAlertSpeed(AlertSpeed speed) {
         trackedAlertSpeed = speed;
         lastAlertTime = 0;

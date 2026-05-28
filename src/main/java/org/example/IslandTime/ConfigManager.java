@@ -131,11 +131,9 @@ public class ConfigManager {
         config.alertSpeeds.islandSpeed = convertAlertSpeedToInt(IslandAlertTracker.getAlertSpeed().name());
         config.alertSpeeds.disconnectSpeed = convertAlertSpeedToInt(DisconnectAlertTracker.getAlertSpeed().name());
 
-        // Item tracking (read-only display)
+        // Item tracking UUID (editable)
         String uuid = ItemTracker.getTrackedUuid();
-        String name = ItemTracker.getTrackedItemName();
         config.itemTracking.trackedUuid = uuid != null ? uuid : "";
-        config.itemTracking.trackedItemName = name != null ? name : "None";
 
         // Chat relay
         config.chatRelay.chatWebhookUrl = ChatRelayConfig.getChatWebhookUrl();
@@ -188,6 +186,14 @@ public class ConfigManager {
         String disconnectSpeed = convertIntToAlertSpeed(config.alertSpeeds.disconnectSpeed);
         if (!DisconnectAlertTracker.getAlertSpeed().name().equals(disconnectSpeed)) {
             DisconnectAlertTracker.setAlertSpeed(DisconnectAlertTracker.AlertSpeed.valueOf(disconnectSpeed));
+        }
+
+        // Item tracking UUID (manual editing)
+        String currentUuid = ItemTracker.getTrackedUuid();
+        String configUuid = config.itemTracking.trackedUuid != null ? config.itemTracking.trackedUuid.trim() : "";
+        String currentUuidTrimmed = currentUuid != null ? currentUuid.trim() : "";
+        if (!currentUuidTrimmed.equals(configUuid)) {
+            ItemTracker.setTrackedUuid(configUuid);
         }
 
         // Chat relay
