@@ -28,6 +28,9 @@ public class IslandPlayerTracker {
     /** Pattern to match Minecraft color/formatting codes (§ followed by any character). */
     private static final Pattern COLOR_CODE_PATTERN = Pattern.compile("§.");
 
+    /** Pattern to match bot-like names (10 lowercase alphanumeric characters, like "2su5ddf0n8"). */
+    private static final Pattern BOT_NAME_PATTERN = Pattern.compile("^[a-z0-9]{10}$");
+
     // Set of player names currently on the island (excluding the local player)
     private static final Set<String> currentPlayers = ConcurrentHashMap.newKeySet();
 
@@ -74,7 +77,7 @@ public class IslandPlayerTracker {
             com.mojang.authlib.GameProfile profile = entry.getProfile();
             if (profile != null && profile.name() != null
                 && !profile.name().equals(localPlayerName)
-                && !isMinionOrNPC(profile.name())) {
+                && !isMinionOrNPC(profile)) {
                 newPlayers.add(profile.name());
             }
         }
@@ -122,18 +125,26 @@ public class IslandPlayerTracker {
     }
 
     /**
-     * Check if a player name matches the pattern for minions/NPCs.
-     * Minions typically have names like !C-a, !A-b, !D-f (exclamation mark, capital letter, dash, lowercase letter(s)).
-     * NPCs often have Minecraft color codes in their names (§ followed by a format character).
+     * Check if a player profile matches the pattern for minions/NPCs/bots.
+     * Uses multiple heuristics:
+     * 1. Minion pattern: !C-a, !A-b, !D-f (exclamation mark, capital letter, dash, lowercase letter(s))
+     * 2. Color codes: Names with § character (real players cannot have these)
+     * 3. Bot name pattern: 10-character lowercase alphanumeric strings (e.g., "2su5ddf0n8")
+     * 4. UUID validation: Check if UUID looks like a real Mojang player UUID (version 4)
      *
-     * @param playerName The player name to check
-     * @return true if the name appears to be a minion/NPC, false if it's likely a real player
+     * @param profile The player's GameProfile to check
+     * @return true if the profile appears to be a minion/NPC/bot, false if it's likely a real player
      */
-    private static boolean isMinionOrNPC(String playerName) {
-        if (playerName == null || playerName.isEmpty()) return true;
+    private static boolean isMinionOrNPC(com.mojang.authlib.GameProfile profile) {
+        if (profile == null || profile.name() == null || profile.name().isEmpty()) {
+            return true;
+        }
+
+        String playerName = profile.name();
 
         // Check for minion pattern (!C-a, !A-b, etc.)
         if (MINION_PATTERN.matcher(playerName).matches()) {
+            System.out.println("[IslandPlayerTracker] Filtered minion: " + playerName);
             return true;
         }
 
@@ -142,6 +153,27 @@ public class IslandPlayerTracker {
         if (COLOR_CODE_PATTERN.matcher(playerName).find()) {
             System.out.println("[IslandPlayerTracker] Filtered NPC with color code: " + playerName);
             return true;
+        }
+
+        // Check for bot-like name pattern (10 lowercase alphanumeric characters)
+        // Real player names typically have capitals, underscores, or recognizable words
+        if (BOT_NAME_PATTERN.matcher(playerName).matches()) {
+            System.out.println("[IslandPlayerTracker] Filtered bot-like name: " + playerName);
+            return true;
+        }
+
+        // Check UUID validity - real Mojang player UUIDs are version 4 (random) UUIDs
+        // NPCs/bots may have version 2 UUIDs or non-standard patterns
+        if (profile.getId() != null) {
+            java.util.UUID uuid = profile.getId();
+            // Version 4 UUIDs have the format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+            // where the 13th character (version) is '4' and 17th character (variant) is 8, 9, a, or b
+            int version = uuid.version();
+            if (version != 4) {
+                // Real players have version 4 UUIDs, bots/NPCs often have version 2 or other versions
+                System.out.println("[IslandPlayerTracker] Filtered non-player UUID (version " + version + "): " + playerName + " (" + uuid + ")");
+                return true;
+            }
         }
 
         return false;
