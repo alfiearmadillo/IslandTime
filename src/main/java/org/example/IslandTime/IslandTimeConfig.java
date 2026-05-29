@@ -10,6 +10,10 @@ import com.google.gson.annotations.Expose;
  */
 public class IslandTimeConfig extends Config {
 
+    public String getTitle() {
+        return "§3IslandTime Config";
+    }
+
     @Expose
     @Category(name = "Island Time", desc = "Track time spent on your private island")
     public IslandTime islandTime = new IslandTime();
