@@ -3,15 +3,16 @@ package org.example.islandtime;
 import io.github.notenoughupdates.moulconfig.Config;
 import io.github.notenoughupdates.moulconfig.annotations.*;
 import com.google.gson.annotations.Expose;
+import io.github.notenoughupdates.moulconfig.common.text.StructuredText;
 
 /**
  * Main configuration class for IslandTime mod using MoulConfig.
  * All settings are accessible through a GUI opened via /islandtime.
  */
 public class IslandTimeConfig extends Config {
-
-    public String getTitle() {
-        return "§3IslandTime Config";
+    @Override
+    public StructuredText getTitle() {
+        return StructuredText.of("§3IslandTime Config");
     }
 
     @Expose
