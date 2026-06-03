@@ -18,6 +18,11 @@ public class MinionFuelTracker {
     private static boolean canTrackChanges = false;
     private static boolean wasInMinionGui = false; // Track if we were in a minion GUI last tick
 
+    private static boolean showFuelMessages = true;
+
+    public static boolean isShowFuelMessages() { return showFuelMessages; }
+    public static void setShowFuelMessages(boolean value) { showFuelMessages = value; }
+
     public static void checkFuelSlot() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
@@ -113,17 +118,18 @@ public class MinionFuelTracker {
             // 1. We started with the glass pane (empty slot indicator)
             // 2. AND now we have actual fuel (not glass pane, not empty)
             if (initialWasGlassPane && currentIsActualFuel) {
-                // The fuel was placed! Send the message
-                String fuelName = currentItem.getName().getString();
-                Formatting fuelColor = getFuelColor(currentItem);
+                // The fuel was placed! Send the message (if enabled)
+                if (showFuelMessages) {
+                    String fuelName = currentItem.getName().getString();
+                    Formatting fuelColor = getFuelColor(currentItem);
 
-                // Send the message
-                Text message = Text.empty()
-                        .append(Text.literal(currentMinionName).formatted(Formatting.BLUE))
-                        .append(Text.literal(" fueled with ").formatted(Formatting.GREEN))
-                        .append(Text.literal(fuelName).formatted(fuelColor));
+                    Text message = Text.empty()
+                            .append(Text.literal(currentMinionName).formatted(Formatting.BLUE))
+                            .append(Text.literal(" fueled with ").formatted(Formatting.GREEN))
+                            .append(Text.literal(fuelName).formatted(fuelColor));
 
-                client.player.sendMessage(message, false);
+                    client.player.sendMessage(message, false);
+                }
 
                 // Notify FuelCycleTracker
                 FuelCycleTracker.onMinionFueled();

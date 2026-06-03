@@ -140,6 +140,10 @@ public class ConfigManager {
         config.chatRelay.pollPortString = String.valueOf(ChatRelayConfig.getPollPort());
         config.chatRelay.pollSecret = ChatRelayConfig.getPollSecret();
 
+        // Message toggles
+        config.messages.minionFuelMessages  = MinionFuelTracker.isShowFuelMessages();
+        config.messages.islandLeaveMessages = IslandPlayerTracker.isShowLeaveMessages();
+
         saveToFile();
     }
 
@@ -210,6 +214,14 @@ public class ConfigManager {
         }
         if (!ChatRelayConfig.getPollSecret().equals(config.chatRelay.pollSecret)) {
             ChatRelayConfig.setPollSecret(config.chatRelay.pollSecret);
+        }
+
+        // Message toggles
+        if (MinionFuelTracker.isShowFuelMessages() != config.messages.minionFuelMessages) {
+            MinionFuelTracker.setShowFuelMessages(config.messages.minionFuelMessages);
+        }
+        if (IslandPlayerTracker.isShowLeaveMessages() != config.messages.islandLeaveMessages) {
+            IslandPlayerTracker.setShowLeaveMessages(config.messages.islandLeaveMessages);
         }
 
         saveToFile();

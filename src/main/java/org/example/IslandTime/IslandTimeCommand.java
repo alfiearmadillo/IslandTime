@@ -549,6 +549,84 @@ public class IslandTimeCommand {
                             return 1;
                         })));
 
+        // /minionfuelmessages
+        dispatcher.register(literal("minionfuelmessages")
+                .executes(ctx -> {
+                    MinecraftClient client = ctx.getSource().getClient();
+                    boolean current = MinionFuelTracker.isShowFuelMessages();
+                    client.player.sendMessage(
+                            Text.literal("Minion fuel messages are currently: ").formatted(Formatting.AQUA)
+                                    .append(Text.literal(current ? "enabled" : "disabled")
+                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
+                            false
+                    );
+                    client.player.sendMessage(
+                            Text.literal("Use /minionfuelmessages <on|off> to change.").formatted(Formatting.GRAY),
+                            false
+                    );
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            MinecraftClient client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                MinionFuelTracker.setShowFuelMessages(true);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Minion fuel messages enabled.").formatted(Formatting.GREEN), false);
+                            } else if (state.equals("off")) {
+                                MinionFuelTracker.setShowFuelMessages(false);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Minion fuel messages disabled.").formatted(Formatting.YELLOW), false);
+                            } else {
+                                client.player.sendMessage(
+                                        Text.literal("Usage: /minionfuelmessages <on|off>").formatted(Formatting.RED), false);
+                                return 0;
+                            }
+                            return 1;
+                        })));
+
+        // /islandleavemessages
+        dispatcher.register(literal("islandleavemessages")
+                .executes(ctx -> {
+                    MinecraftClient client = ctx.getSource().getClient();
+                    boolean current = IslandPlayerTracker.isShowLeaveMessages();
+                    client.player.sendMessage(
+                            Text.literal("Island leave messages are currently: ").formatted(Formatting.AQUA)
+                                    .append(Text.literal(current ? "enabled" : "disabled")
+                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
+                            false
+                    );
+                    client.player.sendMessage(
+                            Text.literal("Use /islandleavemessages <on|off> to change.").formatted(Formatting.GRAY),
+                            false
+                    );
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            MinecraftClient client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                IslandPlayerTracker.setShowLeaveMessages(true);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Island leave messages enabled.").formatted(Formatting.GREEN), false);
+                            } else if (state.equals("off")) {
+                                IslandPlayerTracker.setShowLeaveMessages(false);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Island leave messages disabled.").formatted(Formatting.YELLOW), false);
+                            } else {
+                                client.player.sendMessage(
+                                        Text.literal("Usage: /islandleavemessages <on|off>").formatted(Formatting.RED), false);
+                                return 0;
+                            }
+                            return 1;
+                        })));
+
         // /favouritegui
         dispatcher.register(literal("favouritegui")
                 .executes(ctx -> {
@@ -727,55 +805,49 @@ public class IslandTimeCommand {
 
     private static void showHelp(MinecraftClient client, int page) {
         String[][] commands = {
-                // Page 1 - Basic commands
+                // Page 1 - Island time & fuel time
                 {"/islandtime", "Open the configuration GUI (all settings in one place)"},
                 {"/islandtime recent", "Show last 7 days of island time"},
                 {"/islandtime <DD-MM-YY>", "Show specific date (e.g., /islandtime 1-1-26)"},
-                {"/islandtime help [page]", "Show this help page"},
                 {"/fueltime", "Show current and recent fuel cycle stats (last 4 cycles)"},
                 {"/fueltime <cycle>", "Show details for a specific cycle number (e.g., /fueltime 6)"},
-                {"/fueltime debug", "Inject a fake completed cycle and attempt save (for diagnostics)"},
 
-                // Page 2 - Webhook & tracking
+                // Page 2 - Discord webhook & pings
                 {"/webhook", "Show current webhook URL"},
-                {"/webhook <url>", "Set webhook URL (for Discord alerts)"},
-                {"/webhook clear", "Remove webhook"},
-                {"/discordping", "Show current Discord user ID for webhook pings"},
-                {"/discordping <userid>", "Set Discord user ID to ping in webhook alerts"},
+                {"/webhook <url>", "Set webhook URL (for Discord alerts). Must start with https://discord.com/api/webhooks/"},
+                {"/webhook clear", "Remove the webhook URL"},
+                {"/discordping <userid>", "Set your Discord user ID to ping in webhook alerts (must be numeric)"},
                 {"/discordping clear", "Remove Discord ping (webhooks won't ping anyone)"},
-                {"/trackitem", "Show currently tracked item"},
 
                 // Page 3 - Item tracking
+                {"/trackitem", "Show the currently tracked item"},
                 {"/trackitem set", "Track the item in your main hand (must have UUID + stats_book)"},
                 {"/trackitem clear", "Stop tracking the current item"},
-                {"/trackedalertspeed", "Show current tracked item alert speed and options"},
-                {"/trackedalertspeed <speed>", "Set tracked item alert speed (off/fast/normal/slow)"},
+                {"/trackedalertspeed", "Show current tracked-item alert speed and options"},
+                {"/trackedalertspeed <speed>", "Set tracked-item alert speed (off / fast / normal / slow)"},
+
+                // Page 4 - Alert speeds
                 {"/islandalertspeed", "Show current island alert speed and options"},
-                {"/islandalertspeed <speed>", "Set island alert speed (off/fast/normal/slow)"},
+                {"/islandalertspeed <speed>", "Set island alert speed (off / fast / normal / slow)"},
                 {"/disconnectalertspeed", "Show current disconnect alert speed and options"},
+                {"/disconnectalertspeed <speed>", "Set disconnect alert speed. Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
+                {"/fueltime debug", "Inject a fake completed cycle and attempt save (for diagnostics)"},
 
-                // Page 4 - Alert settings & tracking toggles
-                {"/disconnectalertspeed <speed>", "Set disconnect alert speed (off/fast/normal/slow). " +
-                        "Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
-                {"/trackislandtime", "Show whether island-time tracking is on or off"},
-                {"/trackislandtime <on|off>", "Enable or disable island-time tracking. " +
-                        "Disabling preserves all existing data and finishes the current day, " +
-                        "but no new days will be tracked."},
-                {"/trackfuelcycles", "Show whether fuel-cycle tracking is on or off"},
-                {"/trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. " +
-                        "Disabling lets any active cycle complete naturally, " +
-                        "but fueling a minion will not start a new cycle."},
+                // Page 5 - Tracking toggles & chat messages
+                {"/trackislandtime <on|off>", "Enable or disable island-time tracking. Disabling preserves existing data but no new days will be tracked."},
+                {"/trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. Any active cycle completes naturally; no new cycles will start."},
+                {"/minionfuelmessages <on|off>", "Enable or disable local chat messages when you fuel a minion"},
+                {"/islandleavemessages <on|off>", "Enable or disable local chat messages when a visitor leaves your island"},
+                {"/favouritegui toggle", "Toggle container snapshot tracking on/off. When off, /favouritegui save has no data to work from."},
 
-                // Page 5 - Favourite GUI
+                // Page 6 - Favourite GUI
                 {"/favouritegui", "List all saved container layouts"},
                 {"/favouritegui save <name>", "Save the currently open container under <name>"},
-                {"/favouritegui delete <name>", "Remove a previously saved container layout"},
                 {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
-                {"/favouritegui open <name>", "Alias for /favouritegui view <name>"},
-                {"/favouritegui toggle", "Toggle container snapshot tracking on/off. " +
-                        "When off, opening containers is not tracked so /favouritegui save will have no data to work from."},
+                {"/favouritegui delete <name>", "Remove a previously saved container layout"},
+                {"/islandtime help [page]", "Show this help page"},
 
-                // Page 6 - Chat relay
+                // Page 7 - Chat relay
                 {"/chatrelay", "Show current chat relay config (webhook, port, secret)"},
                 {"/chatrelay webhook <url>", "Set the Discord webhook for outbound island chat relay"},
                 {"/chatrelay webhook clear", "Disable outbound chat relay"},
@@ -783,7 +855,7 @@ public class IslandTimeCommand {
                 {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
         };
 
-        int commandsPerPage = 7;
+        int commandsPerPage = 5;
         int totalCommands   = commands.length;
         int totalPages      = (int) Math.ceil((double) totalCommands / commandsPerPage);
 
