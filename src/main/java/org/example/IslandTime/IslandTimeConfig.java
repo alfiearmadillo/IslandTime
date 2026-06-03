@@ -44,12 +44,12 @@ public class IslandTimeConfig extends Config {
     public ChatRelay chatRelay = new ChatRelay();
 
     @Expose
-    @Category(name = "Extras", desc = "Additional commands and features")
-    public Extras extras = new Extras();
-
-    @Expose
     @Category(name = "Messages", desc = "Toggle local chat messages from the mod")
     public Messages messages = new Messages();
+
+    @Expose
+    @Category(name = "Extras", desc = "Additional commands and features")
+    public Extras extras = new Extras();
 
     public static class IslandTime {
         @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island (last 7 days). You can also use /islandtime <date> to view a specific date (e.g., /islandtime 1-1-26)")

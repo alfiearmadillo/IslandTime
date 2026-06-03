@@ -26,6 +26,12 @@ public class IslandPlayerTracker {
     private static final Pattern VALID_USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
 
     /**
+     * Sentinel value stored in playerRankComponents for players with no rank.
+     * ConcurrentHashMap does not permit null values, so we use this instead.
+     */
+    private static final Text EMPTY_RANK = Text.empty();
+
+    /**
      * Keyed by plain username.
      * Value is the rank bracket Text component (e.g. "[MVP+]" with full colours),
      * or null for rankless players. Populated when the player first appears in the
@@ -73,7 +79,8 @@ public class IslandPlayerTracker {
 
             // Store rank component the first time we see this player
             if (!playerRankComponents.containsKey(name)) {
-                playerRankComponents.put(name, extractRankComponent(entry.getDisplayName()));
+                Text rank = extractRankComponent(entry.getDisplayName());
+                playerRankComponents.put(name, rank != null ? rank : EMPTY_RANK);
             }
         }
 
@@ -137,7 +144,9 @@ public class IslandPlayerTracker {
     // -------------------------------------------------------------------------
 
     private static void notifyPlayerLeft(MinecraftClient client, String playerName) {
-        Text rankComponent = playerRankComponents.get(playerName); // null = no rank
+        Text rankComponent = playerRankComponents.get(playerName);
+        // Treat the EMPTY_RANK sentinel (rankless player) the same as absent
+        if (rankComponent == EMPTY_RANK) rankComponent = null;
 
         // --- Discord webhook ---
         String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
