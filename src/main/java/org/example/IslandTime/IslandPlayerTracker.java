@@ -13,10 +13,14 @@ import java.util.regex.Pattern;
 /**
  * Tracks players on the island by monitoring the client's player list.
  *
- * When a player is first seen we extract and store their rank bracket Text
- * (with full colours including custom plus colours) directly from the tab-list
+ * When a player is first seen we extract and store their SkyBlock level bracket
+ * Text (e.g. "[360]" with its original colour) directly from the tab-list
  * display name. That stored Text is then used when they leave, both for the
  * local chat message and the Discord webhook notification.
+ *
+ * The level component is retried on every tick until a non-empty display name
+ * is available, to handle the case where Hypixel sends the decorated name
+ * asynchronously after the player entry first appears.
  */
 public class IslandPlayerTracker {
 
@@ -26,18 +30,20 @@ public class IslandPlayerTracker {
     private static final Pattern VALID_USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
 
     /**
-     * Sentinel value stored in playerRankComponents for players with no rank.
+     * Sentinel value stored in playerLevelComponents for players whose display
+     * name has not loaded yet, or who have no level bracket.
      * ConcurrentHashMap does not permit null values, so we use this instead.
      */
-    private static final Text EMPTY_RANK = Text.empty();
+    private static final Text EMPTY_LEVEL = Text.empty();
 
     /**
      * Keyed by plain username.
-     * Value is the rank bracket Text component (e.g. "[MVP+]" with full colours),
-     * or null for rankless players. Populated when the player first appears in the
-     * tab list, so it's available even after their entry is gone.
+     * Value is the SkyBlock level bracket Text component (e.g. "[360]" with its
+     * original colour), or EMPTY_LEVEL if not yet loaded / not present.
+     * Retried on each tick while the player is still on the island, so a late-
+     * arriving display name is picked up without missing the departure message.
      */
-    private static final Map<String, Text> playerRankComponents = new ConcurrentHashMap<>();
+    private static final Map<String, Text> playerLevelComponents = new ConcurrentHashMap<>();
 
     /** Plain username set — used for departure detection. */
     private static final Set<String> currentPlayers = ConcurrentHashMap.newKeySet();
@@ -66,7 +72,7 @@ public class IslandPlayerTracker {
         Collection<PlayerListEntry> playerList = client.getNetworkHandler().getPlayerList();
         String localPlayerName = client.player.getName().getString();
 
-        // Build fresh name set and cache any new players' rank components
+        // Build fresh name set and cache/retry each player's level component
         Set<String> newNames = new HashSet<>();
         for (PlayerListEntry entry : playerList) {
             com.mojang.authlib.GameProfile profile = entry.getProfile();
@@ -77,10 +83,13 @@ public class IslandPlayerTracker {
             String name = profile.name();
             newNames.add(name);
 
-            // Store rank component the first time we see this player
-            if (!playerRankComponents.containsKey(name)) {
-                Text rank = extractRankComponent(entry.getDisplayName());
-                playerRankComponents.put(name, rank != null ? rank : EMPTY_RANK);
+            // Retry level lookup on every tick until we get a real value.
+            // Hypixel sends decorated display names asynchronously, so the first
+            // tick may see an empty/plain name — we keep trying until it loads.
+            if (!playerLevelComponents.containsKey(name)
+                    || playerLevelComponents.get(name) == EMPTY_LEVEL) {
+                Text level = extractLevelComponent(entry.getDisplayName());
+                playerLevelComponents.put(name, level != null ? level : EMPTY_LEVEL);
             }
         }
 
@@ -116,7 +125,7 @@ public class IslandPlayerTracker {
 
     private static void reset() {
         currentPlayers.clear();
-        playerRankComponents.clear();
+        playerLevelComponents.clear();
         initialized     = false;
         islandEntryTime = 0;
     }
@@ -144,17 +153,16 @@ public class IslandPlayerTracker {
     // -------------------------------------------------------------------------
 
     private static void notifyPlayerLeft(MinecraftClient client, String playerName) {
-        Text rankComponent = playerRankComponents.get(playerName);
-        // Treat the EMPTY_RANK sentinel (rankless player) the same as absent
-        if (rankComponent == EMPTY_RANK) rankComponent = null;
+        Text levelComponent = playerLevelComponents.get(playerName);
+        // Treat the EMPTY_LEVEL sentinel as absent
+        if (levelComponent == EMPTY_LEVEL) levelComponent = null;
 
         // --- Discord webhook ---
         String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
         if (webhookUrl != null && !webhookUrl.isEmpty()) {
-            // Build a plain-text version of the rank for the webhook
-            String rankPrefix = rankComponent != null ? rankComponent.getString() + " " : "";
+            String levelPrefix = levelComponent != null ? levelComponent.getString() + " " : "";
             IslandChatRelay.sendWebhookAsync(webhookUrl, "IslandTime",
-                    rankPrefix + playerName + " left the island");
+                    levelPrefix + playerName + " left the island");
         }
 
         // --- Local chat message ---
@@ -164,9 +172,9 @@ public class IslandPlayerTracker {
         MutableText msg = Text.empty()
                 .append(Text.literal("[IslandTime] ").formatted(Formatting.AQUA));
 
-        // Rank bracket with full original colours (including custom plus colour)
-        if (rankComponent != null) {
-            msg.append(rankComponent).append(Text.literal(" "));
+        // SkyBlock level bracket with original colour (e.g. "[360]" in grey)
+        if (levelComponent != null) {
+            msg.append(levelComponent).append(Text.literal(" "));
         }
 
         // PlayerName left Your Island.
@@ -176,8 +184,8 @@ public class IslandPlayerTracker {
 
         client.player.sendMessage(msg, false);
 
-        // Clean up stored rank now that the player has left
-        playerRankComponents.remove(playerName);
+        // Clean up stored level now that the player has left
+        playerLevelComponents.remove(playerName);
     }
 
     // -------------------------------------------------------------------------
@@ -185,18 +193,14 @@ public class IslandPlayerTracker {
     // -------------------------------------------------------------------------
 
     /**
-     * Extracts the rank bracket component (e.g. "[VIP+]", "[MVP++]") from a
-     * SkyBlock tab-list display name Text, preserving all original colours.
+     * Extracts the SkyBlock level bracket component (e.g. "[360]") from a
+     * tab-list display name Text, preserving its original colour.
      *
-     * SkyBlock builds display names as structured Text trees. The rank bracket
-     * is always a sibling component whose full string contains "[" and "]".
-     * Reading getString() on each sibling covers nested children too, so a
-     * bracket like "[MVP§c++§6]" (where ++ is a differently coloured child)
-     * is matched correctly and returned with all its nested formatting intact.
-     *
-     * Returns null for rankless players.
+     * SkyBlock builds display names as structured Text trees. The level bracket
+     * is the first sibling component whose full string contains "[" and "]".
+     * Returns null if the display name hasn't loaded yet or has no bracket.
      */
-    private static Text extractRankComponent(Text displayName) {
+    private static Text extractLevelComponent(Text displayName) {
         if (displayName == null) return null;
         for (Text sibling : displayName.getSiblings()) {
             String plain = sibling.getString();
