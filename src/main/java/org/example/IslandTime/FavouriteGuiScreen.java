@@ -1,16 +1,16 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.input.KeyInput;
-import net.minecraft.item.ItemStack;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.KeyboardInput;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 /**
  * Standalone screen that renders the FavouriteGuiViewer overlay.
- * Used when the viewer is opened outside of a HandledScreen context
+ * Used when the viewer is opened outside of a AbstractContainerScreen context
  * (e.g., from chat or the world).
  *
  * Mouse click and scroll blocking is handled globally by MouseMixin,
@@ -19,11 +19,11 @@ import org.lwjgl.glfw.GLFW;
 public class FavouriteGuiScreen extends Screen {
 
     public FavouriteGuiScreen() {
-        super(Text.empty());
+        super(Component.empty());
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         FavouriteGuiViewer.render(context, mouseX, mouseY);
 
         if (BackpackHoverHandler.isFrozen()) {
@@ -39,8 +39,8 @@ public class FavouriteGuiScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(KeyInput input) {
-        long window = MinecraftClient.getInstance().getWindow().getHandle();
+    public boolean keyPressed(KeyboardInput input) {
+        long window = Minecraft.getInstance().getWindow().getHandle();
 
         if (BackpackHoverHandler.isFrozen()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;

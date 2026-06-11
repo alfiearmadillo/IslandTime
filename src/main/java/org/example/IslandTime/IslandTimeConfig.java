@@ -59,7 +59,7 @@ public class IslandTimeConfig extends Config {
         public Runnable viewStatsButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("islandtime recent");
                 }
@@ -78,7 +78,7 @@ public class IslandTimeConfig extends Config {
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("fueltime");
                 }
@@ -97,7 +97,7 @@ public class IslandTimeConfig extends Config {
         public Runnable listGuisButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("favouritegui");
                 }
@@ -116,7 +116,7 @@ public class IslandTimeConfig extends Config {
         public Runnable viewTrackedButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("trackitem");
                 }
@@ -128,7 +128,7 @@ public class IslandTimeConfig extends Config {
         public Runnable setTrackedButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("trackitem set");
                 }
@@ -140,7 +140,7 @@ public class IslandTimeConfig extends Config {
         public Runnable clearTrackedButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("trackitem clear");
                 }
@@ -164,7 +164,7 @@ public class IslandTimeConfig extends Config {
         public Runnable clearWebhookButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("webhook clear");
                 }
@@ -181,7 +181,7 @@ public class IslandTimeConfig extends Config {
         public Runnable clearPingButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("discordping clear");
                 }
@@ -212,7 +212,7 @@ public class IslandTimeConfig extends Config {
         public Runnable viewSettingsButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("chatrelay");
                 }
@@ -229,7 +229,7 @@ public class IslandTimeConfig extends Config {
         public Runnable clearChatWebhookButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("chatrelay webhook clear");
                 }
@@ -253,7 +253,7 @@ public class IslandTimeConfig extends Config {
         public Runnable helpButton = new Runnable() {
             @Override
             public void run() {
-                net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.networkHandler.sendChatCommand("islandtime help");
                 }

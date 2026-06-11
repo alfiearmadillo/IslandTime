@@ -1,16 +1,16 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.tooltip.TooltipType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,12 +55,12 @@ public class FavouriteGuiViewer {
         active = true;
         hoveredIndex = -1;
 
-        // If there is no HandledScreen already open to render the overlay, open a
+        // If there is no AbstractContainerScreen already open to render the overlay, open a
         // standalone screen so the viewer works "anytime" from chat or the world.
         // Deferred via client.execute() so the chat screen's own close logic
         // (which runs after the command returns) cannot overwrite our screen.
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (!(client.currentScreen instanceof HandledScreen)) {
+        Minecraft client = Minecraft.getInstance();
+        if (!(client.screen instanceof AbstractContainerScreen)) {
             client.execute(() -> client.setScreen(new FavouriteGuiScreen()));
         }
 
@@ -95,13 +95,13 @@ public class FavouriteGuiViewer {
     /**
      * Render the viewer overlay - called from a screen render method
      */
-    public static void render(DrawContext context, int mouseX, int mouseY) {
+    public static void render(GuiGraphics context, int mouseX, int mouseY) {
         if (!active || currentContainer == null || displayItems == null) {
             return;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        TextRenderer tr = client.textRenderer;
+        Minecraft client = Minecraft.getInstance();
+        Font tr = client.font;
 
         // Darken the background
         int sw = client.getWindow().getScaledWidth();
@@ -114,9 +114,9 @@ public class FavouriteGuiViewer {
         int gridW = cols * SLOT_SIZE;
         int gridH = rows * SLOT_SIZE;
 
-        Text title = Text.literal(currentContainer.title).formatted(Formatting.WHITE);
-        Text subtitle = Text.literal("Saved as: " + currentContainerName).formatted(Formatting.GRAY);
-        Text hint = Text.literal("Press ESC or E to close").formatted(Formatting.DARK_GRAY);
+        Component title = Component.literal(currentContainer.title).withStyle(ChatFormatting.WHITE);
+        Component subtitle = Component.literal("Saved as: " + currentContainerName).withStyle(ChatFormatting.GRAY);
+        Component hint = Component.literal("Press ESC or E to close").withStyle(ChatFormatting.DARK_GRAY);
 
         int titleW = tr.getWidth(title);
         int subtitleW = tr.getWidth(subtitle);
@@ -137,12 +137,12 @@ public class FavouriteGuiViewer {
         // Draw title
         int ty = py + PADDING;
         int titleX = px + (panelW - titleW) / 2;
-        context.drawText(tr, title, titleX, ty, -1, true);
+        context.drawString(tr, title, titleX, ty, -1, true);
         ty += titleH;
 
         // Draw subtitle
         int subtitleX = px + (panelW - subtitleW) / 2;
-        context.drawText(tr, subtitle, subtitleX, ty, -1, false);
+        context.drawString(tr, subtitle, subtitleX, ty, -1, false);
         ty += subtitleH + SPACER;
 
         // Draw separator
@@ -166,8 +166,8 @@ public class FavouriteGuiViewer {
             // Draw item if present
             ItemStack item = i < displayItems.size() ? displayItems.get(i) : ItemStack.EMPTY;
             if (!item.isEmpty()) {
-                context.drawItem(item, sx, sy);
-                context.drawStackOverlay(tr, item, sx, sy);
+                context.renderItem(item, sx, sy);
+                context.renderItemDecorations(tr, item, sx, sy);
             }
 
             // Hover highlight
@@ -181,7 +181,7 @@ public class FavouriteGuiViewer {
         // Draw hint text
         int hintY = gridTop + gridH + SPACER;
         int hintX = px + (panelW - tr.getWidth(hint.getString())) / 2;
-        context.drawText(tr, hint, hintX, hintY, -1, false);
+        context.drawString(tr, hint, hintX, hintY, -1, false);
 
         // Draw tooltip for hovered item — suppressed when BackpackHoverHandler is
         // showing its own overlay on top (it draws its own tooltip for the item
@@ -190,13 +190,13 @@ public class FavouriteGuiViewer {
                 && !BackpackHoverHandler.hasBackpackHovered()) {
             ItemStack hovered = displayItems.get(hoveredIndex);
             if (!hovered.isEmpty()) {
-                List<Text> tooltip = hovered.getTooltip(
-                        Item.TooltipContext.create(client.world),
+                List<Component> tooltip = hovered.getTooltip(
+                        Item.TooltipContext.create(client.level),
                         client.player,
                         client.options.advancedItemTooltips
-                                ? TooltipType.ADVANCED
-                                : TooltipType.BASIC);
-                context.drawTooltip(tr, tooltip, mouseX, mouseY);
+                                ? TooltipFlag.ADVANCED
+                                : TooltipFlag.BASIC);
+                context.renderTooltip(tr, tooltip, mouseX, mouseY);
             }
         }
     }
@@ -207,7 +207,7 @@ public class FavouriteGuiViewer {
 
     private static List<ItemStack> deserializeItems(FavouriteGuiManager.SavedContainer container) {
         List<ItemStack> items = new ArrayList<>();
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
 
         // Initialize with empty stacks
         for (int i = 0; i < container.size; i++) {
@@ -224,7 +224,7 @@ public class FavouriteGuiViewer {
                 ItemStack stack = ItemStack.CODEC
                         .parse(client.getNetworkHandler() != null
                                 ? client.getNetworkHandler().getRegistryManager().getOps(NbtOps.INSTANCE)
-                                : DynamicRegistryManager.EMPTY.getOps(NbtOps.INSTANCE),
+                                : RegistryAccess.EMPTY.getOps(NbtOps.INSTANCE),
                                 savedItem.nbt)
                         .result()
                         .orElse(ItemStack.EMPTY);
@@ -260,7 +260,7 @@ public class FavouriteGuiViewer {
     // Panel background
     // -------------------------------------------------------------------------
 
-    private static void drawPanelBackground(DrawContext ctx, int x, int y, int w, int h) {
+    private static void drawPanelBackground(GuiGraphics ctx, int x, int y, int w, int h) {
         ctx.fill(x + 1, y, x + w - 1, y + h, BG);
         ctx.fill(x, y + 1, x + 1, y + h - 1, BG);
         ctx.fill(x + w - 1, y + 1, x + w, y + h - 1, BG);

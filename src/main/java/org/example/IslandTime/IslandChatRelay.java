@@ -1,8 +1,8 @@
 package org.example.islandtime;
 
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -129,7 +129,7 @@ public class IslandChatRelay {
     // Outbound: island chat → Discord webhook
     // -------------------------------------------------------------------------
 
-    private static void processOutbound(Text message) {
+    private static void processOutbound(Component message) {
         String raw = FORMAT_STRIP.matcher(message.getString()).replaceAll("").trim();
 
         // ── Echo detection after sending a message ───────────────────────────
@@ -277,7 +277,7 @@ public class IslandChatRelay {
         if (!VALID_NAME.matcher(senderName).matches()) return; // not a username — skip
 
         // Don't relay the local player's own messages back to Discord
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             String localName = mc.player.getName().getString();
             if (localName.equalsIgnoreCase(senderName)) return;
@@ -427,7 +427,7 @@ public class IslandChatRelay {
      * sendChatCommand() sends a command WITHOUT a leading slash.
      */
     private static void dispatchAcCommand(String message) {
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.getNetworkHandler() == null) return;
 
         final String command;

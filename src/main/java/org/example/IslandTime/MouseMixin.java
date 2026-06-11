@@ -1,7 +1,7 @@
 package org.example.islandtime.mixin;
 
-import net.minecraft.client.Mouse;
-import net.minecraft.client.input.MouseInput;
+import net.minecraft.client.MouseHandler;
+import net.minecraft.client.MouseInput;
 import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.FavouriteGuiViewer;
 import org.lwjgl.glfw.GLFW;
@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(Mouse.class)
+@Mixin(MouseHandler.class)
 public class MouseMixin {
 
     @Unique

@@ -6,13 +6,6 @@ pluginManagement {
         }
         gradlePluginPortal()
     }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "fabric-loom") {
-                useModule("net.fabricmc:fabric-loom:${requested.version}")
-            }
-        }
-    }
 }
 
 rootProject.name = "IslandTime"

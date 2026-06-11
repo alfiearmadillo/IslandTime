@@ -1,17 +1,17 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
-import net.minecraft.item.ItemStack;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.NbtSizeTracker;
-import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.Slot;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -96,23 +96,23 @@ public class FavouriteGuiManager {
     }
 
     /**
-     * Called every client tick. Snapshots the currently open GenericContainerScreen so
+     * Called every client tick. Snapshots the currently open ContainerScreen so
      * that saveCurrentContainer() can still be called after the GUI is closed.
      */
-    public static void tickScreenSnapshot(MinecraftClient client) {
+    public static void tickScreenSnapshot(Minecraft client) {
         if (!trackingEnabled) return;
         if (client.player == null) return;
-        if (!(client.currentScreen instanceof GenericContainerScreen containerScreen)) return;
-        if (!(client.player.currentScreenHandler instanceof GenericContainerScreenHandler containerHandler)) return;
+        if (!(client.screen instanceof ContainerScreen containerScreen)) return;
+        if (!(client.player.containerMenu instanceof ChestMenu containerHandler)) return;
 
         String title = containerScreen.getTitle().getString();
         int totalSlots    = containerHandler.slots.size();
         int containerSize = totalSlots - 36;
         if (containerSize <= 0) return;
 
-        DynamicRegistryManager reg = client.getNetworkHandler() != null
+        RegistryAccess reg = client.getNetworkHandler() != null
                 ? client.getNetworkHandler().getRegistryManager()
-                : DynamicRegistryManager.EMPTY;
+                : RegistryAccess.EMPTY;
 
         List<SavedItem> items = new ArrayList<>();
         for (int i = 0; i < containerSize; i++) {
@@ -140,24 +140,24 @@ public class FavouriteGuiManager {
      * @return true if saved successfully, false otherwise
      */
     public static boolean saveCurrentContainer(String name) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
 
         String title;
         int containerSize;
         List<SavedItem> items;
 
-        if (client.currentScreen instanceof GenericContainerScreen containerScreen
+        if (client.screen instanceof ContainerScreen containerScreen
                 && client.player != null
-                && client.player.currentScreenHandler instanceof GenericContainerScreenHandler containerHandler) {
+                && client.player.containerMenu instanceof ChestMenu containerHandler) {
             // Container is currently open — read it directly
             title = containerScreen.getTitle().getString();
             int totalSlots = containerHandler.slots.size();
             containerSize  = totalSlots - 36;
             if (containerSize <= 0) return false;
 
-            DynamicRegistryManager reg = client.getNetworkHandler() != null
+            RegistryAccess reg = client.getNetworkHandler() != null
                     ? client.getNetworkHandler().getRegistryManager()
-                    : DynamicRegistryManager.EMPTY;
+                    : RegistryAccess.EMPTY;
 
             items = new ArrayList<>();
             for (int i = 0; i < containerSize; i++) {
@@ -448,7 +448,7 @@ public class FavouriteGuiManager {
     private static NbtCompound nbtFromBase64(String base64) {
         try {
             byte[] bytes = Base64.getDecoder().decode(base64);
-            return NbtIo.readCompressed(new ByteArrayInputStream(bytes), NbtSizeTracker.ofUnlimitedBytes());
+            return NbtIo.readCompressed(new ByteArrayInputStream(bytes), NbtAccounter.unlimitedHeap());
         } catch (Exception e) {
             System.err.println("[FavouriteGuiManager] Failed to deserialise NBT: " + e.getMessage());
             return null;

@@ -1,11 +1,11 @@
 package org.example.islandtime.mixin;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.client.input.KeyInput;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.KeyboardInput;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.Slot;
 import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.BackpackNbtParser;
 import org.example.islandtime.FakeSlot;
@@ -21,8 +21,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(value = HandledScreen.class, priority = 1100)
-public class HandledScreenMixin {
+@Mixin(value = AbstractContainerScreen.class, priority = 1100)
+public class AbstractContainerScreenMixin {
 
     @Shadow @Nullable protected Slot focusedSlot;
 
@@ -38,12 +38,12 @@ public class HandledScreenMixin {
     // -------------------------------------------------------------------------
 
     @Inject(method = "render", at = @At("TAIL"))
-    private void islandtime$afterRender(DrawContext context,
+    private void islandtime$afterRender(GuiGraphics context,
                                         int mouseX, int mouseY,
                                         float delta,
                                         CallbackInfo ci) {
 
-        // ── FavouriteGuiViewer active (overlay on top of a HandledScreen) ──
+        // ── FavouriteGuiViewer active (overlay on top of a AbstractContainerScreen) ──
         if (FavouriteGuiViewer.isActive()) {
             FavouriteGuiViewer.render(context, mouseX, mouseY);
 
@@ -51,7 +51,7 @@ public class HandledScreenMixin {
 
             // Remap focusedSlot so keybinding mods (e.g. Firmament) read the
             // correct item rather than whatever happens to be under the cursor
-            // in the underlying HandledScreen.
+            // in the underlying AbstractContainerScreen.
             focusedSlot = viewerHovered.isEmpty() ? null : new FakeSlot(viewerHovered);
 
             // Frozen backpack inside the viewer takes priority
@@ -62,7 +62,7 @@ public class HandledScreenMixin {
 
             // Backpack hover for items within the viewer
             if (!viewerHovered.isEmpty() && BackpackNbtParser.hasBackpackData(viewerHovered)) {
-                HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+                AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
                 BackpackHoverHandler.onBackpackHovered(viewerHovered, context, mouseX, mouseY, self);
             } else {
                 BackpackHoverHandler.clearHovered();
@@ -95,7 +95,7 @@ public class HandledScreenMixin {
             return;
         }
 
-        HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+        AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
         BackpackHoverHandler.onBackpackHovered(stack, context, mouseX, mouseY, self);
     }
 
@@ -104,7 +104,7 @@ public class HandledScreenMixin {
     // -------------------------------------------------------------------------
 
     @Inject(method = "drawMouseoverTooltip", at = @At("HEAD"), cancellable = true)
-    private void islandtime$cancelTooltipForBackpack(DrawContext context,
+    private void islandtime$cancelTooltipForBackpack(GuiGraphics context,
                                                      int mouseX, int mouseY,
                                                      CallbackInfo ci) {
         if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.hasBackpackHovered()) {
@@ -151,9 +151,9 @@ public class HandledScreenMixin {
     // -------------------------------------------------------------------------
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
-    private void islandtime$beforeKeyPressed(KeyInput input,
+    private void islandtime$beforeKeyPressed(KeyboardInput input,
                                              CallbackInfoReturnable<Boolean> cir) {
-        long window = MinecraftClient.getInstance().getWindow().getHandle();
+        long window = Minecraft.getInstance().getWindow().getHandle();
 
         // ── FavouriteGuiViewer active ──────────────────────────────────────
         if (FavouriteGuiViewer.isActive()) {
@@ -204,7 +204,7 @@ public class HandledScreenMixin {
             // render TAIL, so Firmament will read the correct item.
             // We deliberately do NOT cancel here — the event falls through to
             // any other mods that inject into keyPressed.
-            // Vanilla HandledScreen slot operations are safe because the FakeSlot
+            // Vanilla AbstractContainerScreen slot operations are safe because the FakeSlot
             // blocks all mutations (canInsert/canTakeItems return false).
             return;
         }
@@ -245,7 +245,7 @@ public class HandledScreenMixin {
     }
 
     @Inject(method = "keyPressed", at = @At("TAIL"))
-    private void islandtime$afterKeyPressed(KeyInput input,
+    private void islandtime$afterKeyPressed(KeyboardInput input,
                                             CallbackInfoReturnable<Boolean> cir) {
         if (islandtime$savedSlot != null) {
             focusedSlot = islandtime$savedSlot;
