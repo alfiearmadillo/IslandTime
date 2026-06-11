@@ -30,12 +30,46 @@ public class IslandTimeCommand {
 
     private static void registerCommand(CommandDispatcher<FabricClientCommandSource> dispatcher) {
 
-        // /islandtime — show recent, lookup a date, or show help
+        // /islandtime — open MoulConfig GUI
         dispatcher.register(literal("islandtime")
                 .executes(ctx -> {
-                    showRecent();
+                    openConfigGui();
                     return 1;
                 })
+                .then(literal("recent")
+                        .executes(ctx -> {
+                            showRecent();
+                            return 1;
+                        }))
+                .then(literal("help")
+                        .executes(ctx -> {
+                            showHelp(ctx.getSource().getClient(), 1);
+                            return 1;
+                        })
+                        .then(argument("page", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                                .executes(ctx -> {
+                                    int page = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "page");
+                                    showHelp(ctx.getSource().getClient(), page);
+                                    return 1;
+                                })))
+                .then(argument("date", StringArgumentType.word())
+                        .executes(ctx -> {
+                            showSpecificDate(StringArgumentType.getString(ctx, "date"));
+                            return 1;
+                        }))
+        );
+
+        // /it — alias for /islandtime
+        dispatcher.register(literal("it")
+                .executes(ctx -> {
+                    openConfigGui();
+                    return 1;
+                })
+                .then(literal("recent")
+                        .executes(ctx -> {
+                            showRecent();
+                            return 1;
+                        }))
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
@@ -312,6 +346,13 @@ public class IslandTimeCommand {
                     return 1;
                 })
                 .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
                             MinecraftClient client = ctx.getSource().getClient();
@@ -348,6 +389,13 @@ public class IslandTimeCommand {
                     return 1;
                 })
                 .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
                             MinecraftClient client = ctx.getSource().getClient();
@@ -392,6 +440,13 @@ public class IslandTimeCommand {
                     return 1;
                 })
                 .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
                             MinecraftClient client = ctx.getSource().getClient();
@@ -489,6 +544,84 @@ public class IslandTimeCommand {
                             } else {
                                 client.player.sendMessage(
                                         Text.literal("Usage: /trackfuelcycles <on|off>").formatted(Formatting.RED), false);
+                                return 0;
+                            }
+                            return 1;
+                        })));
+
+        // /minionfuelmessages
+        dispatcher.register(literal("minionfuelmessages")
+                .executes(ctx -> {
+                    MinecraftClient client = ctx.getSource().getClient();
+                    boolean current = MinionFuelTracker.isShowFuelMessages();
+                    client.player.sendMessage(
+                            Text.literal("Minion fuel messages are currently: ").formatted(Formatting.AQUA)
+                                    .append(Text.literal(current ? "enabled" : "disabled")
+                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
+                            false
+                    );
+                    client.player.sendMessage(
+                            Text.literal("Use /minionfuelmessages <on|off> to change.").formatted(Formatting.GRAY),
+                            false
+                    );
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            MinecraftClient client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                MinionFuelTracker.setShowFuelMessages(true);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Minion fuel messages enabled.").formatted(Formatting.GREEN), false);
+                            } else if (state.equals("off")) {
+                                MinionFuelTracker.setShowFuelMessages(false);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Minion fuel messages disabled.").formatted(Formatting.YELLOW), false);
+                            } else {
+                                client.player.sendMessage(
+                                        Text.literal("Usage: /minionfuelmessages <on|off>").formatted(Formatting.RED), false);
+                                return 0;
+                            }
+                            return 1;
+                        })));
+
+        // /islandleavemessages
+        dispatcher.register(literal("islandleavemessages")
+                .executes(ctx -> {
+                    MinecraftClient client = ctx.getSource().getClient();
+                    boolean current = IslandPlayerTracker.isShowLeaveMessages();
+                    client.player.sendMessage(
+                            Text.literal("Island leave messages are currently: ").formatted(Formatting.AQUA)
+                                    .append(Text.literal(current ? "enabled" : "disabled")
+                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
+                            false
+                    );
+                    client.player.sendMessage(
+                            Text.literal("Use /islandleavemessages <on|off> to change.").formatted(Formatting.GRAY),
+                            false
+                    );
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            MinecraftClient client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                IslandPlayerTracker.setShowLeaveMessages(true);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Island leave messages enabled.").formatted(Formatting.GREEN), false);
+                            } else if (state.equals("off")) {
+                                IslandPlayerTracker.setShowLeaveMessages(false);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendMessage(
+                                        Text.literal("Island leave messages disabled.").formatted(Formatting.YELLOW), false);
+                            } else {
+                                client.player.sendMessage(
+                                        Text.literal("Usage: /islandleavemessages <on|off>").formatted(Formatting.RED), false);
                                 return 0;
                             }
                             return 1;
@@ -664,6 +797,28 @@ public class IslandTimeCommand {
                                     }
                                     return 1;
                                 }))));
+
+        // /showtooltips
+        dispatcher.register(literal("showtooltips")
+                .executes(ctx -> {
+                    TooltipOverrideConfig.toggle();
+                    boolean enabled = TooltipOverrideConfig.isShowHiddenTooltips();
+
+                    // Keep MoulConfig in sync so the GUI reflects the change
+                    if (ConfigManager.getConfig() != null) {
+                        ConfigManager.getConfig().misc.showHiddenTooltips = enabled;
+                        ConfigManager.saveToFile();
+                    }
+
+                    ctx.getSource().getClient().player.sendMessage(
+                            Text.literal("Show hidden tooltips: ")
+                                    .formatted(Formatting.AQUA)
+                                    .append(Text.literal(enabled ? "ON" : "OFF")
+                                            .formatted(enabled ? Formatting.GREEN : Formatting.RED)),
+                            false
+                    );
+                    return 1;
+                }));
     }
 
     // -------------------------------------------------------------------------
@@ -672,54 +827,50 @@ public class IslandTimeCommand {
 
     private static void showHelp(MinecraftClient client, int page) {
         String[][] commands = {
-                // Page 1 - Basic commands
-                {"/islandtime", "Show last 7 days of island time"},
+                // Page 1 - Island time & fuel time
+                {"/islandtime", "Open the configuration GUI (all settings in one place)"},
+                {"/islandtime recent", "Show last 7 days of island time"},
                 {"/islandtime <DD-MM-YY>", "Show specific date (e.g., /islandtime 1-1-26)"},
-                {"/islandtime help [page]", "Show this help page"},
                 {"/fueltime", "Show current and recent fuel cycle stats (last 4 cycles)"},
                 {"/fueltime <cycle>", "Show details for a specific cycle number (e.g., /fueltime 6)"},
-                {"/fueltime debug", "Inject a fake completed cycle and attempt save (for diagnostics)"},
+
+                // Page 2 - Discord webhook & pings
                 {"/webhook", "Show current webhook URL"},
-
-                // Page 2 - Webhook & tracking
-                {"/webhook <url>", "Set webhook URL (for Discord alerts)"},
-                {"/webhook clear", "Remove webhook"},
-                {"/discordping", "Show current Discord user ID for webhook pings"},
-                {"/discordping <userid>", "Set Discord user ID to ping in webhook alerts"},
+                {"/webhook <url>", "Set webhook URL (for Discord alerts). Must start with https://discord.com/api/webhooks/"},
+                {"/webhook clear", "Remove the webhook URL"},
+                {"/discordping <userid>", "Set your Discord user ID to ping in webhook alerts (must be numeric)"},
                 {"/discordping clear", "Remove Discord ping (webhooks won't ping anyone)"},
-                {"/trackitem", "Show currently tracked item"},
+
+                // Page 3 - Item tracking
+                {"/trackitem", "Show the currently tracked item"},
                 {"/trackitem set", "Track the item in your main hand (must have UUID + stats_book)"},
-
-                // Page 3 - Alert settings
                 {"/trackitem clear", "Stop tracking the current item"},
-                {"/trackedalertspeed", "Show current tracked item alert speed and options"},
-                {"/trackedalertspeed <speed>", "Set tracked item alert speed (off/fast/normal/slow)"},
+                {"/trackedalertspeed", "Show current tracked-item alert speed and options"},
+                {"/trackedalertspeed <speed>", "Set tracked-item alert speed (off / fast / normal / slow)"},
+
+                // Page 4 - Alert speeds
                 {"/islandalertspeed", "Show current island alert speed and options"},
-                {"/islandalertspeed <speed>", "Set island alert speed (off/fast/normal/slow)"},
+                {"/islandalertspeed <speed>", "Set island alert speed (off / fast / normal / slow)"},
                 {"/disconnectalertspeed", "Show current disconnect alert speed and options"},
-                {"/disconnectalertspeed <speed>", "Set disconnect alert speed (off/fast/normal/slow). " +
-                        "Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
+                {"/disconnectalertspeed <speed>", "Set disconnect alert speed. Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
+                {"/fueltime debug", "Inject a fake completed cycle and attempt save (for diagnostics)"},
 
-                // Page 4 - Tracking toggles
-                {"/trackislandtime", "Show whether island-time tracking is on or off"},
-                {"/trackislandtime <on|off>", "Enable or disable island-time tracking. " +
-                        "Disabling preserves all existing data and finishes the current day, " +
-                        "but no new days will be tracked."},
-                {"/trackfuelcycles", "Show whether fuel-cycle tracking is on or off"},
-                {"/trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. " +
-                        "Disabling lets any active cycle complete naturally, " +
-                        "but fueling a minion will not start a new cycle."},
+                // Page 5 - Tracking toggles & chat messages
+                {"/trackislandtime <on|off>", "Enable or disable island-time tracking. Disabling preserves existing data but no new days will be tracked."},
+                {"/trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. Any active cycle completes naturally; no new cycles will start."},
+                {"/minionfuelmessages <on|off>", "Enable or disable local chat messages when you fuel a minion"},
+                {"/islandleavemessages <on|off>", "Enable or disable local chat messages when a visitor leaves your island"},
+                {"/showtooltips", "Toggle visibility of items that have hide_tooltip set (e.g. GUI filler panes). Also configurable under Misc in /islandtime."},
+                {"/favouritegui toggle", "Toggle container snapshot tracking on/off. When off, /favouritegui save has no data to work from."},
 
-                // Page 5 - Favourite GUI
+                // Page 6 - Favourite GUI
                 {"/favouritegui", "List all saved container layouts"},
                 {"/favouritegui save <name>", "Save the currently open container under <name>"},
-                {"/favouritegui delete <name>", "Remove a previously saved container layout"},
                 {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
-                {"/favouritegui open <name>", "Alias for /favouritegui view <name>"},
-                {"/favouritegui toggle", "Toggle container snapshot tracking on/off. " +
-                        "When off, opening containers is not tracked so /favouritegui save will have no data to work from."},
+                {"/favouritegui delete <name>", "Remove a previously saved container layout"},
+                {"/islandtime help [page]", "Show this help page"},
 
-                // Page 6 - Chat relay
+                // Page 7 - Chat relay
                 {"/chatrelay", "Show current chat relay config (webhook, port, secret)"},
                 {"/chatrelay webhook <url>", "Set the Discord webhook for outbound island chat relay"},
                 {"/chatrelay webhook clear", "Disable outbound chat relay"},
@@ -727,7 +878,7 @@ public class IslandTimeCommand {
                 {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
         };
 
-        int commandsPerPage = 7;
+        int commandsPerPage = 5;
         int totalCommands   = commands.length;
         int totalPages      = (int) Math.ceil((double) totalCommands / commandsPerPage);
 
@@ -842,6 +993,34 @@ public class IslandTimeCommand {
         int year  = Integer.parseInt(parts[2]);
         if (year < 100) year += 2000;
         return LocalDate.of(year, month, day);
+    }
+
+    // -------------------------------------------------------------------------
+    // Config GUI
+    // -------------------------------------------------------------------------
+
+    private static void openConfigGui() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        // Sync from existing configs before opening GUI to ensure latest values
+        ConfigManager.syncFromExistingConfigs();
+        // Open the MoulConfig GUI
+        client.execute(() -> {
+            io.github.notenoughupdates.moulconfig.gui.MoulConfigEditor<?> editor =
+                new io.github.notenoughupdates.moulconfig.gui.MoulConfigEditor<>(ConfigManager.getProcessor());
+            io.github.notenoughupdates.moulconfig.gui.GuiElementComponent editorComponent =
+                new io.github.notenoughupdates.moulconfig.gui.GuiElementComponent(editor);
+            io.github.notenoughupdates.moulconfig.gui.GuiContext guiContext =
+                new io.github.notenoughupdates.moulconfig.gui.GuiContext(editorComponent);
+            io.github.notenoughupdates.moulconfig.platform.MoulConfigScreenComponent screen =
+                new io.github.notenoughupdates.moulconfig.platform.MoulConfigScreenComponent(
+                    net.minecraft.text.Text.literal("IslandTime (1.6.0)"),
+                    guiContext,
+                    client.currentScreen
+                );
+            client.setScreen(screen);
+        });
+        // Schedule a sync after the GUI is closed to apply any changes
+        // This will happen on the next tick when the screen is null
     }
 
     private static void formatLineColored(MinecraftClient client, String date, long ms, boolean isToday) {

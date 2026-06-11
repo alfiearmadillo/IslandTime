@@ -2,7 +2,7 @@ package org.example.islandtime;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;  // NEW
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 
 public class IslandTimeMod implements ClientModInitializer {
 
@@ -18,16 +18,22 @@ public class IslandTimeMod implements ClientModInitializer {
         DisconnectAlertTracker.load();
         FavouriteGuiManager.load();
         TrackingToggleConfig.load(); // applies toggle flags to trackers
+        TooltipOverrideConfig.load(); // NEW: load tooltip override flag
 
-        // NEW: load chat relay config and register the chat listener
+        // Load chat relay config and register the chat listener
         ChatRelayConfig.load();
         IslandChatRelay.register();
+
+        // Initialize MoulConfig
+        ConfigManager.initialize();
 
         // Register tick events
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             IslandTimeTracker.tick(client);
             MinionFuelTracker.checkFuelSlot();
             FavouriteGuiManager.tickScreenSnapshot(client);
+            ConfigManager.tick(client);  // Sync config when GUI closes
+            IslandPlayerTracker.tick(client);  // Track player join/leave
 
             boolean isOnIsland      = IslandTimeTracker.isCurrentlyOnIsland();
             boolean statsIncreasing = ItemTracker.areStatsIncreasing();
@@ -39,8 +45,8 @@ public class IslandTimeMod implements ClientModInitializer {
             BackpackHoverHandler.tick(client);
         });
 
-        // NEW: start the localhost poller when the player connects to a server,
-        //      stop it when they disconnect (handles /server switches too).
+        // Start the localhost poller when the player connects to a server,
+        // stop it when they disconnect (handles /server switches too).
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
                 IslandChatRelay.startPolling());
 
@@ -54,6 +60,7 @@ public class IslandTimeMod implements ClientModInitializer {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("IslandTimeMod shutting down...");
 
+            ConfigManager.saveToFile();      // Save MoulConfig
             IslandTimeTracker.save();
             FuelCycleTracker.save();
             ItemTracker.save();
@@ -62,10 +69,11 @@ public class IslandTimeMod implements ClientModInitializer {
             DiscordWebhookManager.save();
             TrackingToggleConfig.save();
             FavouriteGuiManager.save();
-            ChatRelayConfig.save();          // NEW
+            ChatRelayConfig.save();
+            TooltipOverrideConfig.save();    // NEW: save tooltip override flag
 
             DiscordWebhookManager.shutdown();
-            IslandChatRelay.shutdown();      // NEW — stops poller + webhook thread
+            IslandChatRelay.shutdown();      // stops poller + webhook thread
 
             System.out.println("IslandTimeMod shutdown complete");
         }));

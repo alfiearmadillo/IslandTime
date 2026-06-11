@@ -82,6 +82,14 @@ public class IslandChatRelay {
             Pattern.CASE_INSENSITIVE
     );
 
+    // Track when we send a message and expect to see it echoed back
+    // If the next message is not from us, it's probably an error
+    // We check the first TWO messages after sending (errors often span 2 lines)
+    private static volatile boolean waitingForEcho = false;
+    private static volatile String expectedPlayerName = "";
+    private static volatile String lastSentMessage = "";
+    private static volatile long lastSentTime = 0;
+    private static volatile int messagesSeenSinceSend = 0;
     // Single-thread executor for outbound webhook POSTs
     private static final ExecutorService webhookExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "IslandTime-ChatRelay-Webhook");
@@ -123,6 +131,77 @@ public class IslandChatRelay {
 
     private static void processOutbound(Text message) {
         String raw = FORMAT_STRIP.matcher(message.getString()).replaceAll("").trim();
+
+        // ── Echo detection after sending a message ───────────────────────────
+        // After dispatching a command we wait up to 3 s for the server echo.
+        //
+        // Island chat (/ac): echoed as "[25] YourName: text"
+        // Whisper reply (/r): echoed as "To [RANK] PlayerName: text"
+        //
+        // If instead we see a known Hypixel error prefix within that window,
+        // report it to Discord. Everything else (other players chatting, system
+        // noise, Skyblocker messages, etc.) is silently ignored — we do NOT
+        // use a "second message = error" heuristic because it produces too many
+        // false positives when other chat activity is present.
+        if (waitingForEcho) {
+            long timeSinceLastSent = System.currentTimeMillis() - lastSentTime;
+
+            if (timeSinceLastSent >= 3000) {
+                // Window expired — assume it went through (or silently failed)
+                waitingForEcho = false;
+                messagesSeenSinceSend = 0;
+            } else {
+                messagesSeenSinceSend++;
+
+                // ── Check for our own echo ────────────────────────────────────
+                boolean isEcho = false;
+
+                // Island chat echo: "[25] YourName: text"
+                int colonIdx = raw.indexOf(": ");
+                if (!isEcho && colonIdx > 0 && VALID_PREFIX.matcher(raw).find()) {
+                    String pfx = raw.substring(0, colonIdx);
+                    int lastSp = pfx.lastIndexOf(' ');
+                    String senderName = lastSp >= 0 ? pfx.substring(lastSp + 1) : pfx;
+                    if (senderName.equals(expectedPlayerName)) {
+                        isEcho = true;
+                    }
+                }
+
+                // Whisper echo: "To [RANK] PlayerName: text" where text == lastSentMessage
+                if (!isEcho && raw.startsWith("To ") && colonIdx > 0
+                        && !lastSentMessage.isEmpty()) {
+                    String afterColon = raw.substring(colonIdx + 2);
+                    if (afterColon.equals(lastSentMessage)) {
+                        isEcho = true;
+                    }
+                }
+
+                if (isEcho) {
+                    // Confirmed delivery — clear state and let normal processing continue
+                    waitingForEcho = false;
+                    messagesSeenSinceSend = 0;
+                    // fall through so outbound relay still sees this line if needed
+
+                } else if (isKnownHypixelError(raw)) {
+                    // Explicit server error — report it to Discord
+                    String webhookUrl = ChatRelayConfig.getChatWebhookUrl();
+                    if (webhookUrl != null && !webhookUrl.isEmpty()) {
+                        String errorMsg = "ERROR: " + raw;
+                        if (!lastSentMessage.isEmpty()) {
+                            errorMsg += " (attempted: \"" + lastSentMessage + "\")";
+                        }
+                        final String finalUrl   = webhookUrl;
+                        final String finalError = errorMsg;
+                        webhookExecutor.submit(() -> postToWebhook(finalUrl, "IslandTime", finalError));
+                    }
+                    waitingForEcho = false;
+                    messagesSeenSinceSend = 0;
+                    return; // don't relay the error line as chat
+                }
+                // Anything else (other players, system noise) — ignore and keep waiting
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // ── [SkyBlock] system messages (visitor alerts, etc.) ─────────────────
         // e.g. "[SkyBlock] [MVP++] MarvellousG is visiting Your Island!"
@@ -216,6 +295,14 @@ public class IslandChatRelay {
     }
 
     /**
+     * Public method to send a webhook message asynchronously from other parts of the mod.
+     * This is used by IslandPlayerTracker to send player leave notifications.
+     */
+    public static void sendWebhookAsync(String webhookUrl, String username, String content) {
+        webhookExecutor.submit(() -> postToWebhook(webhookUrl, username, content));
+    }
+
+    /**
      * HTTP POST to the Discord webhook with the chat relay username/content payload.
      * Runs on the webhook executor thread — never on the game thread.
      */
@@ -231,9 +318,20 @@ public class IslandChatRelay {
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(5000);
 
-            // Build payload manually — keeps zero new dependencies
+            // Build payload with avatar URL for player heads
             String json = "{\"username\":" + escapeJson(username)
-                        + ",\"content\":"  + escapeJson(content) + "}";
+                        + ",\"content\":"  + escapeJson(content);
+
+            // Add avatar URL for player heads using official Mojang API
+            // Skip for system usernames like "SkyBlock", "IslandTime"
+            if (!username.equals("SkyBlock") && !username.equals("IslandTime")) {
+                // Use mc-heads.net which proxies the official Mojang API and handles UUID lookups
+                // This is more reliable than crafatar and uses Mojang's official session server
+                String avatarUrl = "https://mc-heads.net/avatar/" + username;
+                json += ",\"avatar_url\":" + escapeJson(avatarUrl);
+            }
+
+            json += "}";
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(json.getBytes(StandardCharsets.UTF_8));
@@ -335,11 +433,51 @@ public class IslandChatRelay {
         final String command;
         if (message.startsWith("/r ")) {
             command = "r " + message.substring(3); // strip leading "/r "
+            // Track the message content for error correlation
+            lastSentMessage = message.substring(3);
         } else {
             command = "ac " + message;
+            // Track the message content for error correlation
+            lastSentMessage = message;
         }
 
+        // Set up echo detection - we expect to see this message echoed back
+        lastSentTime = System.currentTimeMillis();
+        expectedPlayerName = mc.player.getName().getString();
+        waitingForEcho = true;
+
         mc.execute(() -> mc.getNetworkHandler().sendChatCommand(command));
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns true if the raw server message looks like a Hypixel command error
+     * rather than normal chat or system noise.
+     *
+     * Hypixel error messages we care about all start with one of these patterns:
+     *   "You cannot say the same message twice!"
+     *   "You can't message that player!"
+     *   "You can only send a message every X seconds."
+     *   "That player is not online!"
+     *   (and similar short imperative sentences with a "!" or ".")
+     *
+     * We match a tight set of known prefixes rather than trying to infer from
+     * message position — this avoids false positives from unrelated chat noise.
+     */
+    private static boolean isKnownHypixelError(String raw) {
+        return raw.startsWith("You cannot say the same message")
+            || raw.startsWith("You can't message")
+            || raw.startsWith("You can only send a message")
+            || raw.startsWith("That player is not online")
+            || raw.startsWith("You are not currently in a party")
+            || raw.startsWith("You must wait")
+            || raw.startsWith("A connection attempt failed")
+            || raw.startsWith("You can't do that right now")
+            || raw.startsWith("You cannot message")
+            || raw.startsWith("You've been muted");
     }
 
     // -------------------------------------------------------------------------
