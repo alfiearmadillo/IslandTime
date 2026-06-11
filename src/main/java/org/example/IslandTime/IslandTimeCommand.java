@@ -797,6 +797,28 @@ public class IslandTimeCommand {
                                     }
                                     return 1;
                                 }))));
+
+        // /showtooltips
+        dispatcher.register(literal("showtooltips")
+                .executes(ctx -> {
+                    TooltipOverrideConfig.toggle();
+                    boolean enabled = TooltipOverrideConfig.isShowHiddenTooltips();
+
+                    // Keep MoulConfig in sync so the GUI reflects the change
+                    if (ConfigManager.getConfig() != null) {
+                        ConfigManager.getConfig().misc.showHiddenTooltips = enabled;
+                        ConfigManager.saveToFile();
+                    }
+
+                    ctx.getSource().getClient().player.sendMessage(
+                            Text.literal("Show hidden tooltips: ")
+                                    .formatted(Formatting.AQUA)
+                                    .append(Text.literal(enabled ? "ON" : "OFF")
+                                            .formatted(enabled ? Formatting.GREEN : Formatting.RED)),
+                            false
+                    );
+                    return 1;
+                }));
     }
 
     // -------------------------------------------------------------------------
@@ -838,6 +860,7 @@ public class IslandTimeCommand {
                 {"/trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. Any active cycle completes naturally; no new cycles will start."},
                 {"/minionfuelmessages <on|off>", "Enable or disable local chat messages when you fuel a minion"},
                 {"/islandleavemessages <on|off>", "Enable or disable local chat messages when a visitor leaves your island"},
+                {"/showtooltips", "Toggle visibility of items that have hide_tooltip set (e.g. GUI filler panes). Also configurable under Misc in /islandtime."},
                 {"/favouritegui toggle", "Toggle container snapshot tracking on/off. When off, /favouritegui save has no data to work from."},
 
                 // Page 6 - Favourite GUI

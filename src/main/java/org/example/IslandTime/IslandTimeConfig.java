@@ -48,8 +48,10 @@ public class IslandTimeConfig extends Config {
     public Messages messages = new Messages();
 
     @Expose
-    @Category(name = "Extras", desc = "Additional commands and features")
-    public Extras extras = new Extras();
+    @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
+    public Misc misc = new Misc();
+
+    // -------------------------------------------------------------------------
 
     public static class IslandTime {
         @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island (last 7 days). You can also use /islandtime <date> to view a specific date (e.g., /islandtime 1-1-26)")
@@ -245,7 +247,7 @@ public class IslandTimeConfig extends Config {
         public String pollSecret = "changeme";
     }
 
-    public static class Extras {
+    public static class Misc {
         @ConfigOption(name = "Help", desc = "Click to view all available commands. You can also use /islandtime help <page> to view specific help pages (1-6)")
         @ConfigEditorButton(buttonText = " View Help ")
         public Runnable helpButton = new Runnable() {
@@ -257,6 +259,14 @@ public class IslandTimeConfig extends Config {
                 }
             }
         };
+
+        @Expose
+        @ConfigOption(
+            name = "Show Hidden Tooltips",
+            desc = "When enabled, items that have hide_tooltip set (such as GUI filler panes) will still show their tooltip on hover. Toggle with /showtooltips"
+        )
+        @ConfigEditorBoolean
+        public boolean showHiddenTooltips = false;
     }
 
     public static class Messages {

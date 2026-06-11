@@ -144,6 +144,9 @@ public class ConfigManager {
         config.messages.minionFuelMessages  = MinionFuelTracker.isShowFuelMessages();
         config.messages.islandLeaveMessages = IslandPlayerTracker.isShowLeaveMessages();
 
+        // Misc
+        config.misc.showHiddenTooltips = TooltipOverrideConfig.isShowHiddenTooltips();
+
         saveToFile();
     }
 
@@ -222,6 +225,11 @@ public class ConfigManager {
         }
         if (IslandPlayerTracker.isShowLeaveMessages() != config.messages.islandLeaveMessages) {
             IslandPlayerTracker.setShowLeaveMessages(config.messages.islandLeaveMessages);
+        }
+
+        // Misc — tooltip override
+        if (TooltipOverrideConfig.isShowHiddenTooltips() != config.misc.showHiddenTooltips) {
+            TooltipOverrideConfig.setShowHiddenTooltips(config.misc.showHiddenTooltips);
         }
 
         saveToFile();
