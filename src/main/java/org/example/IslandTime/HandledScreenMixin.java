@@ -22,7 +22,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = AbstractContainerScreen.class, priority = 1100)
-public class AbstractContainerScreenMixin {
+public class HandledScreenMixin {
 
     @Shadow @Nullable protected Slot focusedSlot;
 
