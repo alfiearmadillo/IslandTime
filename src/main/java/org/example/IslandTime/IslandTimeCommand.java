@@ -882,7 +882,6 @@ public class IslandTimeCommand {
                 {"/favouritegui save <name>", "Save the currently open container under <name>"},
                 {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
                 {"/favouritegui delete <name>", "Remove a previously saved container layout"},
-                {"/islandtime help [page]", "Show this help page"},
 
                 // Page 7 - Chat relay
                 {"/chatrelay", "Show current chat relay config (webhook, port, secret)"},
@@ -890,6 +889,12 @@ public class IslandTimeCommand {
                 {"/chatrelay webhook clear", "Disable outbound chat relay"},
                 {"/chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
                 {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
+
+                // Page 8 - Ghost & PPG
+                {"/islandtime ghost", "Client-side remove the block you are looking at (alias: /it ghost). Can be disabled in /islandtime under Misc."},
+                {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
+                {"PPG (Price Per Gabagool)", "Shown in Very Crude Gabagool sell offer setup below the Total line. PPG = Total / 192, rounded up to nearest 0.1. Toggle in /islandtime under Misc."},
+                {"/islandtime help [page]", "Show this help (pages 1-8)"},
         };
 
         int commandsPerPage = 5;
@@ -926,6 +931,12 @@ public class IslandTimeCommand {
     // -------------------------------------------------------------------------
 
     private static void ghostBlock(MinecraftClient client) {
+        if (ConfigManager.getConfig() != null && !ConfigManager.getConfig().misc.ghostEnabled) {
+            client.player.sendMessage(
+                    Text.literal("Ghost command is disabled. Enable it in /islandtime under Misc.")
+                            .formatted(Formatting.RED), false);
+            return;
+        }
         if (client.world == null || client.crosshairTarget == null) {
             client.player.sendMessage(
                     Text.literal("No block targeted.").formatted(Formatting.RED), false);
