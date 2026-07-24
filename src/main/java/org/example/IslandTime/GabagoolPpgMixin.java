@@ -1,11 +1,15 @@
 package org.example.islandtime.mixin;
 
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LoreComponent;
+import net.minecraft.component.type.NbtComponent;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.tooltip.TooltipType;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.screen.slot.Slot;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -38,24 +42,37 @@ public abstract class GabagoolPpgMixin {
 
         if (ConfigManager.getConfig() == null || !ConfigManager.getConfig().misc.showPpg) return;
 
+        // Only inject if the current screen has VERY_CRUDE_GABAGOOL in slot 11
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.currentScreen == null || !(client.currentScreen instanceof HandledScreen<?> handledScreen)) return;
+
+        try {
+            Slot slot11 = handledScreen.getScreenHandler().getSlot(11);
+            ItemStack slotStack = slot11.getStack();
+            if (slotStack == null || slotStack.isEmpty()) return;
+
+            NbtComponent customData = slotStack.get(DataComponentTypes.CUSTOM_DATA);
+            if (customData == null) return;
+            NbtCompound nbt = customData.copyNbt();
+            if (!"VERY_CRUDE_GABAGOOL".equals(nbt.getString("id"))) return;
+        } catch (Exception e) {
+            return;
+        }
+
         List<Text> tooltip = cir.getReturnValue();
         if (tooltip == null || tooltip.isEmpty()) return;
 
-        // Check if this is a "Sell Offer Setup" item by scanning lore for that text
-        boolean isSellOfferSetup = false;
+        // Check if this item has a "Total:" line (it's one of the 3 sell offer items)
         int totalLineIndex = -1;
 
         for (int i = 0; i < tooltip.size(); i++) {
             String plain = tooltip.get(i).getString();
-            if (plain.contains("Sell Offer Setup")) {
-                isSellOfferSetup = true;
-            }
             if (plain.startsWith("Total:") || plain.contains("Total: ")) {
                 totalLineIndex = i;
             }
         }
 
-        if (!isSellOfferSetup || totalLineIndex == -1) return;
+        if (totalLineIndex == -1) return;
 
         // Extract the coin amount from the Total line
         String totalText = tooltip.get(totalLineIndex).getString();
