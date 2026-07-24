@@ -5,10 +5,14 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.block.Blocks;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -36,6 +40,11 @@ public class IslandTimeCommand {
                     openConfigGui();
                     return 1;
                 })
+                .then(literal("ghost")
+                        .executes(ctx -> {
+                            ghostBlock(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -65,6 +74,11 @@ public class IslandTimeCommand {
                     openConfigGui();
                     return 1;
                 })
+                .then(literal("ghost")
+                        .executes(ctx -> {
+                            ghostBlock(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -905,6 +919,28 @@ public class IslandTimeCommand {
             client.player.sendMessage(Text.literal("  " + commands[i][1]).formatted(Formatting.GRAY), false);
             if (i < endIdx - 1) client.player.sendMessage(Text.literal(""), false);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Ghost (client-side block removal)
+    // -------------------------------------------------------------------------
+
+    private static void ghostBlock(MinecraftClient client) {
+        if (client.world == null || client.crosshairTarget == null) {
+            client.player.sendMessage(
+                    Text.literal("No block targeted.").formatted(Formatting.RED), false);
+            return;
+        }
+        if (client.crosshairTarget.getType() != HitResult.Type.BLOCK) {
+            client.player.sendMessage(
+                    Text.literal("No block targeted.").formatted(Formatting.RED), false);
+            return;
+        }
+        BlockPos pos = ((BlockHitResult) client.crosshairTarget).getBlockPos();
+        client.world.setBlockState(pos, Blocks.AIR.getDefaultState());
+        client.player.sendMessage(
+                Text.literal("Ghosted block at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ())
+                        .formatted(Formatting.GRAY), false);
     }
 
     // -------------------------------------------------------------------------
