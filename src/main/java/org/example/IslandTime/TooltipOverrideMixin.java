@@ -19,7 +19,7 @@ import java.util.List;
 public abstract class TooltipOverrideMixin {
 
     @Inject(
-            method = "getTooltip",
+            method = "getTooltipLines",
             at = @At("HEAD"),
             cancellable = true
     )
