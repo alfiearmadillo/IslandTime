@@ -329,7 +329,7 @@ public class BackpackHoverHandler {
                         client.options.advancedItemTooltips
                                 ? TooltipFlag.Default.ADVANCED
                                 : TooltipFlag.Default.NORMAL);
-                context.tooltip(tr, tip, mouseX, mouseY);
+                context.renderComponentTooltip(tr, tip, mouseX, mouseY);
             }
         }
     }

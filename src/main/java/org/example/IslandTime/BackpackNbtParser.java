@@ -88,7 +88,7 @@ public class BackpackNbtParser {
         if (data == null || data.length < 4) return null;
         return parseBytes(data,
                 DataFixers.getDataFixer(),
-                SharedConstants.getDataVersion(),
+                SharedConstants.getCurrentVersion().getWorldVersion(),
                 resolveRegistries(client));
     }
 
@@ -103,7 +103,7 @@ public class BackpackNbtParser {
         // ── Capture everything we need on the main thread ──────────────────
         Minecraft    client     = Minecraft.getInstance();
         DataFixer          fixer      = DataFixers.getDataFixer();
-        int                currentVer = SharedConstants.getDataVersion();
+        int                currentVer = SharedConstants.getCurrentVersion().getWorldVersion();
         RegistryAccess reg    = resolveRegistries(client);
         byte[]             data       = extractData(stack);
 
@@ -151,7 +151,7 @@ public class BackpackNbtParser {
             ListTag items = root.getListOrEmpty("i");
             for (int i = 0; i < items.size(); i++) {
                 CompoundTag itemNbt = items.getCompoundOrEmpty(i);
-                short rawId = itemNbt.getShort("id");
+                short rawId = itemNbt.getShortOr("id", (short) 0);
                 result.add((itemNbt.isEmpty() || rawId == 0)
                         ? ItemStack.EMPTY
                         : parseItem(itemNbt, fixer, currentVer, reg));
@@ -170,7 +170,7 @@ public class BackpackNbtParser {
                                        int currentVer,
                                        RegistryAccess reg) {
         try {
-            short numId = legacyNbt.getShort("id");
+            short numId = legacyNbt.getShortOr("id", (short) 0);
 
             CompoundTag dfuInput = legacyNbt.copy();
             Dynamic<Tag> dynamic = new Dynamic<>(NbtOps.INSTANCE, dfuInput);
@@ -191,9 +191,9 @@ public class BackpackNbtParser {
                 String override = ITEM_ID_OVERRIDES.get((int) numId);
                 if (override != null) {
                     net.minecraft.world.item.Item item =
-                            BuiltInRegistries.ITEM.get(Identifier.fromNamespaceAndPath("minecraft", override));
-                    if (item != Items.AIR) {
-                        int count = legacyNbt.getByte("Count") & 0xFF;
+                            BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", override)).orElse(null);
+                    if (item != null && item != Items.AIR) {
+                        int count = legacyNbt.getByteOr("Count", (byte) 1) & 0xFF;
                         stack = new ItemStack(item, Math.max(1, count));
                     }
                 }
@@ -201,14 +201,14 @@ public class BackpackNbtParser {
 
             // ── Spawn-egg overrides for post-1.8 entity types ───────────────
             if (numId == 383) {
-                int damage = legacyNbt.getShort("Damage") & 0xFFFF;
+                int damage = legacyNbt.getShortOr("Damage", (short) 0) & 0xFFFF;
                 String override = SPAWN_EGG_OVERRIDES.get(damage);
                 if (override != null) {
                     net.minecraft.world.item.Item eggItem =
-                            BuiltInRegistries.ITEM.get(Identifier.fromNamespaceAndPath("minecraft", override));
-                    if (eggItem != Items.AIR) {
+                            BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", override)).orElse(null);
+                    if (eggItem != null && eggItem != Items.AIR) {
                         int count = stack.isEmpty()
-                                ? (legacyNbt.getByte("Count") & 0xFF)
+                                ? (legacyNbt.getByteOr("Count", (byte) 1) & 0xFF)
                                 : stack.getCount();
                         stack = new ItemStack(eggItem, Math.max(1, count));
                     }
