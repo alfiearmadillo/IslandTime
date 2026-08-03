@@ -9,6 +9,7 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.core.RegistryAccess;
+import net.minecraft.resources.RegistryOps;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
@@ -120,7 +121,7 @@ public class FavouriteGuiManager {
             ItemStack stack = slot.getItem();
             if (!stack.isEmpty()) {
                 CompoundTag nbt = ItemStack.CODEC
-                        .encode(stack, reg.getOps(NbtOps.INSTANCE), new CompoundTag())
+                        .encode(stack, RegistryOps.create(NbtOps.INSTANCE, reg), new CompoundTag())
                         .result()
                         .filter(e -> e instanceof CompoundTag)
                         .map(e -> (CompoundTag) e)
@@ -165,7 +166,7 @@ public class FavouriteGuiManager {
                 ItemStack stack = slot.getItem();
                 if (!stack.isEmpty()) {
                     CompoundTag nbt = ItemStack.CODEC
-                            .encode(stack, reg.getOps(NbtOps.INSTANCE), new CompoundTag())
+                            .encode(stack, RegistryOps.create(NbtOps.INSTANCE, reg), new CompoundTag())
                             .result()
                             .filter(e -> e instanceof CompoundTag)
                             .map(e -> (CompoundTag) e)

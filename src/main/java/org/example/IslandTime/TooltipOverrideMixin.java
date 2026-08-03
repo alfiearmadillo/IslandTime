@@ -43,6 +43,6 @@ public abstract class TooltipOverrideMixin {
         ItemStack copy = self.copy();
         copy.set(DataComponents.TOOLTIP_DISPLAY,
                 new TooltipDisplay(false, display.hiddenComponents()));
-        cir.setReturnValue(copy.getTooltip(context, player, type));
+        cir.setReturnValue(copy.getTooltipLines(context, player, type));
     }
 }

@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -132,8 +133,8 @@ public class BackpackHoverHandler {
         lastMouseY = mouseY;
 
         Minecraft client = Minecraft.getInstance();
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
         context.fill(0, 0, sw, sh, 0x80000000);
 
         drawOverlay(context, mouseX, mouseY);
@@ -223,11 +224,11 @@ public class BackpackHoverHandler {
         Minecraft client = Minecraft.getInstance();
         Font    tr     = client.font;
         String msg = "Loading...";
-        int w = tr.getWidth(msg) + PADDING * 2;
+        int w = tr.width(msg) + PADDING * 2;
         int h = LINE_HEIGHT + PADDING * 2;
 
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
         int px = mouseX + 8;
         int py = mouseY - 16;
         if (px + w > sw - 4) px = mouseX - w - 4;
@@ -235,7 +236,7 @@ public class BackpackHoverHandler {
         if (py < 4) py = 4;
 
         drawPanelBackground(context, px, py, w, h);
-        context.drawString(tr, msg, px + PADDING, py + PADDING, 0xFFAAAAAA, true);
+        context.text(tr, msg, px + PADDING, py + PADDING, 0xFFAAAAAA, true);
     }
 
     // -------------------------------------------------------------------------
@@ -247,10 +248,10 @@ public class BackpackHoverHandler {
         Minecraft client = Minecraft.getInstance();
         Font    tr     = client.font;
 
-        List<Component> headerLines = currentBackpack.getTooltip(
-                Item.TooltipContext.create(client.level),
+        List<Component> headerLines = currentBackpack.getTooltipLines(
+                Item.TooltipContext.of(client.level),
                 client.player,
-                client.options.advancedItemTooltips ? TooltipFlag.ADVANCED : TooltipFlag.BASIC);
+                client.options.advancedItemTooltips ? TooltipFlag.Default.ADVANCED : TooltipFlag.Default.NORMAL);
 
         Component hintText = frozen
                 ? Component.literal("E to close").withStyle(ChatFormatting.DARK_GRAY)
@@ -261,7 +262,7 @@ public class BackpackHoverHandler {
         int gridH  = rows * SLOT_SIZE;
 
         int maxTextW = 0;
-        for (Component line : headerLines) maxTextW = Math.max(maxTextW, tr.getWidth(line));
+        for (Component line : headerLines) maxTextW = Math.max(maxTextW, tr.width(line));
         int contentW = Math.max(gridW, maxTextW);
         int panelW   = contentW + PADDING * 2;
         int headerH  = headerLines.size() * LINE_HEIGHT;
@@ -270,8 +271,8 @@ public class BackpackHoverHandler {
         int anchorX = frozen ? frozenMouseX : mouseX;
         int anchorY = frozen ? frozenMouseY : mouseY;
 
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
         int px = anchorX + 8;
         int py = anchorY - 16;
         if (px + panelW > sw - 4) px = anchorX - panelW - 4;
@@ -282,7 +283,7 @@ public class BackpackHoverHandler {
 
         int ty = py + PADDING;
         for (Component line : headerLines) {
-            context.drawString(tr, line, px + PADDING, ty, -1, true);
+            context.text(tr, line, px + PADDING, ty, -1, true);
             ty += LINE_HEIGHT;
         }
 
@@ -304,8 +305,8 @@ public class BackpackHoverHandler {
 
             ItemStack item = currentContents.get(i);
             if (!item.isEmpty()) {
-                context.renderItem(item, sx, sy);
-                context.renderItemDecorations(tr, item, sx, sy);
+                context.item(item, sx, sy);
+                context.itemDecorations(tr, item, sx, sy);
             }
 
             if (mouseX >= sx && mouseX < sx + SLOT_SIZE
@@ -316,19 +317,19 @@ public class BackpackHoverHandler {
         }
 
         int hintY = gridTop + gridH + SPACER;
-        int hintX = px + (panelW - tr.getWidth(hintText.getString())) / 2;
-        context.drawString(tr, hintText, hintX, hintY, -1, false);
+        int hintX = px + (panelW - tr.width(hintText.getString())) / 2;
+        context.text(tr, hintText, hintX, hintY, -1, false);
 
         if (overlayHoveredIndex >= 0) {
             ItemStack hovered = currentContents.get(overlayHoveredIndex);
             if (!hovered.isEmpty()) {
-                List<Component> tip = hovered.getTooltip(
-                        Item.TooltipContext.create(client.level),
+                List<Component> tip = hovered.getTooltipLines(
+                        Item.TooltipContext.of(client.level),
                         client.player,
                         client.options.advancedItemTooltips
-                                ? TooltipFlag.ADVANCED
-                                : TooltipFlag.BASIC);
-                context.renderTooltip(tr, tip, mouseX, mouseY);
+                                ? TooltipFlag.Default.ADVANCED
+                                : TooltipFlag.Default.NORMAL);
+                context.tooltip(tr, tip, mouseX, mouseY);
             }
         }
     }
