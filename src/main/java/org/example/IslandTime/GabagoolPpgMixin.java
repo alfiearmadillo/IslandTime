@@ -48,8 +48,8 @@ public abstract class GabagoolPpgMixin {
         if (client.screen == null || !(client.screen instanceof AbstractContainerScreen<?> handledScreen)) return;
 
         try {
-            Slot slot11 = handledScreen.getMenu().getSlot(11);
-            ItemStack slotStack = slot11.getItem();
+            Slot slot13 = handledScreen.getMenu().getSlot(13);
+            ItemStack slotStack = slot13.getItem();
             if (slotStack == null || slotStack.isEmpty()) return;
 
             CustomData customData = slotStack.get(DataComponents.CUSTOM_DATA);
