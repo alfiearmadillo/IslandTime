@@ -72,11 +72,6 @@ public class FavouriteGuiScreen extends Screen {
     }
 
     @Override
-    public boolean shouldPause() {
-        return false;
-    }
-
-    @Override
     public void removed() {
         FavouriteGuiViewer.close();
         BackpackHoverHandler.clearHovered();

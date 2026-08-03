@@ -65,7 +65,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("islandtime recent");
+                    client.player.connection.sendCommand("islandtime recent");
                 }
             }
         };
@@ -84,7 +84,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("fueltime");
+                    client.player.connection.sendCommand("fueltime");
                 }
             }
         };
@@ -103,7 +103,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("favouritegui");
+                    client.player.connection.sendCommand("favouritegui");
                 }
             }
         };
@@ -122,7 +122,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("trackitem");
+                    client.player.connection.sendCommand("trackitem");
                 }
             }
         };
@@ -134,7 +134,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("trackitem set");
+                    client.player.connection.sendCommand("trackitem set");
                 }
             }
         };
@@ -146,7 +146,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("trackitem clear");
+                    client.player.connection.sendCommand("trackitem clear");
                 }
             }
         };
@@ -170,7 +170,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("webhook clear");
+                    client.player.connection.sendCommand("webhook clear");
                 }
             }
         };
@@ -187,7 +187,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("discordping clear");
+                    client.player.connection.sendCommand("discordping clear");
                 }
             }
         };
@@ -218,7 +218,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("chatrelay");
+                    client.player.connection.sendCommand("chatrelay");
                 }
             }
         };
@@ -235,7 +235,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("chatrelay webhook clear");
+                    client.player.connection.sendCommand("chatrelay webhook clear");
                 }
             }
         };
@@ -259,7 +259,7 @@ public class IslandTimeConfig extends Config {
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.networkHandler.sendChatCommand("islandtime help");
+                    client.player.connection.sendCommand("islandtime help");
                 }
             }
         };

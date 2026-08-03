@@ -88,7 +88,7 @@ public class BackpackNbtParser {
         if (data == null || data.length < 4) return null;
         return parseBytes(data,
                 DataFixers.getDataFixer(),
-                SharedConstants.getCurrentVersion().getWorldVersion(),
+                SharedConstants.getCurrentVersion().getDataVersion(),
                 resolveRegistries(client));
     }
 
@@ -103,7 +103,7 @@ public class BackpackNbtParser {
         // ── Capture everything we need on the main thread ──────────────────
         Minecraft    client     = Minecraft.getInstance();
         DataFixer          fixer      = DataFixers.getDataFixer();
-        int                currentVer = SharedConstants.getCurrentVersion().getWorldVersion();
+        int                currentVer = SharedConstants.getCurrentVersion().getDataVersion();
         RegistryAccess reg    = resolveRegistries(client);
         byte[]             data       = extractData(stack);
 
@@ -229,12 +229,12 @@ public class BackpackNbtParser {
             if (tag.get("display") instanceof CompoundTag display) {
                 if (display.get("Name") instanceof StringTag) {
                     stack.set(DataComponents.CUSTOM_NAME,
-                            parseLegacy(display.getString("Name", "")));
+                            parseLegacy(display.getStringOr("Name", "")));
                 }
                 if (display.get("Lore") instanceof ListTag loreNbt) {
                     List<Component> lore = new ArrayList<>(loreNbt.size());
                     for (int i = 0; i < loreNbt.size(); i++) {
-                        lore.add(parseLegacy(loreNbt.getString(i, "")));
+                        lore.add(parseLegacy(loreNbt.getString(i)));
                     }
                     stack.set(DataComponents.LORE, new ItemLore(lore));
                 }
@@ -259,7 +259,7 @@ public class BackpackNbtParser {
     private static void applySkullTexture(ItemStack stack, CompoundTag skullOwner) {
         try {
             CompoundTag profileNbt = new CompoundTag();
-            String name = skullOwner.getString("Name", "Player");
+            String name = skullOwner.getStringOr("Name", "Player");
             if (!name.isBlank()) profileNbt.putString("name", name);
             if (skullOwner.get("Id") instanceof IntArrayTag idArr) {
                 profileNbt.put("id", idArr);
@@ -267,7 +267,7 @@ public class BackpackNbtParser {
             CompoundTag properties = skullOwner.getCompoundOrEmpty("Properties");
             ListTag textures = properties.getListOrEmpty("textures");
             if (!textures.isEmpty()) {
-                String value = textures.getCompoundOrEmpty(0).getString("Value", "");
+                String value = textures.getCompoundOrEmpty(0).getStringOr("Value", "");
                 if (!value.isBlank()) {
                     CompoundTag texEntry = new CompoundTag();
                     texEntry.putString("name", "textures");
@@ -303,11 +303,11 @@ public class BackpackNbtParser {
             if (seg.isEmpty()) continue;
             char code = Character.toLowerCase(seg.charAt(0));
             String text = seg.substring(1);
-            ChatFormatting fmt = ChatFormatting.byCode(code);
+            ChatFormatting fmt = ChatFormatting.getByCode(code);
             if (fmt != null) {
                 if (fmt == ChatFormatting.RESET)       style = Style.EMPTY.withItalic(false);
                 else if (fmt.isColor())            style = Style.EMPTY.withItalic(false).withColor(fmt);
-                else                               style = style.withFormatting(fmt);
+                else                               style = style.applyFormat(fmt);
             }
             if (!text.isEmpty()) root.append(Component.literal(text).setStyle(style));
         }

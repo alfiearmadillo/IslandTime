@@ -446,7 +446,7 @@ public class IslandChatRelay {
         expectedPlayerName = mc.player.getName().getString();
         waitingForEcho = true;
 
-        mc.execute(() -> mc.getConnection().sendChatCommand(command));
+        mc.execute(() -> mc.getConnection().sendCommand(command));
     }
 
     // -------------------------------------------------------------------------

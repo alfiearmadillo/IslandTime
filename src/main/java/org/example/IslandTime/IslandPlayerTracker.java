@@ -88,7 +88,7 @@ public class IslandPlayerTracker {
             // tick may see an empty/plain name — we keep trying until it loads.
             if (!playerLevelComponents.containsKey(name)
                     || playerLevelComponents.get(name) == EMPTY_LEVEL) {
-                Component level = extractLevelComponent(entry.getDisplayName());
+                Component level = extractLevelComponent(entry.getTabListDisplayName());
                 playerLevelComponents.put(name, level != null ? level : EMPTY_LEVEL);
             }
         }
@@ -182,7 +182,7 @@ public class IslandPlayerTracker {
            .append(Component.literal("left ").withStyle(ChatFormatting.YELLOW))
            .append(Component.literal("Your Island.").withStyle(ChatFormatting.GREEN));
 
-        client.player.sendMessage(msg, false);
+        client.player.displayClientMessage(msg, false);
 
         // Clean up stored level now that the player has left
         playerLevelComponents.remove(playerName);

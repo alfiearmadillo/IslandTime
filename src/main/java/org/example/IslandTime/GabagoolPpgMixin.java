@@ -55,7 +55,7 @@ public abstract class GabagoolPpgMixin {
             CustomData customData = slotStack.get(DataComponents.CUSTOM_DATA);
             if (customData == null) return;
             CompoundTag nbt = customData.copyTag();
-            if (!"VERY_CRUDE_GABAGOOL".equals(nbt.getString("id", ""))) return;
+            if (!"VERY_CRUDE_GABAGOOL".equals(nbt.getStringOr("id", ""))) return;
         } catch (Exception e) {
             return;
         }

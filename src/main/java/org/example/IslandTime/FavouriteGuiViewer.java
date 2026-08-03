@@ -197,7 +197,7 @@ public class FavouriteGuiViewer {
                         client.options.advancedItemTooltips
                                 ? TooltipFlag.Default.ADVANCED
                                 : TooltipFlag.Default.NORMAL);
-                context.renderComponentTooltip(tr, tooltip, mouseX, mouseY);
+                context.setComponentTooltipForNextFrame(tr, tooltip, mouseX, mouseY);
             }
         }
     }

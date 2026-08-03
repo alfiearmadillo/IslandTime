@@ -231,7 +231,7 @@ public class FuelCycleTracker {
         if (client.player == null) return;
 
         if (currentCycleStartTime == 0 && completedCycles.isEmpty()) {
-            client.player.sendMessage(
+            client.player.displayClientMessage(
                     Component.literal("No fuel cycle data yet. Fuel a minion to start tracking!")
                             .withStyle(ChatFormatting.YELLOW),
                     false
@@ -243,7 +243,7 @@ public class FuelCycleTracker {
 
         if (specificCycle != null) {
             if (specificCycle < 1 || specificCycle > totalCycles) {
-                client.player.sendMessage(
+                client.player.displayClientMessage(
                         Component.literal("Invalid cycle number. Valid range: 1-" + totalCycles)
                                 .withStyle(ChatFormatting.RED),
                         false
@@ -266,14 +266,14 @@ public class FuelCycleTracker {
 
             double activePercentage = elapsed > 0 ? (currentCycleIslandTime * 100.0 / elapsed) : 0.0;
 
-            client.player.sendMessage(Component.literal("» Current Cycle").withStyle(ChatFormatting.GOLD), false);
-            client.player.sendMessage(
+            client.player.displayClientMessage(Component.literal("» Current Cycle").withStyle(ChatFormatting.GOLD), false);
+            client.player.displayClientMessage(
                     Component.literal("  Current: ").withStyle(ChatFormatting.GREEN)
                             .append(Component.literal(startTime.format(TIME_FORMATTER) + " - " + endTime.format(TIME_FORMATTER))
                                     .withStyle(ChatFormatting.WHITE)),
                     false
             );
-            client.player.sendMessage(
+            client.player.displayClientMessage(
                     Component.literal("    Minions: ").withStyle(ChatFormatting.GRAY)
                             .append(Component.literal(String.valueOf(currentCycleMinionsRefueled)).withStyle(ChatFormatting.WHITE))
                             .append(Component.literal(" | Duration: ").withStyle(ChatFormatting.GRAY))
@@ -283,12 +283,12 @@ public class FuelCycleTracker {
                                     String.format(" (%.1f%%)", activePercentage)).withStyle(ChatFormatting.WHITE)),
                     false
             );
-            client.player.sendMessage(Component.literal(""), false);
+            client.player.displayClientMessage(Component.literal(""), false);
         }
 
         if (!completedCycles.isEmpty()) {
             int startIndex = Math.max(0, totalCycles - 4);
-            client.player.sendMessage(
+            client.player.displayClientMessage(
                     Component.literal("» Recent Completed Cycles (Showing " +
                                     Math.min(4, totalCycles) + " of " + totalCycles + ")")
                             .withStyle(ChatFormatting.GOLD),
@@ -304,13 +304,13 @@ public class FuelCycleTracker {
                 LocalDateTime st = LocalDateTime.ofInstant(Instant.ofEpochMilli(cycle.startTime), ZoneId.systemDefault());
                 LocalDateTime et = LocalDateTime.ofInstant(Instant.ofEpochMilli(cycle.endTime),   ZoneId.systemDefault());
 
-                client.player.sendMessage(
+                client.player.displayClientMessage(
                         Component.literal("  Cycle " + cycleNumber + ": ").withStyle(ChatFormatting.YELLOW)
                                 .append(Component.literal(st.format(TIME_FORMATTER) + " - " + et.format(TIME_FORMATTER))
                                         .withStyle(ChatFormatting.WHITE)),
                         false
                 );
-                client.player.sendMessage(
+                client.player.displayClientMessage(
                         Component.literal("    Minions: ").withStyle(ChatFormatting.GRAY)
                                 .append(Component.literal(String.valueOf(cycle.minionsRefueled)).withStyle(ChatFormatting.WHITE))
                                 .append(Component.literal(" | Duration: ").withStyle(ChatFormatting.GRAY))
@@ -323,7 +323,7 @@ public class FuelCycleTracker {
             }
 
             if (totalCycles > 4) {
-                client.player.sendMessage(
+                client.player.displayClientMessage(
                         Component.literal("Use /fueltime <cycle> to view older cycles (e.g., /fueltime 1)")
                                 .withStyle(ChatFormatting.GRAY).withStyle(ChatFormatting.ITALIC),
                         false
@@ -342,22 +342,22 @@ public class FuelCycleTracker {
         long   duration         = cycle.endTime - cycle.startTime;
         double activePercentage = duration > 0 ? (cycle.islandTime * 100.0 / duration) : 0.0;
 
-        client.player.sendMessage(
+        client.player.displayClientMessage(
                 Component.literal("Cycle " + cycleNumber + " of " + totalCycles).withStyle(ChatFormatting.GOLD), false);
-        client.player.sendMessage(
+        client.player.displayClientMessage(
                 Component.literal("Period: ").withStyle(ChatFormatting.AQUA)
                         .append(Component.literal(startTime.format(TIME_FORMATTER) + " - " + endTime.format(TIME_FORMATTER))
                                 .withStyle(ChatFormatting.WHITE)),
                 false);
-        client.player.sendMessage(
+        client.player.displayClientMessage(
                 Component.literal("Duration: ").withStyle(ChatFormatting.AQUA)
                         .append(Component.literal(formatDuration(duration)).withStyle(ChatFormatting.WHITE)),
                 false);
-        client.player.sendMessage(
+        client.player.displayClientMessage(
                 Component.literal("Minions Refueled: ").withStyle(ChatFormatting.AQUA)
                         .append(Component.literal(String.valueOf(cycle.minionsRefueled)).withStyle(ChatFormatting.WHITE)),
                 false);
-        client.player.sendMessage(
+        client.player.displayClientMessage(
                 Component.literal("Active Time: ").withStyle(ChatFormatting.AQUA)
                         .append(Component.literal(formatDuration(cycle.islandTime) +
                                 String.format(" (%.1f%%)", activePercentage)).withStyle(ChatFormatting.WHITE)),
