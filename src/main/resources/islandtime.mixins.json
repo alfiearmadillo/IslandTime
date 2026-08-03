@@ -4,6 +4,8 @@
   "package": "org.example.islandtime.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "AbstractSignEditScreenMixin",
+    "GabagoolPpgMixin",
     "HandledScreenMixin",
     "MouseMixin",
     "TooltipOverrideMixin"

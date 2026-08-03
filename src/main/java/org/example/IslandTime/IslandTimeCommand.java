@@ -5,10 +5,14 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -36,6 +40,11 @@ public class IslandTimeCommand {
                     openConfigGui();
                     return 1;
                 })
+                .then(literal("ghost")
+                        .executes(ctx -> {
+                            ghostBlock(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -65,6 +74,11 @@ public class IslandTimeCommand {
                     openConfigGui();
                     return 1;
                 })
+                .then(literal("ghost")
+                        .executes(ctx -> {
+                            ghostBlock(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -868,7 +882,6 @@ public class IslandTimeCommand {
                 {"/favouritegui save <name>", "Save the currently open container under <name>"},
                 {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
                 {"/favouritegui delete <name>", "Remove a previously saved container layout"},
-                {"/islandtime help [page]", "Show this help page"},
 
                 // Page 7 - Chat relay
                 {"/chatrelay", "Show current chat relay config (webhook, port, secret)"},
@@ -876,6 +889,12 @@ public class IslandTimeCommand {
                 {"/chatrelay webhook clear", "Disable outbound chat relay"},
                 {"/chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
                 {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
+
+                // Page 8 - Ghost & PPG
+                {"/islandtime ghost", "Client-side remove the block you are looking at (alias: /it ghost). Can be disabled in /islandtime under Misc."},
+                {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
+                {"PPG (Price Per Gabagool)", "Shown in Very Crude Gabagool sell offer setup below the Total line. PPG = Total / 192, rounded up to nearest 0.1. Toggle in /islandtime under Misc."},
+                {"/islandtime help [page]", "Show this help (pages 1-8)"},
         };
 
         int commandsPerPage = 5;
@@ -905,6 +924,34 @@ public class IslandTimeCommand {
             client.player.sendMessage(Component.literal("  " + commands[i][1]).withStyle(ChatFormatting.GRAY), false);
             if (i < endIdx - 1) client.player.sendMessage(Component.literal(""), false);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Ghost (client-side block removal)
+    // -------------------------------------------------------------------------
+
+    private static void ghostBlock(Minecraft client) {
+        if (ConfigManager.getConfig() != null && !ConfigManager.getConfig().misc.ghostEnabled) {
+            client.player.sendMessage(
+                    Component.literal("Ghost command is disabled. Enable it in /islandtime under Misc.")
+                            .withStyle(ChatFormatting.RED), false);
+            return;
+        }
+        if (client.level == null || client.hitResult == null) {
+            client.player.sendMessage(
+                    Component.literal("No block targeted.").withStyle(ChatFormatting.RED), false);
+            return;
+        }
+        if (client.hitResult.getType() != HitResult.Type.BLOCK) {
+            client.player.sendMessage(
+                    Component.literal("No block targeted.").withStyle(ChatFormatting.RED), false);
+            return;
+        }
+        BlockPos pos = ((BlockHitResult) client.hitResult).getBlockPos();
+        client.level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+        client.player.sendMessage(
+                Component.literal("Ghosted block at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ())
+                        .withStyle(ChatFormatting.GRAY), false);
     }
 
     // -------------------------------------------------------------------------

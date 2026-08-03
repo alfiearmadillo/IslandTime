@@ -48,6 +48,10 @@ public class IslandTimeConfig extends Config {
     public Messages messages = new Messages();
 
     @Expose
+    @Category(name = "Signs", desc = "Sign editing helpers")
+    public Signs signs = new Signs();
+
+    @Expose
     @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
     public Misc misc = new Misc();
 
@@ -248,7 +252,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class Misc {
-        @ConfigOption(name = "Help", desc = "Click to view all available commands. You can also use /islandtime help <page> to view specific help pages (1-6)")
+        @ConfigOption(name = "Help", desc = "Click to view all available commands. You can also use /islandtime help <page> to view specific help pages (1-8)")
         @ConfigEditorButton(buttonText = " View Help ")
         public Runnable helpButton = new Runnable() {
             @Override
@@ -267,6 +271,49 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean showHiddenTooltips = false;
+
+        @Expose
+        @ConfigOption(
+            name = "Show PPG (Price Per Gabagool)",
+            desc = "When enabled, shows a PPG line below the Total line in the Very Crude Gabagool sell offer setup menu. PPG = Total / 192, rounded up to nearest 0.1"
+        )
+        @ConfigEditorBoolean
+        public boolean showPpg = true;
+
+        @Expose
+        @ConfigOption(
+            name = "Enable Ghost Command",
+            desc = "When enabled, /it ghost and /islandtime ghost commands are available for client-side block removal"
+        )
+        @ConfigEditorBoolean
+        public boolean ghostEnabled = true;
+    }
+
+    public static class Signs {
+        @Expose
+        @ConfigOption(name = "Enable Sign Helpers", desc = "When enabled, adds paste buttons to the sign edit screen. When disabled, signs behave normally.")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(name = "Line 1", desc = "Pre-set text for sign line 1")
+        @ConfigEditorText
+        public String line1 = "";
+
+        @Expose
+        @ConfigOption(name = "Line 2", desc = "Pre-set text for sign line 2")
+        @ConfigEditorText
+        public String line2 = "";
+
+        @Expose
+        @ConfigOption(name = "Line 3", desc = "Pre-set text for sign line 3")
+        @ConfigEditorText
+        public String line3 = "";
+
+        @Expose
+        @ConfigOption(name = "Line 4", desc = "Pre-set text for sign line 4")
+        @ConfigEditorText
+        public String line4 = "";
     }
 
     public static class Messages {
