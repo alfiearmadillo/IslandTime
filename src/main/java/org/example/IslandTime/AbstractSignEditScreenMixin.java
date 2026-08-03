@@ -20,8 +20,7 @@ public abstract class AbstractSignEditScreenMixin extends Screen {
     }
 
     @Shadow private String[] messages;
-    @Shadow private int currentRow;
-    @Shadow protected abstract void finishEditing();
+    @Shadow private int line;
 
     @Inject(method = "init", at = @At("TAIL"))
     private void addSignButtons(CallbackInfo ci) {
@@ -40,7 +39,7 @@ public abstract class AbstractSignEditScreenMixin extends Screen {
                                 // Only paste into the first line
                                 String firstLine = clip.split("\n", 2)[0];
                                 messages[0] = firstLine;
-                                currentRow = 0;
+                                line = 0;
                             }
                         }
                 ).bounds(width / 2 - 100, height / 4 + 168, 200, 20).build()
@@ -57,7 +56,7 @@ public abstract class AbstractSignEditScreenMixin extends Screen {
                                 if (!cfg.signs.line2.isEmpty()) messages[1] = cfg.signs.line2;
                                 if (!cfg.signs.line3.isEmpty()) messages[2] = cfg.signs.line3;
                                 if (!cfg.signs.line4.isEmpty()) messages[3] = cfg.signs.line4;
-                                currentRow = messages.length - 1;
+                                line = messages.length - 1;
                             }
                         }
                 ).bounds(width / 2 - 100, height / 4 + 192, 200, 20).build()
