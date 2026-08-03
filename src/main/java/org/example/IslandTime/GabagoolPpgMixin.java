@@ -19,7 +19,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,7 +54,8 @@ public abstract class GabagoolPpgMixin {
             CustomData customData = slotStack.get(DataComponents.CUSTOM_DATA);
             if (customData == null) return;
             CompoundTag nbt = customData.copyTag();
-            if (!"VERY_CRUDE_GABAGOOL".equals(nbt.getStringOr("id", ""))) return;
+            String skyblockId = nbt.getStringOr("id", "");
+            if (!skyblockId.contains("GABAGOOL")) return;
         } catch (Exception e) {
             return;
         }
@@ -68,7 +68,7 @@ public abstract class GabagoolPpgMixin {
 
         for (int i = 0; i < tooltip.size(); i++) {
             String plain = tooltip.get(i).getString();
-            if (plain.startsWith("Total:") || plain.contains("Total: ")) {
+            if (plain.contains("Total:")) {
                 totalLineIndex = i;
             }
         }
@@ -117,8 +117,6 @@ public abstract class GabagoolPpgMixin {
         ppgLine.append(Component.literal(ppgFormatted + " coins").withStyle(ChatFormatting.GOLD));
 
         // Insert the PPG line right after the Total line
-        List<Component> newTooltip = new ArrayList<>(tooltip);
-        newTooltip.add(totalLineIndex + 1, ppgLine);
-        cir.setReturnValue(newTooltip);
+        tooltip.add(totalLineIndex + 1, ppgLine);
     }
 }
