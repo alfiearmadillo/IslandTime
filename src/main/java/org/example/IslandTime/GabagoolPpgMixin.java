@@ -42,20 +42,19 @@ public abstract class GabagoolPpgMixin {
 
         if (ConfigManager.getConfig() == null || !ConfigManager.getConfig().misc.showPpg) return;
 
-        // Only inject if the current screen has VERY_CRUDE_GABAGOOL in slot 11
+        // Only inject if the current screen has VERY_CRUDE_GABAGOOL in slot 10 (2nd slot, 2nd row)
         Minecraft client = Minecraft.getInstance();
         if (client.screen == null || !(client.screen instanceof AbstractContainerScreen<?> handledScreen)) return;
 
         try {
-            Slot slot11 = handledScreen.getMenu().getSlot(11);
-            ItemStack slotStack = slot11.getItem();
+            Slot gabagoolSlot = handledScreen.getMenu().getSlot(10);
+            ItemStack slotStack = gabagoolSlot.getItem();
             if (slotStack == null || slotStack.isEmpty()) return;
 
             CustomData customData = slotStack.get(DataComponents.CUSTOM_DATA);
             if (customData == null) return;
             CompoundTag nbt = customData.copyTag();
-            String skyblockId = nbt.getStringOr("id", "");
-            if (!skyblockId.contains("GABAGOOL")) return;
+            if (!"VERY_CRUDE_GABAGOOL".equals(nbt.getStringOr("id", ""))) return;
         } catch (Exception e) {
             return;
         }
