@@ -123,7 +123,7 @@ public class IslandTimeTracker {
             String ownerName = scoreEntry.owner();
             var playerTeam   = scoreboard.getPlayersTeam(ownerName);
             if (playerTeam != null) {
-                String fullLine = (playerTeam.getPrefix().getString() + playerTeam.getSuffix().getString())
+                String fullLine = (playerTeam.getPlayerPrefix().getString() + playerTeam.getPlayerSuffix().getString())
                         .replaceAll("§.", "").toLowerCase().trim();
                 if (fullLine.contains("your island")) { onIsland = true; break; }
             }
