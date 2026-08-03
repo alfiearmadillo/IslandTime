@@ -103,7 +103,7 @@ public class HandledScreenMixin {
     // Suppress vanilla tooltip while our overlay is active
     // -------------------------------------------------------------------------
 
-    @Inject(method = "renderTooltip", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "extractTooltip", at = @At("HEAD"), cancellable = true)
     private void islandtime$cancelTooltipForBackpack(GuiGraphicsExtractor context,
                                                      int mouseX, int mouseY,
                                                      CallbackInfo ci) {
