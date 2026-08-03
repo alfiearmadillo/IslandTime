@@ -31,7 +31,7 @@ public abstract class GabagoolPpgMixin {
     private static final Pattern SELLING_PATTERN = Pattern.compile("Selling:\\s*([\\d,]+)\\s*x");
 
     @Inject(
-            method = "getTooltip",
+            method = "getTooltipLines",
             at = @At("RETURN"),
             cancellable = true
     )
