@@ -1,5 +1,5 @@
 plugins {
-    id("net.fabricmc.loom") version "1.17"
+    id("net.fabricmc.fabric-loom") version "1.17"
 }
 
 group = "org.example"
