@@ -112,16 +112,16 @@ public class IslandTimeTracker {
         if (!lastCheck.compareAndSet(lastCheckValue, now)) return;
 
         Objective obj =
-                client.level.getScoreboard().getObjectiveForSlot(DisplaySlot.SIDEBAR);
+                client.level.getScoreboard().getDisplayObjective(DisplaySlot.SIDEBAR);
         if (obj == null) { handleOffIsland(); return; }
 
         var scoreboard = client.level.getScoreboard();
-        var scores     = scoreboard.getScoreboardEntries(obj);
+        var scores     = scoreboard.listPlayerScores(obj);
         boolean onIsland = false;
 
         for (var scoreEntry : scores) {
             String ownerName = scoreEntry.owner();
-            var playerTeam   = scoreboard.getScoreHolderTeam(ownerName);
+            var playerTeam   = scoreboard.getPlayersTeam(ownerName);
             if (playerTeam != null) {
                 String fullLine = (playerTeam.getPrefix().getString() + playerTeam.getSuffix().getString())
                         .replaceAll("§.", "").toLowerCase().trim();

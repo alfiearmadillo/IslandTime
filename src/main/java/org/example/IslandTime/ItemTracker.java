@@ -85,7 +85,7 @@ public class ItemTracker {
             long statsBook = Long.parseLong(statsBookStr);
 
             trackedUuid     = uuid;
-            trackedItemName = mainHandItem.getName().getString();
+            trackedItemName = mainHandItem.getHoverName().getString();
             lastStatsValue          = statsBook;
             lastIncrementTime       = System.currentTimeMillis();
             lastCheckTime           = System.currentTimeMillis();

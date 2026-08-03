@@ -592,7 +592,7 @@ public class IslandTimeCommand {
                             client.player.sendSystemMessage(
                                     Component.literal("  • ").withStyle(ChatFormatting.GRAY)
                                             .append(Component.literal(name).withStyle(ChatFormatting.AQUA)
-                                                    .styled(style -> style
+                                                    .withStyle(style -> style
                                                             .withClickEvent(new ClickEvent.RunCommand(
                                                                     "/favouritegui view " + name))
                                                             .withHoverEvent(new HoverEvent.ShowText(

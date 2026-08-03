@@ -101,16 +101,16 @@ public class MinionFuelTracker {
         ItemStack currentItem = fuelSlot.getItem();
 
         // Check if the slot changed
-        if (!ItemStack.areEqual(currentItem, initialFuelSlotItem)) {
+        if (!ItemStack.matches(currentItem, initialFuelSlotItem)) {
             // Determine what the initial item was
             boolean initialWasGlassPane = !initialFuelSlotItem.isEmpty() &&
                     initialFuelSlotItem.getItem() == Items.ORANGE_STAINED_GLASS_PANE &&
-                    initialFuelSlotItem.getName().getString().equals("Fuel");
+                    initialFuelSlotItem.getHoverName().getString().equals("Fuel");
 
             // Determine what the current item is
             boolean currentIsGlassPane = !currentItem.isEmpty() &&
                     currentItem.getItem() == Items.ORANGE_STAINED_GLASS_PANE &&
-                    currentItem.getName().getString().equals("Fuel");
+                    currentItem.getHoverName().getString().equals("Fuel");
 
             boolean currentIsActualFuel = !currentItem.isEmpty() && !currentIsGlassPane;
 
@@ -120,7 +120,7 @@ public class MinionFuelTracker {
             if (initialWasGlassPane && currentIsActualFuel) {
                 // The fuel was placed! Send the message (if enabled)
                 if (showFuelMessages) {
-                    String fuelName = currentItem.getName().getString();
+                    String fuelName = currentItem.getHoverName().getString();
                     ChatFormatting fuelColor = getFuelColor(currentItem);
 
                     Component message = Component.empty()
@@ -143,7 +143,7 @@ public class MinionFuelTracker {
 
     private static ChatFormatting getFuelColor(ItemStack item) {
         // Get the formatted name text
-        Component nameText = item.getName();
+        Component nameText = item.getHoverName();
 
         // Try to extract formatting from the first sibling/component
         var siblings = nameText.getSiblings();
@@ -151,7 +151,7 @@ public class MinionFuelTracker {
             var firstSibling = siblings.get(0);
             var color = firstSibling.getStyle().getColor();
             if (color != null) {
-                return getFormattingFromRgb(color.getRgb());
+                return getFormattingFromRgb(color.getValue());
             }
         }
 
@@ -159,7 +159,7 @@ public class MinionFuelTracker {
         var style = nameText.getStyle();
         var color = style.getColor();
         if (color != null) {
-            return getFormattingFromRgb(color.getRgb());
+            return getFormattingFromRgb(color.getValue());
         }
 
         return ChatFormatting.WHITE;
