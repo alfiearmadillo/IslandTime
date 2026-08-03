@@ -48,6 +48,10 @@ public class IslandTimeConfig extends Config {
     public Messages messages = new Messages();
 
     @Expose
+    @Category(name = "Signs", desc = "Sign editing helpers")
+    public Signs signs = new Signs();
+
+    @Expose
     @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
     public Misc misc = new Misc();
 
@@ -283,6 +287,33 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean ghostEnabled = true;
+    }
+
+    public static class Signs {
+        @Expose
+        @ConfigOption(name = "Enable Sign Helpers", desc = "When enabled, adds paste buttons to the sign edit screen. When disabled, signs behave normally.")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(name = "Line 1", desc = "Pre-set text for sign line 1")
+        @ConfigEditorText
+        public String line1 = "";
+
+        @Expose
+        @ConfigOption(name = "Line 2", desc = "Pre-set text for sign line 2")
+        @ConfigEditorText
+        public String line2 = "";
+
+        @Expose
+        @ConfigOption(name = "Line 3", desc = "Pre-set text for sign line 3")
+        @ConfigEditorText
+        public String line3 = "";
+
+        @Expose
+        @ConfigOption(name = "Line 4", desc = "Pre-set text for sign line 4")
+        @ConfigEditorText
+        public String line4 = "";
     }
 
     public static class Messages {
