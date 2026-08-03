@@ -22,6 +22,7 @@ import net.minecraft.ChatFormatting;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,7 @@ public class BackpackNbtParser {
         if (data == null || data.length < 4) return null;
         return parseBytes(data,
                 DataFixers.getDataFixer(),
-                SharedConstants.getCurrentVersion().getDataVersion(),
+                SharedConstants.getCurrentVersion().dataVersion().version(),
                 resolveRegistries(client));
     }
 
@@ -103,7 +104,7 @@ public class BackpackNbtParser {
         // ── Capture everything we need on the main thread ──────────────────
         Minecraft    client     = Minecraft.getInstance();
         DataFixer          fixer      = DataFixers.getDataFixer();
-        int                currentVer = SharedConstants.getCurrentVersion().getDataVersion();
+        int                currentVer = SharedConstants.getCurrentVersion().dataVersion().version();
         RegistryAccess reg    = resolveRegistries(client);
         byte[]             data       = extractData(stack);
 
@@ -234,7 +235,7 @@ public class BackpackNbtParser {
                 if (display.get("Lore") instanceof ListTag loreNbt) {
                     List<Component> lore = new ArrayList<>(loreNbt.size());
                     for (int i = 0; i < loreNbt.size(); i++) {
-                        lore.add(parseLegacy(loreNbt.getString(i)));
+                        lore.add(parseLegacy(loreNbt.getString(i).orElse("")));
                     }
                     stack.set(DataComponents.LORE, new ItemLore(lore));
                 }

@@ -182,7 +182,7 @@ public class IslandPlayerTracker {
            .append(Component.literal("left ").withStyle(ChatFormatting.YELLOW))
            .append(Component.literal("Your Island.").withStyle(ChatFormatting.GREEN));
 
-        client.player.displayClientMessage(msg, false);
+        client.player.sendSystemMessage(msg);
 
         // Clean up stored level now that the player has left
         playerLevelComponents.remove(playerName);

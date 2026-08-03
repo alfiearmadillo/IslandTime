@@ -128,7 +128,7 @@ public class MinionFuelTracker {
                             .append(Component.literal(" fueled with ").withStyle(ChatFormatting.GREEN))
                             .append(Component.literal(fuelName).withStyle(fuelColor));
 
-                    client.player.displayClientMessage(message, false);
+                    client.player.sendSystemMessage(message);
                 }
 
                 // Notify FuelCycleTracker
