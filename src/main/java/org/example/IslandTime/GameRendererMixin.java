@@ -22,4 +22,11 @@ public class GameRendererMixin {
             ci.cancel();
         }
     }
+
+    @Inject(method = "renderLevel", at = @At("HEAD"), cancellable = true)
+    private void islandtime$skipRenderLevelIfPlayerNull(CallbackInfo ci) {
+        if (this.minecraft.player == null) {
+            ci.cancel();
+        }
+    }
 }
