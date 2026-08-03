@@ -18,7 +18,7 @@ public class GameRendererMixin {
 
     @Inject(method = "extract", at = @At("HEAD"), cancellable = true)
     private void islandtime$skipExtractIfPlayerNull(CallbackInfo ci) {
-        if (this.minecraft.player == null) {
+        if (this.minecraft.level != null && this.minecraft.player == null) {
             ci.cancel();
         }
     }
