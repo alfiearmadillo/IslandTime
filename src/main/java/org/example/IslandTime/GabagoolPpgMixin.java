@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 public abstract class GabagoolPpgMixin {
 
     private static final Pattern COIN_PATTERN = Pattern.compile("([\\d,]+(?:\\.\\d+)?)\\s*coins?");
+    private static final Pattern AMOUNT_PATTERN = Pattern.compile("Amount:\\s*([\\d,]+)x?");
 
     @Inject(
             method = "getTooltip",
@@ -87,8 +88,23 @@ public abstract class GabagoolPpgMixin {
             return;
         }
 
-        // Calculate PPG: total / 192, rounded up to nearest 0.1
-        double ppgRaw = totalCoins / 192.0;
+        // Find the selling quantity from the "Amount:" line
+        int quantity = 192; // fallback
+        for (int i = 0; i < tooltip.size(); i++) {
+            String plain = tooltip.get(i).getString();
+            Matcher amountMatcher = AMOUNT_PATTERN.matcher(plain);
+            if (amountMatcher.find()) {
+                try {
+                    quantity = Integer.parseInt(amountMatcher.group(1).replace(",", ""));
+                } catch (NumberFormatException e) {
+                    // keep fallback
+                }
+                break;
+            }
+        }
+
+        // Calculate PPG: total / quantity, rounded up to nearest 0.1
+        double ppgRaw = totalCoins / (double) quantity;
         double ppgRounded = Math.ceil(ppgRaw * 10.0) / 10.0;
 
         // Format the PPG value
