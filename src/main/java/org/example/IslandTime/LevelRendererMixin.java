@@ -16,7 +16,7 @@ public class LevelRendererMixin {
     @Final
     private Minecraft minecraft;
 
-    @Inject(method = "renderLevel", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "update", at = @At("HEAD"), cancellable = true)
     private void islandtime$skipIfPlayerNull(CallbackInfo ci) {
         if (this.minecraft.player == null) {
             ci.cancel();
