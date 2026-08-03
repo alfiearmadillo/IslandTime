@@ -101,7 +101,7 @@ public class DisconnectAlertTracker {
     }
 
     private static boolean isConnectedToServer(Minecraft client) {
-        ClientPacketListener networkHandler = client.getNetworkHandler();
+        ClientPacketListener networkHandler = client.getConnection();
         return networkHandler != null && client.player != null && client.level != null;
     }
 

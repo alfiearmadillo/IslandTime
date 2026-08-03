@@ -24,8 +24,8 @@ public class FakeSlot extends Slot {
         this.fixedStack = stack;
     }
 
-    @Override public ItemStack getStack()                              { return fixedStack; }
-    @Override public boolean  hasStack()                              { return !fixedStack.isEmpty(); }
+    @Override public ItemStack getItem()                               { return fixedStack; }
+    @Override public boolean  hasItem()                               { return !fixedStack.isEmpty(); }
     @Override public boolean  canInsert(ItemStack stack)              { return false; }
     @Override public boolean  canTakeItems(Player player)       { return false; }
     @Override public void     setStack(ItemStack stack)               { /* no-op */ }

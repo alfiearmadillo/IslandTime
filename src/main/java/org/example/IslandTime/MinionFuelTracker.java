@@ -1,7 +1,7 @@
 package org.example.islandtime;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.inventory.ChestMenu;
@@ -40,7 +40,7 @@ public class MinionFuelTracker {
         }
 
         // Check if the current screen is a container screen
-        if (!(client.screen instanceof ContainerScreen containerScreen)) {
+        if (!(client.screen instanceof AbstractContainerScreen containerScreen)) {
             // We're in some other GUI - reset if we were in a minion GUI
             if (wasInMinionGui) {
                 initialFuelSlotItem = ItemStack.EMPTY;
@@ -88,7 +88,7 @@ public class MinionFuelTracker {
             // NOW store the initial state and enable tracking
             if (FUEL_SLOT_INDEX < containerHandler.slots.size()) {
                 Slot fuelSlot = containerHandler.getSlot(FUEL_SLOT_INDEX);
-                initialFuelSlotItem = fuelSlot.getStack().copy();
+                initialFuelSlotItem = fuelSlot.getItem().copy();
                 canTrackChanges = true; // Enable tracking for next tick
             }
             return;
@@ -98,7 +98,7 @@ public class MinionFuelTracker {
         if (FUEL_SLOT_INDEX >= containerHandler.slots.size()) return;
 
         Slot fuelSlot = containerHandler.getSlot(FUEL_SLOT_INDEX);
-        ItemStack currentItem = fuelSlot.getStack();
+        ItemStack currentItem = fuelSlot.getItem();
 
         // Check if the slot changed
         if (!ItemStack.areEqual(currentItem, initialFuelSlotItem)) {

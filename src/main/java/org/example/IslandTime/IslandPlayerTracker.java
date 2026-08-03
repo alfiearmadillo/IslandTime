@@ -66,10 +66,10 @@ public class IslandPlayerTracker {
         if (now - lastCheckTime < CHECK_INTERVAL_MS) return;
         lastCheckTime = now;
 
-        if (client.player == null || client.getNetworkHandler() == null) { reset(); return; }
+        if (client.player == null || client.getConnection() == null) { reset(); return; }
         if (!IslandTimeTracker.isCurrentlyOnIsland())                    { reset(); return; }
 
-        Collection<PlayerInfo> playerList = client.getNetworkHandler().getPlayerList();
+        Collection<PlayerInfo> playerList = client.getConnection().getOnlinePlayers();
         String localPlayerName = client.player.getName().getString();
 
         // Build fresh name set and cache/retry each player's level component

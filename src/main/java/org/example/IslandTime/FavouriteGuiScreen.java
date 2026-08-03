@@ -1,9 +1,9 @@
 package org.example.islandtime;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.KeyboardInput;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -23,7 +23,7 @@ public class FavouriteGuiScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         FavouriteGuiViewer.render(context, mouseX, mouseY);
 
         if (BackpackHoverHandler.isFrozen()) {
@@ -39,20 +39,20 @@ public class FavouriteGuiScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(KeyboardInput input) {
-        long window = Minecraft.getInstance().getWindow().getHandle();
+    public boolean keyPressed(KeyEvent event) {
+        long window = Minecraft.getInstance().getWindow().handle();
 
         if (BackpackHoverHandler.isFrozen()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
-            if (ePressed || input.isEscape()) {
+            if (ePressed || event.key() == GLFW.GLFW_KEY_ESCAPE) {
                 BackpackHoverHandler.requestUnfreeze();
             }
             return true;
         }
 
         boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
-        if (ePressed || input.isEscape()) {
-            this.close();
+        if (ePressed || event.key() == GLFW.GLFW_KEY_ESCAPE) {
+            this.onClose();
             return true;
         }
 

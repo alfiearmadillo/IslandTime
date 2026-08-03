@@ -1,7 +1,7 @@
 package org.example.islandtime.mixin;
 
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.sign.AbstractSignEditScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import org.example.islandtime.ConfigManager;

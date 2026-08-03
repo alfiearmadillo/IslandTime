@@ -428,7 +428,7 @@ public class IslandChatRelay {
      */
     private static void dispatchAcCommand(String message) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.getNetworkHandler() == null) return;
+        if (mc.player == null || mc.getConnection() == null) return;
 
         final String command;
         if (message.startsWith("/r ")) {
@@ -446,7 +446,7 @@ public class IslandChatRelay {
         expectedPlayerName = mc.player.getName().getString();
         waitingForEcho = true;
 
-        mc.execute(() -> mc.getNetworkHandler().sendChatCommand(command));
+        mc.execute(() -> mc.getConnection().sendChatCommand(command));
     }
 
     // -------------------------------------------------------------------------

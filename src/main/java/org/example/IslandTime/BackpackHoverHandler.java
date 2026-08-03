@@ -2,7 +2,7 @@ package org.example.islandtime;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractorExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -98,13 +98,13 @@ public class BackpackHoverHandler {
      * so passing null is safe.
      */
     public static void onBackpackHovered(ItemStack backpackStack,
-                                         GuiGraphics context,
+                                         GuiGraphicsExtractor context,
                                          int mouseX, int mouseY) {
         onBackpackHovered(backpackStack, context, mouseX, mouseY, null);
     }
 
     public static void onBackpackHovered(ItemStack backpackStack,
-                                         GuiGraphics context,
+                                         GuiGraphicsExtractor context,
                                          int mouseX, int mouseY,
                                          AbstractContainerScreen<?> parentScreen) {
         lastMouseX = mouseX;
@@ -126,7 +126,7 @@ public class BackpackHoverHandler {
         drawOverlay(context, mouseX, mouseY);
     }
 
-    public static void drawFrozen(GuiGraphics context, int mouseX, int mouseY) {
+    public static void drawFrozen(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         if (!frozen || currentContents == null) return;
         lastMouseX = mouseX;
         lastMouseY = mouseY;
@@ -219,7 +219,7 @@ public class BackpackHoverHandler {
     // Loading indicator
     // -------------------------------------------------------------------------
 
-    private static void drawLoading(GuiGraphics context, int mouseX, int mouseY) {
+    private static void drawLoading(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         Minecraft client = Minecraft.getInstance();
         Font    tr     = client.font;
         String msg = "Loading...";
@@ -242,7 +242,7 @@ public class BackpackHoverHandler {
     // Main overlay draw
     // -------------------------------------------------------------------------
 
-    private static void drawOverlay(GuiGraphics context, int mouseX, int mouseY) {
+    private static void drawOverlay(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         if (currentContents == null) return;
         Minecraft client = Minecraft.getInstance();
         Font    tr     = client.font;
@@ -337,7 +337,7 @@ public class BackpackHoverHandler {
     // Panel background
     // -------------------------------------------------------------------------
 
-    private static void drawPanelBackground(GuiGraphics ctx, int x, int y, int w, int h) {
+    private static void drawPanelBackground(GuiGraphicsExtractor ctx, int x, int y, int w, int h) {
         ctx.fill(x + 1, y,     x + w - 1, y + h,     BG);
         ctx.fill(x,     y + 1, x + 1,     y + h - 1, BG);
         ctx.fill(x + w - 1, y + 1, x + w, y + h - 1, BG);

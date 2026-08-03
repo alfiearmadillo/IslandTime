@@ -8,7 +8,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
-import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Component;
@@ -54,8 +54,8 @@ public abstract class GabagoolPpgMixin {
 
             CustomData customData = slotStack.get(DataComponents.CUSTOM_DATA);
             if (customData == null) return;
-            NbtCompound nbt = customData.copyNbt();
-            if (!"VERY_CRUDE_GABAGOOL".equals(nbt.getString("id"))) return;
+            CompoundTag nbt = customData.copyTag();
+            if (!"VERY_CRUDE_GABAGOOL".equals(nbt.getString("id", ""))) return;
         } catch (Exception e) {
             return;
         }

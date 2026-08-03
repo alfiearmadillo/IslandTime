@@ -2,7 +2,7 @@ package org.example.islandtime;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractorExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -95,7 +95,7 @@ public class FavouriteGuiViewer {
     /**
      * Render the viewer overlay - called from a screen render method
      */
-    public static void render(GuiGraphics context, int mouseX, int mouseY) {
+    public static void render(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         if (!active || currentContainer == null || displayItems == null) {
             return;
         }
@@ -222,8 +222,8 @@ public class FavouriteGuiViewer {
 
             try {
                 ItemStack stack = ItemStack.CODEC
-                        .parse(client.getNetworkHandler() != null
-                                ? client.getNetworkHandler().getRegistryManager().getOps(NbtOps.INSTANCE)
+                        .parse(client.getConnection() != null
+                                ? client.getConnection().registryAccess().getOps(NbtOps.INSTANCE)
                                 : RegistryAccess.EMPTY.getOps(NbtOps.INSTANCE),
                                 savedItem.nbt)
                         .result()
@@ -260,7 +260,7 @@ public class FavouriteGuiViewer {
     // Panel background
     // -------------------------------------------------------------------------
 
-    private static void drawPanelBackground(GuiGraphics ctx, int x, int y, int w, int h) {
+    private static void drawPanelBackground(GuiGraphicsExtractor ctx, int x, int y, int w, int h) {
         ctx.fill(x + 1, y, x + w - 1, y + h, BG);
         ctx.fill(x, y + 1, x + 1, y + h - 1, BG);
         ctx.fill(x + w - 1, y + 1, x + w, y + h - 1, BG);
