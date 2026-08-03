@@ -248,7 +248,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class Misc {
-        @ConfigOption(name = "Help", desc = "Click to view all available commands. You can also use /islandtime help <page> to view specific help pages (1-6)")
+        @ConfigOption(name = "Help", desc = "Click to view all available commands. You can also use /islandtime help <page> to view specific help pages (1-8)")
         @ConfigEditorButton(buttonText = " View Help ")
         public Runnable helpButton = new Runnable() {
             @Override
@@ -267,6 +267,22 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean showHiddenTooltips = false;
+
+        @Expose
+        @ConfigOption(
+            name = "Show PPG (Price Per Gabagool)",
+            desc = "When enabled, shows a PPG line below the Total line in the Very Crude Gabagool sell offer setup menu. PPG = Total / 192, rounded up to nearest 0.1"
+        )
+        @ConfigEditorBoolean
+        public boolean showPpg = true;
+
+        @Expose
+        @ConfigOption(
+            name = "Enable Ghost Command",
+            desc = "When enabled, /it ghost and /islandtime ghost commands are available for client-side block removal"
+        )
+        @ConfigEditorBoolean
+        public boolean ghostEnabled = true;
     }
 
     public static class Messages {
