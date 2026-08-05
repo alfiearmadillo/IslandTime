@@ -1,11 +1,12 @@
 package org.example.islandtime.mixin;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.client.input.KeyInput;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.Slot;
 import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.BackpackNbtParser;
 import org.example.islandtime.FakeSlot;
@@ -16,15 +17,14 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(value = HandledScreen.class, priority = 1100)
+@Mixin(value = AbstractContainerScreen.class, priority = 1100)
 public class HandledScreenMixin {
 
-    @Shadow @Nullable protected Slot focusedSlot;
+    @Shadow @Nullable protected Slot hoveredSlot;
 
     @Unique @Nullable private Slot islandtime$savedSlot = null;
 
@@ -34,25 +34,25 @@ public class HandledScreenMixin {
     }
 
     // -------------------------------------------------------------------------
-    // Render TAIL — runs AFTER vanilla has written focusedSlot.
+    // Render TAIL — runs AFTER vanilla has written hoveredSlot.
     // -------------------------------------------------------------------------
 
-    @Inject(method = "render", at = @At("TAIL"))
-    private void islandtime$afterRender(DrawContext context,
+    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    private void islandtime$afterRender(GuiGraphicsExtractor context,
                                         int mouseX, int mouseY,
                                         float delta,
                                         CallbackInfo ci) {
 
-        // ── FavouriteGuiViewer active (overlay on top of a HandledScreen) ──
+        // ── FavouriteGuiViewer active (overlay on top of a AbstractContainerScreen) ──
         if (FavouriteGuiViewer.isActive()) {
             FavouriteGuiViewer.render(context, mouseX, mouseY);
 
             ItemStack viewerHovered = FavouriteGuiViewer.getHoveredItem();
 
-            // Remap focusedSlot so keybinding mods (e.g. Firmament) read the
+            // Remap hoveredSlot so keybinding mods (e.g. Firmament) read the
             // correct item rather than whatever happens to be under the cursor
-            // in the underlying HandledScreen.
-            focusedSlot = viewerHovered.isEmpty() ? null : new FakeSlot(viewerHovered);
+            // in the underlying AbstractContainerScreen.
+            hoveredSlot = viewerHovered.isEmpty() ? null : new FakeSlot(viewerHovered);
 
             // Frozen backpack inside the viewer takes priority
             if (BackpackHoverHandler.isFrozen()) {
@@ -62,7 +62,7 @@ public class HandledScreenMixin {
 
             // Backpack hover for items within the viewer
             if (!viewerHovered.isEmpty() && BackpackNbtParser.hasBackpackData(viewerHovered)) {
-                HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+                AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
                 BackpackHoverHandler.onBackpackHovered(viewerHovered, context, mouseX, mouseY, self);
             } else {
                 BackpackHoverHandler.clearHovered();
@@ -72,30 +72,30 @@ public class HandledScreenMixin {
 
         // ── Frozen backpack (standalone, no viewer) ────────────────────────
         if (BackpackHoverHandler.isFrozen()) {
-            focusedSlot = null;
+            hoveredSlot = null;
             BackpackHoverHandler.drawFrozen(context, mouseX, mouseY);
             return;
         }
 
         // ── Suppression: mouse hasn't moved since unfreeze ─────────────────
         if (BackpackHoverHandler.isFocusedSlotSuppressed(mouseX, mouseY)) {
-            focusedSlot = null;
+            hoveredSlot = null;
             return;
         }
 
         // ── Normal backpack hover ──────────────────────────────────────────
-        if (focusedSlot == null) {
+        if (hoveredSlot == null) {
             BackpackHoverHandler.clearHovered();
             return;
         }
 
-        ItemStack stack = focusedSlot.getStack();
+        ItemStack stack = hoveredSlot.getItem();
         if (stack.isEmpty() || !BackpackNbtParser.hasBackpackData(stack)) {
             BackpackHoverHandler.clearHovered();
             return;
         }
 
-        HandledScreen<?> self = (HandledScreen<?>) (Object) this;
+        AbstractContainerScreen<?> self = (AbstractContainerScreen<?>) (Object) this;
         BackpackHoverHandler.onBackpackHovered(stack, context, mouseX, mouseY, self);
     }
 
@@ -103,8 +103,8 @@ public class HandledScreenMixin {
     // Suppress vanilla tooltip while our overlay is active
     // -------------------------------------------------------------------------
 
-    @Inject(method = "drawMouseoverTooltip", at = @At("HEAD"), cancellable = true)
-    private void islandtime$cancelTooltipForBackpack(DrawContext context,
+    @Inject(method = "extractTooltip", at = @At("HEAD"), cancellable = true)
+    private void islandtime$cancelTooltipForBackpack(GuiGraphicsExtractor context,
                                                      int mouseX, int mouseY,
                                                      CallbackInfo ci) {
         if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.hasBackpackHovered()) {
@@ -117,8 +117,8 @@ public class HandledScreenMixin {
     // -------------------------------------------------------------------------
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    private void islandtime$blockClickWhileFrozen(@Coerce Object input,
-                                                  boolean handled,
+    private void islandtime$blockClickWhileFrozen(MouseButtonEvent event,
+                                                  boolean doubleClick,
                                                   CallbackInfoReturnable<Boolean> cir) {
         if (islandtime$shouldBlockMouseInput()) {
             cir.setReturnValue(true);
@@ -127,8 +127,8 @@ public class HandledScreenMixin {
     }
 
     @Inject(method = "mouseDragged", at = @At("HEAD"), cancellable = true)
-    private void islandtime$blockDragWhileViewerActive(@Coerce Object input,
-                                                       double mouseX, double mouseY,
+    private void islandtime$blockDragWhileViewerActive(MouseButtonEvent event,
+                                                       double dx, double dy,
                                                        CallbackInfoReturnable<Boolean> cir) {
         if (islandtime$shouldBlockMouseInput()) {
             cir.setReturnValue(true);
@@ -151,9 +151,9 @@ public class HandledScreenMixin {
     // -------------------------------------------------------------------------
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
-    private void islandtime$beforeKeyPressed(KeyInput input,
+    private void islandtime$beforeKeyPressed(KeyEvent event,
                                              CallbackInfoReturnable<Boolean> cir) {
-        long window = MinecraftClient.getInstance().getWindow().getHandle();
+        long window = Minecraft.getInstance().getWindow().handle();
 
         // ── FavouriteGuiViewer active ──────────────────────────────────────
         if (FavouriteGuiViewer.isActive()) {
@@ -161,28 +161,28 @@ public class HandledScreenMixin {
 
             // Frozen backpack on top of the viewer — E/ESC unfreezes
             if (BackpackHoverHandler.isFrozen()) {
-                if (ePressed || input.isEscape()) {
+                if (ePressed || event.key() == GLFW.GLFW_KEY_ESCAPE) {
                     BackpackHoverHandler.requestUnfreeze();
                     cir.setReturnValue(true);
                     cir.cancel();
                     return;
                 }
-                // Remap focusedSlot so Firmament sees the backpack-overlay hovered item
+                // Remap hoveredSlot so Firmament sees the backpack-overlay hovered item
                 ItemStack overlayItem = BackpackHoverHandler.getOverlayHoveredItem();
                 if (!overlayItem.isEmpty()) {
-                    islandtime$savedSlot = focusedSlot;
-                    focusedSlot = new FakeSlot(overlayItem);
+                    islandtime$savedSlot = hoveredSlot;
+                    hoveredSlot = new FakeSlot(overlayItem);
                 }
                 // ── Do NOT cancel ──────────────────────────────────────────
                 // Letting the event fall through means mods like Firmament
                 // (which inject into keyPressed at their own priority) can see
-                // the key with focusedSlot already remapped to the right item.
-                // The TAIL inject below restores focusedSlot afterwards.
+                // the key with hoveredSlot already remapped to the right item.
+                // The TAIL inject below restores hoveredSlot afterwards.
                 return;
             }
 
             // Close the viewer on E or ESC
-            if (ePressed || input.isEscape()) {
+            if (ePressed || event.key() == GLFW.GLFW_KEY_ESCAPE) {
                 FavouriteGuiViewer.close();
                 cir.setReturnValue(true);
                 cir.cancel();
@@ -200,11 +200,11 @@ public class HandledScreenMixin {
             }
 
             // For all other keys (e.g. Firmament Ctrl+C copy):
-            // focusedSlot was already remapped to the viewer-hovered item in the
+            // hoveredSlot was already remapped to the viewer-hovered item in the
             // render TAIL, so Firmament will read the correct item.
             // We deliberately do NOT cancel here — the event falls through to
             // any other mods that inject into keyPressed.
-            // Vanilla HandledScreen slot operations are safe because the FakeSlot
+            // Vanilla AbstractContainerScreen slot operations are safe because the FakeSlot
             // blocks all mutations (canInsert/canTakeItems return false).
             return;
         }
@@ -212,7 +212,7 @@ public class HandledScreenMixin {
         // ── Standalone frozen backpack (no viewer) ─────────────────────────
         if (BackpackHoverHandler.isFrozen()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
-            if (ePressed || input.isEscape()) {
+            if (ePressed || event.key() == GLFW.GLFW_KEY_ESCAPE) {
                 BackpackHoverHandler.requestUnfreeze();
                 cir.setReturnValue(true);
                 cir.cancel();
@@ -221,8 +221,8 @@ public class HandledScreenMixin {
 
             ItemStack overlayItem = BackpackHoverHandler.getOverlayHoveredItem();
             if (!overlayItem.isEmpty()) {
-                islandtime$savedSlot = focusedSlot;
-                focusedSlot = new FakeSlot(overlayItem);
+                islandtime$savedSlot = hoveredSlot;
+                hoveredSlot = new FakeSlot(overlayItem);
             }
             return;
         }
@@ -239,16 +239,16 @@ public class HandledScreenMixin {
 
         ItemStack overlayItem = BackpackHoverHandler.getOverlayHoveredItem();
         if (!overlayItem.isEmpty()) {
-            islandtime$savedSlot = focusedSlot;
-            focusedSlot = new FakeSlot(overlayItem);
+            islandtime$savedSlot = hoveredSlot;
+            hoveredSlot = new FakeSlot(overlayItem);
         }
     }
 
     @Inject(method = "keyPressed", at = @At("TAIL"))
-    private void islandtime$afterKeyPressed(KeyInput input,
+    private void islandtime$afterKeyPressed(KeyEvent event,
                                             CallbackInfoReturnable<Boolean> cir) {
         if (islandtime$savedSlot != null) {
-            focusedSlot = islandtime$savedSlot;
+            hoveredSlot = islandtime$savedSlot;
             islandtime$savedSlot = null;
         }
     }

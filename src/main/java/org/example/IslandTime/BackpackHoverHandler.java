@@ -1,14 +1,15 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -89,24 +90,24 @@ public class BackpackHoverHandler {
     }
 
     // -------------------------------------------------------------------------
-    // Called from HandledScreenMixin / FavouriteGuiScreen — render path
+    // Called from AbstractContainerScreenMixin / FavouriteGuiScreen — render path
     // -------------------------------------------------------------------------
 
     /**
-     * Overload used by FavouriteGuiScreen (not a HandledScreen) and any other
-     * non-HandledScreen caller. The parentScreen parameter is unused internally,
+     * Overload used by FavouriteGuiScreen (not a AbstractContainerScreen) and any other
+     * non-AbstractContainerScreen caller. The parentScreen parameter is unused internally,
      * so passing null is safe.
      */
     public static void onBackpackHovered(ItemStack backpackStack,
-                                         DrawContext context,
+                                         GuiGraphicsExtractor context,
                                          int mouseX, int mouseY) {
         onBackpackHovered(backpackStack, context, mouseX, mouseY, null);
     }
 
     public static void onBackpackHovered(ItemStack backpackStack,
-                                         DrawContext context,
+                                         GuiGraphicsExtractor context,
                                          int mouseX, int mouseY,
-                                         HandledScreen<?> parentScreen) {
+                                         AbstractContainerScreen<?> parentScreen) {
         lastMouseX = mouseX;
         lastMouseY = mouseY;
 
@@ -126,14 +127,14 @@ public class BackpackHoverHandler {
         drawOverlay(context, mouseX, mouseY);
     }
 
-    public static void drawFrozen(DrawContext context, int mouseX, int mouseY) {
+    public static void drawFrozen(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         if (!frozen || currentContents == null) return;
         lastMouseX = mouseX;
         lastMouseY = mouseY;
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+        Minecraft client = Minecraft.getInstance();
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
         context.fill(0, 0, sw, sh, 0x80000000);
 
         drawOverlay(context, mouseX, mouseY);
@@ -182,7 +183,7 @@ public class BackpackHoverHandler {
     // Tick — resolves pending unfreeze and parse future
     // -------------------------------------------------------------------------
 
-    public static void tick(MinecraftClient client) {
+    public static void tick(Minecraft client) {
         if (pendingUnfreeze) {
             doUnfreeze();
         }
@@ -219,15 +220,15 @@ public class BackpackHoverHandler {
     // Loading indicator
     // -------------------------------------------------------------------------
 
-    private static void drawLoading(DrawContext context, int mouseX, int mouseY) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        TextRenderer    tr     = client.textRenderer;
+    private static void drawLoading(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        Minecraft client = Minecraft.getInstance();
+        Font    tr     = client.font;
         String msg = "Loading...";
-        int w = tr.getWidth(msg) + PADDING * 2;
+        int w = tr.width(msg) + PADDING * 2;
         int h = LINE_HEIGHT + PADDING * 2;
 
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
         int px = mouseX + 8;
         int py = mouseY - 16;
         if (px + w > sw - 4) px = mouseX - w - 4;
@@ -235,33 +236,33 @@ public class BackpackHoverHandler {
         if (py < 4) py = 4;
 
         drawPanelBackground(context, px, py, w, h);
-        context.drawText(tr, msg, px + PADDING, py + PADDING, 0xFFAAAAAA, true);
+        context.text(tr, msg, px + PADDING, py + PADDING, 0xFFAAAAAA, true);
     }
 
     // -------------------------------------------------------------------------
     // Main overlay draw
     // -------------------------------------------------------------------------
 
-    private static void drawOverlay(DrawContext context, int mouseX, int mouseY) {
+    private static void drawOverlay(GuiGraphicsExtractor context, int mouseX, int mouseY) {
         if (currentContents == null) return;
-        MinecraftClient client = MinecraftClient.getInstance();
-        TextRenderer    tr     = client.textRenderer;
+        Minecraft client = Minecraft.getInstance();
+        Font    tr     = client.font;
 
-        List<Text> headerLines = currentBackpack.getTooltip(
-                Item.TooltipContext.create(client.world),
+        List<Component> headerLines = currentBackpack.getTooltipLines(
+                Item.TooltipContext.of(client.level),
                 client.player,
-                client.options.advancedItemTooltips ? TooltipType.ADVANCED : TooltipType.BASIC);
+                client.options.advancedItemTooltips ? TooltipFlag.Default.ADVANCED : TooltipFlag.Default.NORMAL);
 
-        Text hintText = frozen
-                ? Text.literal("E to close").formatted(Formatting.DARK_GRAY)
-                : Text.literal("Press SHIFT to inspect").formatted(Formatting.DARK_GRAY);
+        Component hintText = frozen
+                ? Component.literal("E to close").withStyle(ChatFormatting.DARK_GRAY)
+                : Component.literal("Press SHIFT to inspect").withStyle(ChatFormatting.DARK_GRAY);
 
         int rows   = (int) Math.ceil(currentContents.size() / (double) COLS);
         int gridW  = COLS * SLOT_SIZE;
         int gridH  = rows * SLOT_SIZE;
 
         int maxTextW = 0;
-        for (Text line : headerLines) maxTextW = Math.max(maxTextW, tr.getWidth(line));
+        for (Component line : headerLines) maxTextW = Math.max(maxTextW, tr.width(line));
         int contentW = Math.max(gridW, maxTextW);
         int panelW   = contentW + PADDING * 2;
         int headerH  = headerLines.size() * LINE_HEIGHT;
@@ -270,8 +271,8 @@ public class BackpackHoverHandler {
         int anchorX = frozen ? frozenMouseX : mouseX;
         int anchorY = frozen ? frozenMouseY : mouseY;
 
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
         int px = anchorX + 8;
         int py = anchorY - 16;
         if (px + panelW > sw - 4) px = anchorX - panelW - 4;
@@ -281,8 +282,8 @@ public class BackpackHoverHandler {
         drawPanelBackground(context, px, py, panelW, panelH);
 
         int ty = py + PADDING;
-        for (Text line : headerLines) {
-            context.drawText(tr, line, px + PADDING, ty, -1, true);
+        for (Component line : headerLines) {
+            context.text(tr, line, px + PADDING, ty, -1, true);
             ty += LINE_HEIGHT;
         }
 
@@ -304,8 +305,8 @@ public class BackpackHoverHandler {
 
             ItemStack item = currentContents.get(i);
             if (!item.isEmpty()) {
-                context.drawItem(item, sx, sy);
-                context.drawStackOverlay(tr, item, sx, sy);
+                context.item(item, sx, sy);
+                context.itemDecorations(tr, item, sx, sy);
             }
 
             if (mouseX >= sx && mouseX < sx + SLOT_SIZE
@@ -316,19 +317,19 @@ public class BackpackHoverHandler {
         }
 
         int hintY = gridTop + gridH + SPACER;
-        int hintX = px + (panelW - tr.getWidth(hintText.getString())) / 2;
-        context.drawText(tr, hintText, hintX, hintY, -1, false);
+        int hintX = px + (panelW - tr.width(hintText.getString())) / 2;
+        context.text(tr, hintText, hintX, hintY, -1, false);
 
         if (overlayHoveredIndex >= 0) {
             ItemStack hovered = currentContents.get(overlayHoveredIndex);
             if (!hovered.isEmpty()) {
-                List<Text> tip = hovered.getTooltip(
-                        Item.TooltipContext.create(client.world),
+                List<Component> tip = hovered.getTooltipLines(
+                        Item.TooltipContext.of(client.level),
                         client.player,
                         client.options.advancedItemTooltips
-                                ? TooltipType.ADVANCED
-                                : TooltipType.BASIC);
-                context.drawTooltip(tr, tip, mouseX, mouseY);
+                                ? TooltipFlag.Default.ADVANCED
+                                : TooltipFlag.Default.NORMAL);
+                context.setComponentTooltipForNextFrame(tr, tip, mouseX, mouseY);
             }
         }
     }
@@ -337,7 +338,7 @@ public class BackpackHoverHandler {
     // Panel background
     // -------------------------------------------------------------------------
 
-    private static void drawPanelBackground(DrawContext ctx, int x, int y, int w, int h) {
+    private static void drawPanelBackground(GuiGraphicsExtractor ctx, int x, int y, int w, int h) {
         ctx.fill(x + 1, y,     x + w - 1, y + h,     BG);
         ctx.fill(x,     y + 1, x + 1,     y + h - 1, BG);
         ctx.fill(x + w - 1, y + 1, x + w, y + h - 1, BG);

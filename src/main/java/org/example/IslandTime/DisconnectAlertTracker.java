@@ -1,7 +1,7 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -56,7 +56,7 @@ public class DisconnectAlertTracker {
         save();
     }
 
-    public static void tick(MinecraftClient client) {
+    public static void tick(Minecraft client) {
         // Only check once per second for performance
         long now = System.currentTimeMillis();
         if (now - lastCheckTime < CHECK_INTERVAL_MS) return;
@@ -100,9 +100,9 @@ public class DisconnectAlertTracker {
         }
     }
 
-    private static boolean isConnectedToServer(MinecraftClient client) {
-        ClientPlayNetworkHandler networkHandler = client.getNetworkHandler();
-        return networkHandler != null && client.player != null && client.world != null;
+    private static boolean isConnectedToServer(Minecraft client) {
+        ClientPacketListener networkHandler = client.getConnection();
+        return networkHandler != null && client.player != null && client.level != null;
     }
 
     private static void sendDisconnectAlert(long disconnectedDuration) {

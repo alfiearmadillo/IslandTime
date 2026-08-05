@@ -2,13 +2,15 @@
   "required": true,
   "minVersion": "0.8",
   "package": "org.example.islandtime.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "client": [
     "AbstractSignEditScreenMixin",
+    "GameRendererMixin",
     "GabagoolPpgMixin",
     "HandledScreenMixin",
     "MouseMixin",
-    "ResourcePackMixin",
+    "LevelRendererMixin",
+    "MultiPlayerGameModeMixin",
     "TooltipOverrideMixin"
   ],
   "injectors": {

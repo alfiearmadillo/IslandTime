@@ -1,9 +1,9 @@
 plugins {
-    id("fabric-loom") version "1.15-SNAPSHOT"
+    id("net.fabricmc.fabric-loom") version "1.17.12"
 }
 
 group = "org.example"
-version = "1.6.0"
+version = "1.7.0"
 
 repositories {
     mavenCentral()
@@ -15,20 +15,19 @@ repositories {
 }
 
 dependencies {
-    minecraft("com.mojang:minecraft:1.21.11")
-    mappings("net.fabricmc:yarn:1.21.11+build.4:v2")
-    modImplementation("net.fabricmc:fabric-loader:0.18.4")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:0.141.3+1.21.11")
+    minecraft("com.mojang:minecraft:26.1")
+    // MC 26.1+ is unobfuscated — no mappings or remapping needed
+    implementation("net.fabricmc:fabric-loader:0.18.4")
+    implementation("net.fabricmc.fabric-api:fabric-api:0.144.3+26.1")
 
-    // MoulConfig - using version 4.5.0 (confirmed working in other projects)
-    // Artifact modern-1.21.11 exists for both 4.5.0 and 4.6.0
-    modImplementation("org.notenoughupdates.moulconfig:modern-1.21.11:4.5.0") {
+    // MoulConfig - updated for MC 26.1
+    implementation("org.notenoughupdates.moulconfig:modern-26.1:4.5.0") {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx")
     }
-    include("org.notenoughupdates.moulconfig:modern-1.21.11:4.5.0")
+    include("org.notenoughupdates.moulconfig:modern-26.1:4.5.0")
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+    toolchain.languageVersion.set(JavaLanguageVersion.of(25))
 }

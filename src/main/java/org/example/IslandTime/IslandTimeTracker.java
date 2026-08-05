@@ -1,8 +1,8 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.scoreboard.ScoreboardObjective;
-import net.minecraft.scoreboard.ScoreboardDisplaySlot;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.scores.Objective;
+import net.minecraft.world.scores.DisplaySlot;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -81,8 +81,8 @@ public class IslandTimeTracker {
     // Tick
     // -------------------------------------------------------------------------
 
-    public static void tick(MinecraftClient client) {
-        if (client.player == null || client.world == null) return;
+    public static void tick(Minecraft client) {
+        if (client.player == null || client.level == null) return;
 
         // We always run the scoreboard check so that isCurrentlyOnIsland()
         // stays accurate for FuelCycleTracker / IslandAlertTracker, even
@@ -111,19 +111,19 @@ public class IslandTimeTracker {
 
         if (!lastCheck.compareAndSet(lastCheckValue, now)) return;
 
-        ScoreboardObjective obj =
-                client.world.getScoreboard().getObjectiveForSlot(ScoreboardDisplaySlot.SIDEBAR);
+        Objective obj =
+                client.level.getScoreboard().getDisplayObjective(DisplaySlot.SIDEBAR);
         if (obj == null) { handleOffIsland(); return; }
 
-        var scoreboard = client.world.getScoreboard();
-        var scores     = scoreboard.getScoreboardEntries(obj);
+        var scoreboard = client.level.getScoreboard();
+        var scores     = scoreboard.listPlayerScores(obj);
         boolean onIsland = false;
 
         for (var scoreEntry : scores) {
             String ownerName = scoreEntry.owner();
-            var playerTeam   = scoreboard.getScoreHolderTeam(ownerName);
+            var playerTeam   = scoreboard.getPlayersTeam(ownerName);
             if (playerTeam != null) {
-                String fullLine = (playerTeam.getPrefix().getString() + playerTeam.getSuffix().getString())
+                String fullLine = (playerTeam.getPlayerPrefix().getString() + playerTeam.getPlayerSuffix().getString())
                         .replaceAll("§.", "").toLowerCase().trim();
                 if (fullLine.contains("your island")) { onIsland = true; break; }
             }

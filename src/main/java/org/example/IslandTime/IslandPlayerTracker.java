@@ -1,10 +1,10 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,7 +34,7 @@ public class IslandPlayerTracker {
      * name has not loaded yet, or who have no level bracket.
      * ConcurrentHashMap does not permit null values, so we use this instead.
      */
-    private static final Text EMPTY_LEVEL = Text.empty();
+    private static final Component EMPTY_LEVEL = Component.empty();
 
     /**
      * Keyed by plain username.
@@ -43,7 +43,7 @@ public class IslandPlayerTracker {
      * Retried on each tick while the player is still on the island, so a late-
      * arriving display name is picked up without missing the departure message.
      */
-    private static final Map<String, Text> playerLevelComponents = new ConcurrentHashMap<>();
+    private static final Map<String, Component> playerLevelComponents = new ConcurrentHashMap<>();
 
     /** Plain username set — used for departure detection. */
     private static final Set<String> currentPlayers = ConcurrentHashMap.newKeySet();
@@ -61,20 +61,20 @@ public class IslandPlayerTracker {
     // Tick
     // -------------------------------------------------------------------------
 
-    public static void tick(MinecraftClient client) {
+    public static void tick(Minecraft client) {
         long now = System.currentTimeMillis();
         if (now - lastCheckTime < CHECK_INTERVAL_MS) return;
         lastCheckTime = now;
 
-        if (client.player == null || client.getNetworkHandler() == null) { reset(); return; }
+        if (client.player == null || client.getConnection() == null) { reset(); return; }
         if (!IslandTimeTracker.isCurrentlyOnIsland())                    { reset(); return; }
 
-        Collection<PlayerListEntry> playerList = client.getNetworkHandler().getPlayerList();
+        Collection<PlayerInfo> playerList = client.getConnection().getOnlinePlayers();
         String localPlayerName = client.player.getName().getString();
 
         // Build fresh name set and cache/retry each player's level component
         Set<String> newNames = new HashSet<>();
-        for (PlayerListEntry entry : playerList) {
+        for (PlayerInfo entry : playerList) {
             com.mojang.authlib.GameProfile profile = entry.getProfile();
             if (profile == null || profile.name() == null) continue;
             if (profile.name().equals(localPlayerName))    continue;
@@ -88,7 +88,7 @@ public class IslandPlayerTracker {
             // tick may see an empty/plain name — we keep trying until it loads.
             if (!playerLevelComponents.containsKey(name)
                     || playerLevelComponents.get(name) == EMPTY_LEVEL) {
-                Text level = extractLevelComponent(entry.getDisplayName());
+                Component level = extractLevelComponent(entry.getTabListDisplayName());
                 playerLevelComponents.put(name, level != null ? level : EMPTY_LEVEL);
             }
         }
@@ -152,8 +152,8 @@ public class IslandPlayerTracker {
     // Notification
     // -------------------------------------------------------------------------
 
-    private static void notifyPlayerLeft(MinecraftClient client, String playerName) {
-        Text levelComponent = playerLevelComponents.get(playerName);
+    private static void notifyPlayerLeft(Minecraft client, String playerName) {
+        Component levelComponent = playerLevelComponents.get(playerName);
         // Treat the EMPTY_LEVEL sentinel as absent
         if (levelComponent == EMPTY_LEVEL) levelComponent = null;
 
@@ -169,20 +169,20 @@ public class IslandPlayerTracker {
         if (!showLeaveMessages || client.player == null) return;
 
         // [IslandTime] prefix in aqua
-        MutableText msg = Text.empty()
-                .append(Text.literal("[IslandTime] ").formatted(Formatting.AQUA));
+        MutableComponent msg = Component.empty()
+                .append(Component.literal("[IslandTime] ").withStyle(ChatFormatting.AQUA));
 
         // SkyBlock level bracket with original colour (e.g. "[360]" in grey)
         if (levelComponent != null) {
-            msg.append(levelComponent).append(Text.literal(" "));
+            msg.append(levelComponent).append(Component.literal(" "));
         }
 
         // PlayerName left Your Island.
-        msg.append(Text.literal(playerName + " ").formatted(Formatting.WHITE))
-           .append(Text.literal("left ").formatted(Formatting.YELLOW))
-           .append(Text.literal("Your Island.").formatted(Formatting.GREEN));
+        msg.append(Component.literal(playerName + " ").withStyle(ChatFormatting.WHITE))
+           .append(Component.literal("left ").withStyle(ChatFormatting.YELLOW))
+           .append(Component.literal("Your Island.").withStyle(ChatFormatting.GREEN));
 
-        client.player.sendMessage(msg, false);
+        client.player.sendSystemMessage(msg);
 
         // Clean up stored level now that the player has left
         playerLevelComponents.remove(playerName);
@@ -200,9 +200,9 @@ public class IslandPlayerTracker {
      * is the first sibling component whose full string contains "[" and "]".
      * Returns null if the display name hasn't loaded yet or has no bracket.
      */
-    private static Text extractLevelComponent(Text displayName) {
+    private static Component extractLevelComponent(Component displayName) {
         if (displayName == null) return null;
-        for (Text sibling : displayName.getSiblings()) {
+        for (Component sibling : displayName.getSiblings()) {
             String plain = sibling.getString();
             if (plain.contains("[") && plain.contains("]")) {
                 return sibling;

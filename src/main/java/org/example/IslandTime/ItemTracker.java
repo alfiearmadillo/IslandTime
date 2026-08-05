@@ -1,10 +1,10 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -59,20 +59,20 @@ public class ItemTracker {
     // Configuration
     // -------------------------------------------------------------------------
 
-    public static boolean setTrackedItemFromMainHand(MinecraftClient client) {
+    public static boolean setTrackedItemFromMainHand(Minecraft client) {
         if (client.player == null) return false;
-        ItemStack mainHandItem = client.player.getMainHandStack();
+        ItemStack mainHandItem = client.player.getMainHandItem();
         if (mainHandItem.isEmpty()) return false;
 
-        NbtCompound nbt = null;
+        CompoundTag nbt = null;
         for (var entry : mainHandItem.getComponents()) {
-            if (entry.type() == DataComponentTypes.CUSTOM_DATA && entry.value() instanceof NbtComponent nbtComponent) {
-                if (!nbtComponent.isEmpty()) { nbt = nbtComponent.copyNbt(); break; }
+            if (entry.type() == DataComponents.CUSTOM_DATA && entry.value() instanceof CustomData nbtComponent) {
+                if (!nbtComponent.isEmpty()) { nbt = nbtComponent.copyTag(); break; }
             }
         }
         if (nbt == null) return false;
 
-        System.out.println("[ItemTracker] Custom data keys: " + nbt.getKeys());
+        System.out.println("[ItemTracker] Custom data keys: " + nbt.keySet());
         if (!nbt.contains("uuid"))       { System.out.println("[ItemTracker] Item missing 'uuid'");       return false; }
         if (!nbt.contains("stats_book")) { System.out.println("[ItemTracker] Item missing 'stats_book'"); return false; }
 
@@ -85,7 +85,7 @@ public class ItemTracker {
             long statsBook = Long.parseLong(statsBookStr);
 
             trackedUuid     = uuid;
-            trackedItemName = mainHandItem.getName().getString();
+            trackedItemName = mainHandItem.getHoverName().getString();
             lastStatsValue          = statsBook;
             lastIncrementTime       = System.currentTimeMillis();
             lastCheckTime           = System.currentTimeMillis();
@@ -146,7 +146,7 @@ public class ItemTracker {
     // Tick
     // -------------------------------------------------------------------------
 
-    public static void tick(MinecraftClient client) {
+    public static void tick(Minecraft client) {
         if (!isTracking() || client.player == null) {
             statsIncreasingLastCheck = false;
             return;
@@ -179,10 +179,10 @@ public class ItemTracker {
         }
     }
 
-    private static ItemStack findTrackedItem(MinecraftClient client) {
+    private static ItemStack findTrackedItem(Minecraft client) {
         if (client.player == null) return null;
-        for (int i = 0; i < client.player.getInventory().size(); i++) {
-            ItemStack stack = client.player.getInventory().getStack(i);
+        for (int i = 0; i < client.player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = client.player.getInventory().getItem(i);
             if (!stack.isEmpty() && isTrackedItem(stack)) return stack;
         }
         return null;
@@ -190,9 +190,9 @@ public class ItemTracker {
 
     private static boolean isTrackedItem(ItemStack stack) {
         for (var entry : stack.getComponents()) {
-            if (entry.type() == DataComponentTypes.CUSTOM_DATA && entry.value() instanceof NbtComponent nbtComponent) {
+            if (entry.type() == DataComponents.CUSTOM_DATA && entry.value() instanceof CustomData nbtComponent) {
                 if (!nbtComponent.isEmpty()) {
-                    NbtCompound nbt = nbtComponent.copyNbt();
+                    CompoundTag nbt = nbtComponent.copyTag();
                     if (nbt.contains("uuid")) {
                         String uuid = nbt.get("uuid").toString();
                         if (uuid.startsWith("\"") && uuid.endsWith("\""))
@@ -207,9 +207,9 @@ public class ItemTracker {
 
     private static long getStatsBookValue(ItemStack stack) {
         for (var entry : stack.getComponents()) {
-            if (entry.type() == DataComponentTypes.CUSTOM_DATA && entry.value() instanceof NbtComponent nbtComponent) {
+            if (entry.type() == DataComponents.CUSTOM_DATA && entry.value() instanceof CustomData nbtComponent) {
                 if (!nbtComponent.isEmpty()) {
-                    NbtCompound nbt = nbtComponent.copyNbt();
+                    CompoundTag nbt = nbtComponent.copyTag();
                     if (nbt.contains("stats_book")) {
                         String s = nbt.get("stats_book").toString();
                         if (s.endsWith("L")) s = s.substring(0, s.length() - 1);
