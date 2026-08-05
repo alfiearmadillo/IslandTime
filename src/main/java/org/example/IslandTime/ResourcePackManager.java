@@ -1,8 +1,6 @@
 package org.example.islandtime;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.server.packs.repository.Pack;
-import net.minecraft.server.packs.repository.PackRepository;
 
 import java.io.*;
 import java.net.URI;
@@ -11,8 +9,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.*;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HexFormat;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -45,7 +41,9 @@ public class ResourcePackManager {
 
     /**
      * Apply the cached resource pack to the client.
-     * Copies the cached pack into the resourcepacks folder and enables it.
+     * Copies the cached pack into the resourcepacks folder and ensures it's in the
+     * enabled packs list. Does NOT force a resource reload — the pack will be loaded
+     * on the next natural reload (game start, or after a new download).
      */
     public static void applyCachedPack() {
         if (!ResourcePackConfig.isEnabled()) return;
@@ -61,27 +59,12 @@ public class ResourcePackManager {
             Files.createDirectories(resourcePacksDir);
             Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
 
-            // Enable the pack if not already enabled
-            client.execute(() -> {
-                try {
-                    PackRepository packRepository = client.getResourcePackRepository();
-                    packRepository.reload();
-
-                    Collection<String> enabled = new ArrayList<>(packRepository.getSelectedIds());
-                    if (!enabled.contains(PACK_PROFILE_ID)) {
-                        Pack profile = packRepository.getPack(PACK_PROFILE_ID);
-                        if (profile != null) {
-                            enabled.add(PACK_PROFILE_ID);
-                            client.options.resourcePacks.clear();
-                            client.options.resourcePacks.addAll(enabled);
-                            client.reloadResourcePacks();
-                            System.out.println("[IslandTime] Applied cached SkyBlock resource pack");
-                        }
-                    }
-                } catch (Exception e) {
-                    System.err.println("[IslandTime] Failed to enable resource pack: " + e.getMessage());
-                }
-            });
+            // Ensure the pack is in the enabled list (it will load on next natural reload)
+            if (!client.options.resourcePacks.contains(PACK_PROFILE_ID)) {
+                client.options.resourcePacks.add(PACK_PROFILE_ID);
+                client.options.save();
+                System.out.println("[IslandTime] Added SkyBlock resource pack to enabled packs list");
+            }
         } catch (Exception e) {
             System.err.println("[IslandTime] Failed to apply cached resource pack: " + e.getMessage());
             e.printStackTrace();
@@ -144,8 +127,22 @@ public class ResourcePackManager {
 
                 System.out.println("[IslandTime] Resource pack cached successfully (" + data.length + " bytes)");
 
-                // Apply the new pack on the render thread
-                Minecraft.getInstance().execute(ResourcePackManager::applyCachedPack);
+                // Apply the pack (copy to resourcepacks dir, add to options)
+                // then trigger a resource reload after a delay to avoid conflicts
+                Minecraft client = Minecraft.getInstance();
+                client.execute(() -> {
+                    applyCachedPack();
+                    // Delay the reload by scheduling it on the main thread after 2 seconds
+                    CompletableFuture.delayedExecutor(2, java.util.concurrent.TimeUnit.SECONDS)
+                            .execute(() -> client.execute(() -> {
+                                try {
+                                    client.reloadResourcePacks();
+                                    System.out.println("[IslandTime] Resource pack reload triggered");
+                                } catch (Exception e) {
+                                    System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
+                                }
+                            }));
+                });
 
             } catch (Exception e) {
                 System.err.println("[IslandTime] Error downloading resource pack: " + e.getMessage());
