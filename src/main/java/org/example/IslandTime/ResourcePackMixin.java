@@ -6,6 +6,7 @@ import net.minecraft.network.protocol.common.ClientboundResourcePackPushPacket;
 import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
 import org.example.islandtime.ResourcePackConfig;
 import org.example.islandtime.ResourcePackManager;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,10 +20,10 @@ import java.util.UUID;
  * when the "Keep Resource Pack" feature is enabled.
  */
 @Mixin(ClientCommonPacketListenerImpl.class)
-public abstract class ResourcePackMixin {
+public class ResourcePackMixin {
 
-    @Shadow
-    public abstract Connection getConnection();
+    @Shadow @Final
+    private Connection connection;
 
     @Inject(method = "handleResourcePackPush", at = @At("HEAD"), cancellable = true)
     private void islandtime$interceptResourcePack(ClientboundResourcePackPushPacket packet, CallbackInfo ci) {
@@ -38,8 +39,8 @@ public abstract class ResourcePackMixin {
         boolean handled = ResourcePackManager.handleServerPack(url, hash, packId);
         if (handled) {
             // Send acceptance responses back to the server so it doesn't wait forever
-            getConnection().send(new ServerboundResourcePackPacket(packId, ServerboundResourcePackPacket.Action.ACCEPTED));
-            getConnection().send(new ServerboundResourcePackPacket(packId, ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
+            connection.send(new ServerboundResourcePackPacket(packId, ServerboundResourcePackPacket.Action.ACCEPTED));
+            connection.send(new ServerboundResourcePackPacket(packId, ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
             ci.cancel();
         }
     }
