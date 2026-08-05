@@ -4,22 +4,22 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.block.Blocks;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.*;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
 
 public class IslandTimeCommand {
 
@@ -110,30 +110,22 @@ public class IslandTimeCommand {
                 })
                 .then(literal("debug")
                         .executes(ctx -> {
-                            MinecraftClient client = ctx.getSource().getClient();
-                            client.player.sendMessage(
-                                    Text.literal("[FuelCycleTracker Debug] Injecting fake cycle and saving...")
-                                            .formatted(Formatting.YELLOW),
-                                    false
-                            );
+                            Minecraft client = ctx.getSource().getClient();
+                            client.player.sendSystemMessage(
+                                    Component.literal("[FuelCycleTracker Debug] Injecting fake cycle and saving...")
+                                            .withStyle(ChatFormatting.YELLOW));
                             boolean saved = FuelCycleTracker.debugSimulateCycle();
                             if (saved) {
-                                client.player.sendMessage(
-                                        Text.literal("[FuelCycleTracker Debug] Save succeeded — file exists on disk.")
-                                                .formatted(Formatting.GREEN),
-                                        false
-                                );
-                                client.player.sendMessage(
-                                        Text.literal("[FuelCycleTracker Debug] Run /fueltime to confirm the cycle appears, then check latest.log for any errors.")
-                                                .formatted(Formatting.GRAY),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("[FuelCycleTracker Debug] Save succeeded — file exists on disk.")
+                                                .withStyle(ChatFormatting.GREEN));
+                                client.player.sendSystemMessage(
+                                        Component.literal("[FuelCycleTracker Debug] Run /fueltime to confirm the cycle appears, then check latest.log for any errors.")
+                                                .withStyle(ChatFormatting.GRAY));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("[FuelCycleTracker Debug] Save FAILED — file not found after save attempt. Check latest.log for the IOException.")
-                                                .formatted(Formatting.RED),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("[FuelCycleTracker Debug] Save FAILED — file not found after save attempt. Check latest.log for the IOException.")
+                                                .withStyle(ChatFormatting.RED));
                             }
                             return 1;
                         }))
@@ -147,35 +139,33 @@ public class IslandTimeCommand {
         // /webhook
         dispatcher.register(literal("webhook")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     String url = DiscordWebhookManager.getWebhook();
                     if (url != null && !url.isEmpty()) {
-                        client.player.sendMessage(
-                                Text.literal("Webhook URL: " + url).formatted(Formatting.AQUA), false);
+                        client.player.sendSystemMessage(
+                                Component.literal("Webhook URL: " + url).withStyle(ChatFormatting.AQUA));
                     } else {
-                        client.player.sendMessage(
-                                Text.literal("No webhook set").formatted(Formatting.YELLOW), false);
+                        client.player.sendSystemMessage(
+                                Component.literal("No webhook set").withStyle(ChatFormatting.YELLOW));
                     }
                     return 1;
                 })
                 .then(argument("url", StringArgumentType.greedyString())
                         .executes(ctx -> {
                             String url = StringArgumentType.getString(ctx, "url");
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             if (url.equalsIgnoreCase("clear")) {
                                 DiscordWebhookManager.clearWebhook();
-                                client.player.sendMessage(
-                                        Text.literal("Webhook cleared").formatted(Formatting.GREEN), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Webhook cleared").withStyle(ChatFormatting.GREEN));
                             } else if (url.startsWith("https://discord.com/api/webhooks/")) {
                                 DiscordWebhookManager.setWebhook(url);
-                                client.player.sendMessage(
-                                        Text.literal("Webhook set successfully").formatted(Formatting.GREEN), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Webhook set successfully").withStyle(ChatFormatting.GREEN));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("Invalid webhook URL. Must start with https://discord.com/api/webhooks/")
-                                                .formatted(Formatting.RED),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid webhook URL. Must start with https://discord.com/api/webhooks/")
+                                                .withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -184,95 +174,83 @@ public class IslandTimeCommand {
         // /discordping
         dispatcher.register(literal("discordping")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     String userId = DiscordWebhookManager.getDiscordUserId();
                     if (userId != null && !userId.isEmpty()) {
-                        client.player.sendMessage(
-                                Text.literal("Discord ping ID: ").formatted(Formatting.AQUA)
-                                        .append(Text.literal(userId).formatted(Formatting.YELLOW)),
-                                false
-                        );
+                        client.player.sendSystemMessage(
+                                Component.literal("Discord ping ID: ").withStyle(ChatFormatting.AQUA)
+                                        .append(Component.literal(userId).withStyle(ChatFormatting.YELLOW)));
                     } else {
-                        client.player.sendMessage(
-                                Text.literal("No Discord ping ID set (webhooks will not ping anyone)")
-                                        .formatted(Formatting.YELLOW),
-                                false
-                        );
+                        client.player.sendSystemMessage(
+                                Component.literal("No Discord ping ID set (webhooks will not ping anyone)")
+                                        .withStyle(ChatFormatting.YELLOW));
                     }
                     return 1;
                 })
                 .then(argument("userid", StringArgumentType.word())
                         .executes(ctx -> {
                             String userId = StringArgumentType.getString(ctx, "userid");
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             if (userId.equalsIgnoreCase("clear")) {
                                 DiscordWebhookManager.clearDiscordUserId();
-                                client.player.sendMessage(
-                                        Text.literal("Discord ping ID cleared").formatted(Formatting.GREEN), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Discord ping ID cleared").withStyle(ChatFormatting.GREEN));
                                 return 1;
                             }
                             if (!userId.matches("\\d+")) {
-                                client.player.sendMessage(
-                                        Text.literal("Invalid Discord user ID. Must be numeric (e.g., 123456789012345678)")
-                                                .formatted(Formatting.RED),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid Discord user ID. Must be numeric (e.g., 123456789012345678)")
+                                                .withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             DiscordWebhookManager.setDiscordUserId(userId);
-                            client.player.sendMessage(
-                                    Text.literal("Discord ping ID set to: ").formatted(Formatting.GREEN)
-                                            .append(Text.literal(userId).formatted(Formatting.YELLOW)),
-                                    false
-                            );
+                            client.player.sendSystemMessage(
+                                    Component.literal("Discord ping ID set to: ").withStyle(ChatFormatting.GREEN)
+                                            .append(Component.literal(userId).withStyle(ChatFormatting.YELLOW)));
                             return 1;
                         })));
 
         // /chatrelay
         dispatcher.register(literal("chatrelay")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     String url    = ChatRelayConfig.getChatWebhookUrl();
                     int    port   = ChatRelayConfig.getPollPort();
                     String secret = ChatRelayConfig.getPollSecret();
 
-                    client.player.sendMessage(
-                            Text.literal("─── Chat Relay Config ───").formatted(Formatting.AQUA), false);
-                    client.player.sendMessage(
-                            Text.literal("Webhook: ").formatted(Formatting.GRAY)
-                                    .append(Text.literal(url.isEmpty() ? "(not set)" : url)
-                                            .formatted(url.isEmpty() ? Formatting.YELLOW : Formatting.GREEN)),
-                            false);
-                    client.player.sendMessage(
-                            Text.literal("Poll port: ").formatted(Formatting.GRAY)
-                                    .append(Text.literal(String.valueOf(port)).formatted(Formatting.WHITE)),
-                            false);
-                    client.player.sendMessage(
-                            Text.literal("Poll secret: ").formatted(Formatting.GRAY)
-                                    .append(Text.literal(secret).formatted(Formatting.WHITE)),
-                            false);
-                    client.player.sendMessage(
-                            Text.literal("Use /islandtime help 6 for subcommands.").formatted(Formatting.DARK_GRAY), false);
+                    client.player.sendSystemMessage(
+                            Component.literal("─── Chat Relay Config ───").withStyle(ChatFormatting.AQUA));
+                    client.player.sendSystemMessage(
+                            Component.literal("Webhook: ").withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(url.isEmpty() ? "(not set)" : url)
+                                            .withStyle(url.isEmpty() ? ChatFormatting.YELLOW : ChatFormatting.GREEN)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Poll port: ").withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(String.valueOf(port)).withStyle(ChatFormatting.WHITE)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Poll secret: ").withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(secret).withStyle(ChatFormatting.WHITE)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /islandtime help 6 for subcommands.").withStyle(ChatFormatting.DARK_GRAY));
                     return 1;
                 })
                 .then(literal("webhook")
                         .then(argument("url", StringArgumentType.greedyString())
                                 .executes(ctx -> {
                                     String url = StringArgumentType.getString(ctx, "url");
-                                    MinecraftClient client = ctx.getSource().getClient();
+                                    Minecraft client = ctx.getSource().getClient();
                                     if (url.equalsIgnoreCase("clear")) {
                                         ChatRelayConfig.setChatWebhookUrl("");
-                                        client.player.sendMessage(
-                                                Text.literal("Chat relay webhook cleared.").formatted(Formatting.GREEN), false);
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Chat relay webhook cleared.").withStyle(ChatFormatting.GREEN));
                                     } else if (url.startsWith("https://discord.com/api/webhooks/")) {
                                         ChatRelayConfig.setChatWebhookUrl(url);
-                                        client.player.sendMessage(
-                                                Text.literal("Chat relay webhook set.").formatted(Formatting.GREEN), false);
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Chat relay webhook set.").withStyle(ChatFormatting.GREEN));
                                     } else {
-                                        client.player.sendMessage(
-                                                Text.literal("Invalid URL. Must start with https://discord.com/api/webhooks/")
-                                                        .formatted(Formatting.RED),
-                                                false);
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Invalid URL. Must start with https://discord.com/api/webhooks/")
+                                                        .withStyle(ChatFormatting.RED));
                                         return 0;
                                     }
                                     return 1;
@@ -282,10 +260,9 @@ public class IslandTimeCommand {
                                 .executes(ctx -> {
                                     int port = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "port");
                                     ChatRelayConfig.setPollPort(port);
-                                    ctx.getSource().getClient().player.sendMessage(
-                                            Text.literal("Poll port set to " + port + ". Rejoin the server to apply.")
-                                                    .formatted(Formatting.GREEN),
-                                            false);
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Poll port set to " + port + ". Rejoin the server to apply.")
+                                                    .withStyle(ChatFormatting.GREEN));
                                     return 1;
                                 })))
                 .then(literal("secret")
@@ -293,69 +270,61 @@ public class IslandTimeCommand {
                                 .executes(ctx -> {
                                     String secret = StringArgumentType.getString(ctx, "secret");
                                     ChatRelayConfig.setPollSecret(secret);
-                                    ctx.getSource().getClient().player.sendMessage(
-                                            Text.literal("Poll secret updated.").formatted(Formatting.GREEN), false);
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Poll secret updated.").withStyle(ChatFormatting.GREEN));
                                     return 1;
                                 }))));
 
         // /trackitem
         dispatcher.register(literal("trackitem")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     String uuid = ItemTracker.getTrackedUuid();
                     String name = ItemTracker.getTrackedItemName();
                     if (uuid != null && !uuid.isEmpty()) {
-                        client.player.sendMessage(
-                                Text.literal("Currently tracking: ").formatted(Formatting.AQUA)
-                                        .append(Text.literal(name != null ? name : "Unknown item").formatted(Formatting.YELLOW))
-                                        .append(Text.literal("\nUUID: " + uuid).formatted(Formatting.GRAY)),
-                                false
-                        );
+                        client.player.sendSystemMessage(
+                                Component.literal("Currently tracking: ").withStyle(ChatFormatting.AQUA)
+                                        .append(Component.literal(name != null ? name : "Unknown item").withStyle(ChatFormatting.YELLOW))
+                                        .append(Component.literal("\nUUID: " + uuid).withStyle(ChatFormatting.GRAY)));
                     } else {
-                        client.player.sendMessage(
-                                Text.literal("No item is being tracked").formatted(Formatting.YELLOW), false);
+                        client.player.sendSystemMessage(
+                                Component.literal("No item is being tracked").withStyle(ChatFormatting.YELLOW));
                     }
                     return 1;
                 })
                 .then(literal("set")
                         .executes(ctx -> {
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             if (ItemTracker.setTrackedItemFromMainHand(client)) {
                                 String name = ItemTracker.getTrackedItemName();
                                 String uuid = ItemTracker.getTrackedUuid();
-                                client.player.sendMessage(
-                                        Text.literal("Now tracking: ").formatted(Formatting.GREEN)
-                                                .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                .append(Text.literal("\nUUID: " + uuid).formatted(Formatting.GRAY)),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Now tracking: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                .append(Component.literal("\nUUID: " + uuid).withStyle(ChatFormatting.GRAY)));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("Cannot track this item. Item must have both 'uuid' and 'stats_book' in custom data.")
-                                                .formatted(Formatting.RED),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Cannot track this item. Item must have both 'uuid' and 'stats_book' in custom data.")
+                                                .withStyle(ChatFormatting.RED));
                             }
                             return 1;
                         }))
                 .then(literal("clear")
                         .executes(ctx -> {
                             ItemTracker.clearTrackedItem();
-                            ctx.getSource().getClient().player.sendMessage(
-                                    Text.literal("Cleared tracked item").formatted(Formatting.GREEN), false);
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Cleared tracked item").withStyle(ChatFormatting.GREEN));
                             return 1;
                         })));
 
         // /trackedalertspeed
         dispatcher.register(literal("trackedalertspeed")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
-                    client.player.sendMessage(
-                            Text.literal("Current tracked item alert speed: ").formatted(Formatting.AQUA)
-                                    .append(Text.literal(ItemTracker.getAlertSpeed().name().toLowerCase())
-                                            .formatted(Formatting.YELLOW)),
-                            false
-                    );
+                    Minecraft client = ctx.getSource().getClient();
+                    client.player.sendSystemMessage(
+                            Component.literal("Current tracked item alert speed: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(ItemTracker.getAlertSpeed().name().toLowerCase())
+                                            .withStyle(ChatFormatting.YELLOW)));
                     showAlertSpeedOptions(client);
                     return 1;
                 })
@@ -369,21 +338,17 @@ public class IslandTimeCommand {
                         })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             try {
                                 ItemTracker.AlertSpeed speed = ItemTracker.AlertSpeed.valueOf(speedStr);
                                 ItemTracker.setAlertSpeed(speed);
-                                client.player.sendMessage(
-                                        Text.literal("Tracked item alert speed set to: ").formatted(Formatting.GREEN)
-                                                .append(Text.literal(speed.name().toLowerCase()).formatted(Formatting.YELLOW)),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Tracked item alert speed set to: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
                             } catch (IllegalArgumentException e) {
-                                client.player.sendMessage(
-                                        Text.literal("Invalid alert speed. Use: off, fast, normal, or slow")
-                                                .formatted(Formatting.RED),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
+                                                .withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -392,13 +357,11 @@ public class IslandTimeCommand {
         // /islandalertspeed
         dispatcher.register(literal("islandalertspeed")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
-                    client.player.sendMessage(
-                            Text.literal("Current island alert speed: ").formatted(Formatting.AQUA)
-                                    .append(Text.literal(IslandAlertTracker.getAlertSpeed().name().toLowerCase())
-                                            .formatted(Formatting.YELLOW)),
-                            false
-                    );
+                    Minecraft client = ctx.getSource().getClient();
+                    client.player.sendSystemMessage(
+                            Component.literal("Current island alert speed: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(IslandAlertTracker.getAlertSpeed().name().toLowerCase())
+                                            .withStyle(ChatFormatting.YELLOW)));
                     showAlertSpeedOptions(client);
                     return 1;
                 })
@@ -412,21 +375,17 @@ public class IslandTimeCommand {
                         })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             try {
                                 IslandAlertTracker.AlertSpeed speed = IslandAlertTracker.AlertSpeed.valueOf(speedStr);
                                 IslandAlertTracker.setAlertSpeed(speed);
-                                client.player.sendMessage(
-                                        Text.literal("Island alert speed set to: ").formatted(Formatting.GREEN)
-                                                .append(Text.literal(speed.name().toLowerCase()).formatted(Formatting.YELLOW)),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island alert speed set to: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
                             } catch (IllegalArgumentException e) {
-                                client.player.sendMessage(
-                                        Text.literal("Invalid alert speed. Use: off, fast, normal, or slow")
-                                                .formatted(Formatting.RED),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
+                                                .withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -435,22 +394,20 @@ public class IslandTimeCommand {
         // /disconnectalertspeed
         dispatcher.register(literal("disconnectalertspeed")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
-                    client.player.sendMessage(
-                            Text.literal("Current disconnect alert speed: ").formatted(Formatting.AQUA)
-                                    .append(Text.literal(DisconnectAlertTracker.getAlertSpeed().name().toLowerCase())
-                                            .formatted(Formatting.YELLOW)),
-                            false
-                    );
-                    client.player.sendMessage(Text.literal("\nDisconnect alert speeds:").formatted(Formatting.GRAY), false);
-                    client.player.sendMessage(Text.literal("  off: ").formatted(Formatting.WHITE)
-                            .append(Text.literal("No alerts").formatted(Formatting.GRAY)), false);
-                    client.player.sendMessage(Text.literal("  fast: ").formatted(Formatting.WHITE)
-                            .append(Text.literal("After 10s, then every 5 min").formatted(Formatting.GRAY)), false);
-                    client.player.sendMessage(Text.literal("  normal: ").formatted(Formatting.WHITE)
-                            .append(Text.literal("After 10s, then every 30 min").formatted(Formatting.GRAY)), false);
-                    client.player.sendMessage(Text.literal("  slow: ").formatted(Formatting.WHITE)
-                            .append(Text.literal("After 10s, then every 3 hours").formatted(Formatting.GRAY)), false);
+                    Minecraft client = ctx.getSource().getClient();
+                    client.player.sendSystemMessage(
+                            Component.literal("Current disconnect alert speed: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(DisconnectAlertTracker.getAlertSpeed().name().toLowerCase())
+                                            .withStyle(ChatFormatting.YELLOW)));
+                    client.player.sendSystemMessage(Component.literal("\nDisconnect alert speeds:").withStyle(ChatFormatting.GRAY));
+                    client.player.sendSystemMessage(Component.literal("  off: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("No alerts").withStyle(ChatFormatting.GRAY)));
+                    client.player.sendSystemMessage(Component.literal("  fast: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("After 10s, then every 5 min").withStyle(ChatFormatting.GRAY)));
+                    client.player.sendSystemMessage(Component.literal("  normal: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("After 10s, then every 30 min").withStyle(ChatFormatting.GRAY)));
+                    client.player.sendSystemMessage(Component.literal("  slow: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("After 10s, then every 3 hours").withStyle(ChatFormatting.GRAY)));
                     return 1;
                 })
                 .then(argument("speed", StringArgumentType.word())
@@ -463,21 +420,17 @@ public class IslandTimeCommand {
                         })
                         .executes(ctx -> {
                             String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             try {
                                 DisconnectAlertTracker.AlertSpeed speed = DisconnectAlertTracker.AlertSpeed.valueOf(speedStr);
                                 DisconnectAlertTracker.setAlertSpeed(speed);
-                                client.player.sendMessage(
-                                        Text.literal("Disconnect alert speed set to: ").formatted(Formatting.GREEN)
-                                                .append(Text.literal(speed.name().toLowerCase()).formatted(Formatting.YELLOW)),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Disconnect alert speed set to: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
                             } catch (IllegalArgumentException e) {
-                                client.player.sendMessage(
-                                        Text.literal("Invalid alert speed. Use: off, fast, normal, or slow")
-                                                .formatted(Formatting.RED),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
+                                                .withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -486,38 +439,32 @@ public class IslandTimeCommand {
         // /trackislandtime
         dispatcher.register(literal("trackislandtime")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     boolean current = TrackingToggleConfig.isIslandTimeEnabled();
-                    client.player.sendMessage(
-                            Text.literal("Island-time tracking is currently: ").formatted(Formatting.AQUA)
-                                    .append(Text.literal(current ? "enabled" : "disabled")
-                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
-                            false
-                    );
-                    client.player.sendMessage(
-                            Text.literal("Use /trackislandtime <on|off> to change.").formatted(Formatting.GRAY),
-                            false
-                    );
+                    client.player.sendSystemMessage(
+                            Component.literal("Island-time tracking is currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /trackislandtime <on|off> to change.").withStyle(ChatFormatting.GRAY));
                     return 1;
                 })
                 .then(argument("state", StringArgumentType.word())
                         .executes(ctx -> {
                             String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             if (state.equals("on")) {
                                 TrackingToggleConfig.setIslandTimeEnabled(true);
-                                client.player.sendMessage(
-                                        Text.literal("Island-time tracking enabled.").formatted(Formatting.GREEN), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island-time tracking enabled.").withStyle(ChatFormatting.GREEN));
                             } else if (state.equals("off")) {
                                 TrackingToggleConfig.setIslandTimeEnabled(false);
-                                client.player.sendMessage(
-                                        Text.literal("Island-time tracking disabled. Current day data is preserved; no new days will be tracked.")
-                                                .formatted(Formatting.YELLOW),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island-time tracking disabled. Current day data is preserved; no new days will be tracked.")
+                                                .withStyle(ChatFormatting.YELLOW));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("Usage: /trackislandtime <on|off>").formatted(Formatting.RED), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /trackislandtime <on|off>").withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -526,38 +473,32 @@ public class IslandTimeCommand {
         // /trackfuelcycles
         dispatcher.register(literal("trackfuelcycles")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     boolean current = TrackingToggleConfig.isFuelCycleEnabled();
-                    client.player.sendMessage(
-                            Text.literal("Fuel-cycle tracking is currently: ").formatted(Formatting.AQUA)
-                                    .append(Text.literal(current ? "enabled" : "disabled")
-                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
-                            false
-                    );
-                    client.player.sendMessage(
-                            Text.literal("Use /trackfuelcycles <on|off> to change.").formatted(Formatting.GRAY),
-                            false
-                    );
+                    client.player.sendSystemMessage(
+                            Component.literal("Fuel-cycle tracking is currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /trackfuelcycles <on|off> to change.").withStyle(ChatFormatting.GRAY));
                     return 1;
                 })
                 .then(argument("state", StringArgumentType.word())
                         .executes(ctx -> {
                             String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             if (state.equals("on")) {
                                 TrackingToggleConfig.setFuelCycleEnabled(true);
-                                client.player.sendMessage(
-                                        Text.literal("Fuel-cycle tracking enabled.").formatted(Formatting.GREEN), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Fuel-cycle tracking enabled.").withStyle(ChatFormatting.GREEN));
                             } else if (state.equals("off")) {
                                 TrackingToggleConfig.setFuelCycleEnabled(false);
-                                client.player.sendMessage(
-                                        Text.literal("Fuel-cycle tracking disabled. Any active cycle will complete naturally; no new cycles will start.")
-                                                .formatted(Formatting.YELLOW),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Fuel-cycle tracking disabled. Any active cycle will complete naturally; no new cycles will start.")
+                                                .withStyle(ChatFormatting.YELLOW));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("Usage: /trackfuelcycles <on|off>").formatted(Formatting.RED), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /trackfuelcycles <on|off>").withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -566,37 +507,33 @@ public class IslandTimeCommand {
         // /minionfuelmessages
         dispatcher.register(literal("minionfuelmessages")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     boolean current = MinionFuelTracker.isShowFuelMessages();
-                    client.player.sendMessage(
-                            Text.literal("Minion fuel messages are currently: ").formatted(Formatting.AQUA)
-                                    .append(Text.literal(current ? "enabled" : "disabled")
-                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
-                            false
-                    );
-                    client.player.sendMessage(
-                            Text.literal("Use /minionfuelmessages <on|off> to change.").formatted(Formatting.GRAY),
-                            false
-                    );
+                    client.player.sendSystemMessage(
+                            Component.literal("Minion fuel messages are currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /minionfuelmessages <on|off> to change.").withStyle(ChatFormatting.GRAY));
                     return 1;
                 })
                 .then(argument("state", StringArgumentType.word())
                         .executes(ctx -> {
                             String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             if (state.equals("on")) {
                                 MinionFuelTracker.setShowFuelMessages(true);
                                 ConfigManager.syncFromExistingConfigs();
-                                client.player.sendMessage(
-                                        Text.literal("Minion fuel messages enabled.").formatted(Formatting.GREEN), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Minion fuel messages enabled.").withStyle(ChatFormatting.GREEN));
                             } else if (state.equals("off")) {
                                 MinionFuelTracker.setShowFuelMessages(false);
                                 ConfigManager.syncFromExistingConfigs();
-                                client.player.sendMessage(
-                                        Text.literal("Minion fuel messages disabled.").formatted(Formatting.YELLOW), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Minion fuel messages disabled.").withStyle(ChatFormatting.YELLOW));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("Usage: /minionfuelmessages <on|off>").formatted(Formatting.RED), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /minionfuelmessages <on|off>").withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -605,37 +542,33 @@ public class IslandTimeCommand {
         // /islandleavemessages
         dispatcher.register(literal("islandleavemessages")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     boolean current = IslandPlayerTracker.isShowLeaveMessages();
-                    client.player.sendMessage(
-                            Text.literal("Island leave messages are currently: ").formatted(Formatting.AQUA)
-                                    .append(Text.literal(current ? "enabled" : "disabled")
-                                            .formatted(current ? Formatting.GREEN : Formatting.RED)),
-                            false
-                    );
-                    client.player.sendMessage(
-                            Text.literal("Use /islandleavemessages <on|off> to change.").formatted(Formatting.GRAY),
-                            false
-                    );
+                    client.player.sendSystemMessage(
+                            Component.literal("Island leave messages are currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /islandleavemessages <on|off> to change.").withStyle(ChatFormatting.GRAY));
                     return 1;
                 })
                 .then(argument("state", StringArgumentType.word())
                         .executes(ctx -> {
                             String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             if (state.equals("on")) {
                                 IslandPlayerTracker.setShowLeaveMessages(true);
                                 ConfigManager.syncFromExistingConfigs();
-                                client.player.sendMessage(
-                                        Text.literal("Island leave messages enabled.").formatted(Formatting.GREEN), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island leave messages enabled.").withStyle(ChatFormatting.GREEN));
                             } else if (state.equals("off")) {
                                 IslandPlayerTracker.setShowLeaveMessages(false);
                                 ConfigManager.syncFromExistingConfigs();
-                                client.player.sendMessage(
-                                        Text.literal("Island leave messages disabled.").formatted(Formatting.YELLOW), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island leave messages disabled.").withStyle(ChatFormatting.YELLOW));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("Usage: /islandleavemessages <on|off>").formatted(Formatting.RED), false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /islandleavemessages <on|off>").withStyle(ChatFormatting.RED));
                                 return 0;
                             }
                             return 1;
@@ -644,35 +577,29 @@ public class IslandTimeCommand {
         // /favouritegui
         dispatcher.register(literal("favouritegui")
                 .executes(ctx -> {
-                    MinecraftClient client = ctx.getSource().getClient();
+                    Minecraft client = ctx.getSource().getClient();
                     Set<String> savedNames = FavouriteGuiManager.getSavedNames();
 
                     if (savedNames.isEmpty()) {
-                        client.player.sendMessage(
-                                Text.literal("No saved containers yet. Use /favouritegui save <name> to save a container.")
-                                        .formatted(Formatting.YELLOW),
-                                false
-                        );
+                        client.player.sendSystemMessage(
+                                Component.literal("No saved containers yet. Use /favouritegui save <name> to save a container.")
+                                        .withStyle(ChatFormatting.YELLOW));
                     } else {
-                        client.player.sendMessage(
-                                Text.literal("Saved containers (" + savedNames.size() + "):").formatted(Formatting.GOLD),
-                                false
-                        );
+                        client.player.sendSystemMessage(
+                                Component.literal("Saved containers (" + savedNames.size() + "):").withStyle(ChatFormatting.GOLD));
                         for (String name : savedNames) {
                             FavouriteGuiManager.SavedContainer container = FavouriteGuiManager.getSavedContainer(name);
-                            client.player.sendMessage(
-                                    Text.literal("  • ").formatted(Formatting.GRAY)
-                                            .append(Text.literal(name).formatted(Formatting.AQUA)
-                                                    .styled(style -> style
+                            client.player.sendSystemMessage(
+                                    Component.literal("  • ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal(name).withStyle(ChatFormatting.AQUA)
+                                                    .withStyle(style -> style
                                                             .withClickEvent(new ClickEvent.RunCommand(
                                                                     "/favouritegui view " + name))
                                                             .withHoverEvent(new HoverEvent.ShowText(
-                                                                    Text.literal("Click to view").formatted(Formatting.GRAY)))))
-                                            .append(Text.literal(" - ").formatted(Formatting.GRAY))
-                                            .append(Text.literal(container.title).formatted(Formatting.WHITE))
-                                            .append(Text.literal(" (" + container.items.size() + " items)").formatted(Formatting.GRAY)),
-                                    false
-                            );
+                                                                    Component.literal("Click to view").withStyle(ChatFormatting.GRAY)))))
+                                            .append(Component.literal(" - ").withStyle(ChatFormatting.GRAY))
+                                            .append(Component.literal(container.title).withStyle(ChatFormatting.WHITE))
+                                            .append(Component.literal(" (" + container.items.size() + " items)").withStyle(ChatFormatting.GRAY)));
                         }
                     }
                     return 1;
@@ -681,49 +608,41 @@ public class IslandTimeCommand {
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     String name = StringArgumentType.getString(ctx, "name");
-                                    MinecraftClient client = ctx.getSource().getClient();
+                                    Minecraft client = ctx.getSource().getClient();
 
                                     if (FavouriteGuiManager.saveCurrentContainer(name)) {
                                         FavouriteGuiManager.SavedContainer container = FavouriteGuiManager.getSavedContainer(name);
-                                        client.player.sendMessage(
-                                                Text.literal("Saved container '").formatted(Formatting.GREEN)
-                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                        .append(Text.literal("' (").formatted(Formatting.GREEN))
-                                                        .append(Text.literal(container.title).formatted(Formatting.WHITE))
-                                                        .append(Text.literal(", " + container.size + " slots, " + container.items.size() + " items)").formatted(Formatting.GREEN)),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("' (").withStyle(ChatFormatting.GREEN))
+                                                        .append(Component.literal(container.title).withStyle(ChatFormatting.WHITE))
+                                                        .append(Component.literal(", " + container.size + " slots, " + container.items.size() + " items)").withStyle(ChatFormatting.GREEN)));
                                     } else {
-                                        client.player.sendMessage(
-                                                Text.literal("Cannot save: No container is currently open or it's not a valid container type.")
-                                                        .formatted(Formatting.RED),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Cannot save: No container is currently open or it's not a valid container type.")
+                                                        .withStyle(ChatFormatting.RED));
                                         return 0;
                                     }
                                     return 1;
                                 })))
                 .then(literal("toggle")
                         .executes(ctx -> {
-                            MinecraftClient client = ctx.getSource().getClient();
+                            Minecraft client = ctx.getSource().getClient();
                             boolean nowEnabled = !FavouriteGuiManager.isTrackingEnabled();
                             FavouriteGuiManager.setTrackingEnabled(nowEnabled);
                             if (nowEnabled) {
-                                client.player.sendMessage(
-                                        Text.literal("Favourite GUI tracking ")
-                                                .formatted(Formatting.GREEN)
-                                                .append(Text.literal("enabled").formatted(Formatting.GREEN))
-                                                .append(Text.literal(". Container snapshots will be kept for /favouritegui save.").formatted(Formatting.GRAY)),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Favourite GUI tracking ")
+                                                .withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal("enabled").withStyle(ChatFormatting.GREEN))
+                                                .append(Component.literal(". Container snapshots will be kept for /favouritegui save.").withStyle(ChatFormatting.GRAY)));
                             } else {
-                                client.player.sendMessage(
-                                        Text.literal("Favourite GUI tracking ")
-                                                .formatted(Formatting.YELLOW)
-                                                .append(Text.literal("disabled").formatted(Formatting.RED))
-                                                .append(Text.literal(". Containers will no longer be snapshotted — /favouritegui save will have no data to work from.").formatted(Formatting.GRAY)),
-                                        false
-                                );
+                                client.player.sendSystemMessage(
+                                        Component.literal("Favourite GUI tracking ")
+                                                .withStyle(ChatFormatting.YELLOW)
+                                                .append(Component.literal("disabled").withStyle(ChatFormatting.RED))
+                                                .append(Component.literal(". Containers will no longer be snapshotted — /favouritegui save will have no data to work from.").withStyle(ChatFormatting.GRAY)));
                             }
                             return 1;
                         }))
@@ -735,22 +654,18 @@ public class IslandTimeCommand {
                                 })
                                 .executes(ctx -> {
                                     String name = StringArgumentType.getString(ctx, "name");
-                                    MinecraftClient client = ctx.getSource().getClient();
+                                    Minecraft client = ctx.getSource().getClient();
 
                                     if (FavouriteGuiManager.deleteSavedContainer(name)) {
-                                        client.player.sendMessage(
-                                                Text.literal("Deleted saved container '").formatted(Formatting.GREEN)
-                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                        .append(Text.literal("'").formatted(Formatting.GREEN)),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Deleted saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
                                     } else {
-                                        client.player.sendMessage(
-                                                Text.literal("No saved container found with name '").formatted(Formatting.RED)
-                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                        .append(Text.literal("'").formatted(Formatting.RED)),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
                                         return 0;
                                     }
                                     return 1;
@@ -763,22 +678,18 @@ public class IslandTimeCommand {
                                 })
                                 .executes(ctx -> {
                                     String name = StringArgumentType.getString(ctx, "name");
-                                    MinecraftClient client = ctx.getSource().getClient();
+                                    Minecraft client = ctx.getSource().getClient();
 
                                     if (FavouriteGuiViewer.open(name)) {
-                                        client.player.sendMessage(
-                                                Text.literal("Opening saved container '").formatted(Formatting.GREEN)
-                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                        .append(Text.literal("'").formatted(Formatting.GREEN)),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Opening saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
                                     } else {
-                                        client.player.sendMessage(
-                                                Text.literal("No saved container found with name '").formatted(Formatting.RED)
-                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                        .append(Text.literal("'").formatted(Formatting.RED)),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
                                         return 0;
                                     }
                                     return 1;
@@ -791,22 +702,18 @@ public class IslandTimeCommand {
                                 })
                                 .executes(ctx -> {
                                     String name = StringArgumentType.getString(ctx, "name");
-                                    MinecraftClient client = ctx.getSource().getClient();
+                                    Minecraft client = ctx.getSource().getClient();
 
                                     if (FavouriteGuiViewer.open(name)) {
-                                        client.player.sendMessage(
-                                                Text.literal("Opening saved container '").formatted(Formatting.GREEN)
-                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                        .append(Text.literal("'").formatted(Formatting.GREEN)),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Opening saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
                                     } else {
-                                        client.player.sendMessage(
-                                                Text.literal("No saved container found with name '").formatted(Formatting.RED)
-                                                        .append(Text.literal(name).formatted(Formatting.YELLOW))
-                                                        .append(Text.literal("'").formatted(Formatting.RED)),
-                                                false
-                                        );
+                                        client.player.sendSystemMessage(
+                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
                                         return 0;
                                     }
                                     return 1;
@@ -824,13 +731,11 @@ public class IslandTimeCommand {
                         ConfigManager.saveToFile();
                     }
 
-                    ctx.getSource().getClient().player.sendMessage(
-                            Text.literal("Show hidden tooltips: ")
-                                    .formatted(Formatting.AQUA)
-                                    .append(Text.literal(enabled ? "ON" : "OFF")
-                                            .formatted(enabled ? Formatting.GREEN : Formatting.RED)),
-                            false
-                    );
+                    ctx.getSource().getClient().player.sendSystemMessage(
+                            Component.literal("Show hidden tooltips: ")
+                                    .withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(enabled ? "ON" : "OFF")
+                                            .withStyle(enabled ? ChatFormatting.GREEN : ChatFormatting.RED)));
                     return 1;
                 }));
     }
@@ -839,7 +744,7 @@ public class IslandTimeCommand {
     // Help
     // -------------------------------------------------------------------------
 
-    private static void showHelp(MinecraftClient client, int page) {
+    private static void showHelp(Minecraft client, int page) {
         String[][] commands = {
                 // Page 1 - Island time & fuel time
                 {"/islandtime", "Open the configuration GUI (all settings in one place)"},
@@ -902,27 +807,23 @@ public class IslandTimeCommand {
         int totalPages      = (int) Math.ceil((double) totalCommands / commandsPerPage);
 
         if (page < 1 || page > totalPages) {
-            client.player.sendMessage(
-                    Text.literal("Invalid page number. Valid range: 1-" + totalPages).formatted(Formatting.RED),
-                    false
-            );
+            client.player.sendSystemMessage(
+                    Component.literal("Invalid page number. Valid range: 1-" + totalPages).withStyle(ChatFormatting.RED));
             return;
         }
 
-        client.player.sendMessage(
-                Text.literal("=== Island Time Mod Commands (Page " + page + "/" + totalPages + ") ===")
-                        .formatted(Formatting.GOLD),
-                false
-        );
-        client.player.sendMessage(Text.literal(""), false);
+        client.player.sendSystemMessage(
+                Component.literal("=== Island Time Mod Commands (Page " + page + "/" + totalPages + ") ===")
+                        .withStyle(ChatFormatting.GOLD));
+        client.player.sendSystemMessage(Component.literal(""));
 
         int startIdx = (page - 1) * commandsPerPage;
         int endIdx   = Math.min(startIdx + commandsPerPage, totalCommands);
 
         for (int i = startIdx; i < endIdx; i++) {
-            client.player.sendMessage(Text.literal(commands[i][0]).formatted(Formatting.WHITE), false);
-            client.player.sendMessage(Text.literal("  " + commands[i][1]).formatted(Formatting.GRAY), false);
-            if (i < endIdx - 1) client.player.sendMessage(Text.literal(""), false);
+            client.player.sendSystemMessage(Component.literal(commands[i][0]).withStyle(ChatFormatting.WHITE));
+            client.player.sendSystemMessage(Component.literal("  " + commands[i][1]).withStyle(ChatFormatting.GRAY));
+            if (i < endIdx - 1) client.player.sendSystemMessage(Component.literal(""));
         }
     }
 
@@ -930,56 +831,54 @@ public class IslandTimeCommand {
     // Ghost (client-side block removal)
     // -------------------------------------------------------------------------
 
-    private static void ghostBlock(MinecraftClient client) {
+    private static void ghostBlock(Minecraft client) {
         if (ConfigManager.getConfig() != null && !ConfigManager.getConfig().misc.ghostEnabled) {
-            client.player.sendMessage(
-                    Text.literal("Ghost command is disabled. Enable it in /islandtime under Misc.")
-                            .formatted(Formatting.RED), false);
+            client.player.sendSystemMessage(
+                    Component.literal("Ghost command is disabled. Enable it in /islandtime under Misc.")
+                            .withStyle(ChatFormatting.RED));
             return;
         }
-        if (client.world == null || client.crosshairTarget == null) {
-            client.player.sendMessage(
-                    Text.literal("No block targeted.").formatted(Formatting.RED), false);
+        if (client.level == null || client.hitResult == null) {
+            client.player.sendSystemMessage(
+                    Component.literal("No block targeted.").withStyle(ChatFormatting.RED));
             return;
         }
-        if (client.crosshairTarget.getType() != HitResult.Type.BLOCK) {
-            client.player.sendMessage(
-                    Text.literal("No block targeted.").formatted(Formatting.RED), false);
+        if (client.hitResult.getType() != HitResult.Type.BLOCK) {
+            client.player.sendSystemMessage(
+                    Component.literal("No block targeted.").withStyle(ChatFormatting.RED));
             return;
         }
-        BlockPos pos = ((BlockHitResult) client.crosshairTarget).getBlockPos();
-        client.world.setBlockState(pos, Blocks.AIR.getDefaultState());
-        client.player.sendMessage(
-                Text.literal("Ghosted block at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ())
-                        .formatted(Formatting.GRAY), false);
+        BlockPos pos = ((BlockHitResult) client.hitResult).getBlockPos();
+        client.level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+        client.player.sendSystemMessage(
+                Component.literal("Ghosted block at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ())
+                        .withStyle(ChatFormatting.GRAY));
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
-    private static void showAlertSpeedOptions(MinecraftClient client) {
-        client.player.sendMessage(Text.literal("\nAlert speeds:").formatted(Formatting.GRAY), false);
-        client.player.sendMessage(Text.literal("  off: ").formatted(Formatting.WHITE)
-                .append(Text.literal("No alerts").formatted(Formatting.GRAY)), false);
-        client.player.sendMessage(Text.literal("  fast: ").formatted(Formatting.WHITE)
-                .append(Text.literal("1 min, then every 5 min").formatted(Formatting.GRAY)), false);
-        client.player.sendMessage(Text.literal("  normal: ").formatted(Formatting.WHITE)
-                .append(Text.literal("10 min, then every 30 min").formatted(Formatting.GRAY)), false);
-        client.player.sendMessage(Text.literal("  slow: ").formatted(Formatting.WHITE)
-                .append(Text.literal("1 hour, then every 3 hours").formatted(Formatting.GRAY)), false);
+    private static void showAlertSpeedOptions(Minecraft client) {
+        client.player.sendSystemMessage(Component.literal("\nAlert speeds:").withStyle(ChatFormatting.GRAY));
+        client.player.sendSystemMessage(Component.literal("  off: ").withStyle(ChatFormatting.WHITE)
+                .append(Component.literal("No alerts").withStyle(ChatFormatting.GRAY)));
+        client.player.sendSystemMessage(Component.literal("  fast: ").withStyle(ChatFormatting.WHITE)
+                .append(Component.literal("1 min, then every 5 min").withStyle(ChatFormatting.GRAY)));
+        client.player.sendSystemMessage(Component.literal("  normal: ").withStyle(ChatFormatting.WHITE)
+                .append(Component.literal("10 min, then every 30 min").withStyle(ChatFormatting.GRAY)));
+        client.player.sendSystemMessage(Component.literal("  slow: ").withStyle(ChatFormatting.WHITE)
+                .append(Component.literal("1 hour, then every 3 hours").withStyle(ChatFormatting.GRAY)));
     }
 
     private static void showRecent() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         var times = IslandTimeTracker.getTimes();
 
         if (times.isEmpty()) {
-            client.player.sendMessage(
-                    Text.literal("No island time data recorded yet. Visit your island to start tracking!")
-                            .formatted(Formatting.RED),
-                    false
-            );
+            client.player.sendSystemMessage(
+                    Component.literal("No island time data recorded yet. Visit your island to start tracking!")
+                            .withStyle(ChatFormatting.RED));
             return;
         }
 
@@ -990,13 +889,13 @@ public class IslandTimeCommand {
         String today = LocalDate.now().toString();
         int    shown = 0;
 
-        client.player.sendMessage(Text.literal("» Island Time (Last 7 Days)").formatted(Formatting.GOLD), false);
+        client.player.sendSystemMessage(Component.literal("» Island Time (Last 7 Days)").withStyle(ChatFormatting.GOLD));
 
         for (String day : days) {
             long    ms      = times.get(day);
             boolean isToday = day.equals(today);
             if (shown == 1) {
-                client.player.sendMessage(Text.literal("-----------------------").formatted(Formatting.GRAY), false);
+                client.player.sendSystemMessage(Component.literal("-----------------------").withStyle(ChatFormatting.GRAY));
             }
             formatLineColored(client, day, ms, isToday);
             shown++;
@@ -1005,25 +904,23 @@ public class IslandTimeCommand {
     }
 
     private static void showSpecificDate(String input) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         var times = IslandTimeTracker.getTimes();
 
         LocalDate date;
         try {
             date = parseFlexibleDate(input);
         } catch (DateTimeParseException | NumberFormatException e) {
-            client.player.sendMessage(
-                    Text.literal("Invalid date format. Use DD-MM-YYYY or D-M-YY (e.g., 1-1-26 or 01-01-2026)")
-                            .formatted(Formatting.RED),
-                    false
-            );
+            client.player.sendSystemMessage(
+                    Component.literal("Invalid date format. Use DD-MM-YYYY or D-M-YY (e.g., 1-1-26 or 01-01-2026)")
+                            .withStyle(ChatFormatting.RED));
             return;
         }
 
         String key = date.toString();
         if (!times.containsKey(key)) {
-            client.player.sendMessage(
-                    Text.literal("No data found for the specified date").formatted(Formatting.RED), false);
+            client.player.sendSystemMessage(
+                    Component.literal("No data found for the specified date").withStyle(ChatFormatting.RED));
             return;
         }
 
@@ -1047,7 +944,7 @@ public class IslandTimeCommand {
     // -------------------------------------------------------------------------
 
     private static void openConfigGui() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         // Sync from existing configs before opening GUI to ensure latest values
         ConfigManager.syncFromExistingConfigs();
         // Open the MoulConfig GUI
@@ -1060,9 +957,9 @@ public class IslandTimeCommand {
                 new io.github.notenoughupdates.moulconfig.gui.GuiContext(editorComponent);
             io.github.notenoughupdates.moulconfig.platform.MoulConfigScreenComponent screen =
                 new io.github.notenoughupdates.moulconfig.platform.MoulConfigScreenComponent(
-                    net.minecraft.text.Text.literal("IslandTime (1.6.0)"),
+                    net.minecraft.network.chat.Component.literal("IslandTime (1.6.0)"),
                     guiContext,
-                    client.currentScreen
+                    client.screen
                 );
             client.setScreen(screen);
         });
@@ -1070,7 +967,7 @@ public class IslandTimeCommand {
         // This will happen on the next tick when the screen is null
     }
 
-    private static void formatLineColored(MinecraftClient client, String date, long ms, boolean isToday) {
+    private static void formatLineColored(Minecraft client, String date, long ms, boolean isToday) {
         long seconds = ms / 1000;
         long h       = seconds / 3600;
         long m       = (seconds % 3600) / 60;
@@ -1078,12 +975,10 @@ public class IslandTimeCommand {
 
         String    prettyDate = LocalDate.parse(date).format(OUTPUT_FORMAT);
         String    timeStr    = String.format(": %02dh%02dm%02ds", h, m, s);
-        Formatting dateColor = isToday ? Formatting.GREEN : Formatting.YELLOW;
+        ChatFormatting dateColor = isToday ? ChatFormatting.GREEN : ChatFormatting.YELLOW;
 
-        client.player.sendMessage(
-                Text.literal(prettyDate).formatted(dateColor)
-                        .append(Text.literal(timeStr).formatted(Formatting.WHITE)),
-                false
-        );
+        client.player.sendSystemMessage(
+                Component.literal(prettyDate).withStyle(dateColor)
+                        .append(Component.literal(timeStr).withStyle(ChatFormatting.WHITE)));
     }
 }
