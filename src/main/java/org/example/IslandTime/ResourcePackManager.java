@@ -1,7 +1,8 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.resource.server.ServerResourcePackManager;
+import net.minecraft.client.Minecraft;
+import net.minecraft.server.packs.repository.Pack;
+import net.minecraft.server.packs.repository.PackRepository;
 
 import java.io.*;
 import java.net.URI;
@@ -10,27 +11,30 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.*;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * Manages downloading, caching, and loading the Hypixel SkyBlock resource pack.
- * The cached pack is stored at config/IslandTime/resource_pack.zip.
+ * The cached pack is stored at config/IslandTime/resource_pack.zip and copied to
+ * the resourcepacks folder as "IslandTime_SkyBlock.zip" so Minecraft can load it.
  *
  * When the feature is enabled:
  * - Intercepts Hypixel's resource pack send packet
  * - If hash matches cache, silently accepts without re-downloading
  * - If hash differs, downloads the new pack in the background and caches it
- * - On every server join, re-applies the cached pack so it stays active everywhere
+ * - On every server join, ensures the pack is enabled so it stays active everywhere
  */
 public class ResourcePackManager {
 
     private static final Path CACHE_DIR = Path.of("config/IslandTime");
     private static final Path CACHED_PACK = CACHE_DIR.resolve("resource_pack.zip");
+    private static final String PACK_FILE_NAME = "IslandTime_SkyBlock.zip";
+    private static final String PACK_PROFILE_ID = "file/" + PACK_FILE_NAME;
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
-
-    private static final UUID PACK_ID = UUID.nameUUIDFromBytes("islandtime-skyblock-pack".getBytes());
 
     /**
      * Returns true if we have a cached pack file on disk.
@@ -41,22 +45,43 @@ public class ResourcePackManager {
 
     /**
      * Apply the cached resource pack to the client.
-     * Uses Minecraft's server resource pack manager to load from our cached file.
+     * Copies the cached pack into the resourcepacks folder and enables it.
      */
     public static void applyCachedPack() {
         if (!ResourcePackConfig.isEnabled()) return;
         if (!hasCachedPack()) return;
 
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client == null) return;
 
-            ServerResourcePackManager packManager = client.getServerResourcePackManager();
-            Path absolutePath = CACHED_PACK.toAbsolutePath();
-            // Push our cached pack via the server resource pack manager's URL-based API
-            // Using file:// URI so it loads from disk without a network request
-            packManager.addPack(PACK_ID, absolutePath.toUri().toURL(), ResourcePackConfig.getCachedPackHash());
-            System.out.println("[IslandTime] Applied cached SkyBlock resource pack");
+            // Copy cached pack to resourcepacks directory
+            Path resourcePacksDir = client.getResourcePackDirectory();
+            Path targetPack = resourcePacksDir.resolve(PACK_FILE_NAME);
+            Files.createDirectories(resourcePacksDir);
+            Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
+
+            // Enable the pack if not already enabled
+            client.execute(() -> {
+                try {
+                    PackRepository packRepository = client.getResourcePackRepository();
+                    packRepository.reload();
+
+                    Collection<String> enabled = new ArrayList<>(packRepository.getSelectedIds());
+                    if (!enabled.contains(PACK_PROFILE_ID)) {
+                        Pack profile = packRepository.getPack(PACK_PROFILE_ID);
+                        if (profile != null) {
+                            enabled.add(PACK_PROFILE_ID);
+                            client.options.resourcePacks.clear();
+                            client.options.resourcePacks.addAll(enabled);
+                            client.reloadResourcePacks();
+                            System.out.println("[IslandTime] Applied cached SkyBlock resource pack");
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("[IslandTime] Failed to enable resource pack: " + e.getMessage());
+                }
+            });
         } catch (Exception e) {
             System.err.println("[IslandTime] Failed to apply cached resource pack: " + e.getMessage());
             e.printStackTrace();
@@ -120,7 +145,7 @@ public class ResourcePackManager {
                 System.out.println("[IslandTime] Resource pack cached successfully (" + data.length + " bytes)");
 
                 // Apply the new pack on the render thread
-                MinecraftClient.getInstance().execute(ResourcePackManager::applyCachedPack);
+                Minecraft.getInstance().execute(ResourcePackManager::applyCachedPack);
 
             } catch (Exception e) {
                 System.err.println("[IslandTime] Error downloading resource pack: " + e.getMessage());
@@ -142,7 +167,12 @@ public class ResourcePackManager {
      * Reset state when feature is disabled.
      */
     public static void reset() {
-        // Nothing to actively unload — the pack will be gone next time the client restarts
-        // or the server sends a new pack list.
+        // Remove from enabled packs on next resource reload
+        try {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null) {
+                client.options.resourcePacks.remove(PACK_PROFILE_ID);
+            }
+        } catch (Exception ignored) {}
     }
 }

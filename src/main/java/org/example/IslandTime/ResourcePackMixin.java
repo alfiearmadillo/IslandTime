@@ -1,7 +1,7 @@
 package org.example.islandtime.mixin;
 
-import net.minecraft.client.network.ClientCommonNetworkHandler;
-import net.minecraft.network.packet.s2c.common.ResourcePackSendS2CPacket;
+import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
+import net.minecraft.network.protocol.common.ClientboundResourcePackPushPacket;
 import org.example.islandtime.ResourcePackConfig;
 import org.example.islandtime.ResourcePackManager;
 import org.spongepowered.asm.mixin.Mixin;
@@ -15,11 +15,11 @@ import java.util.UUID;
  * Intercepts server resource pack packets to cache and persist them
  * when the "Keep Resource Pack" feature is enabled.
  */
-@Mixin(ClientCommonNetworkHandler.class)
+@Mixin(ClientCommonPacketListenerImpl.class)
 public class ResourcePackMixin {
 
-    @Inject(method = "onResourcePackSend", at = @At("HEAD"), cancellable = true)
-    private void islandtime$interceptResourcePack(ResourcePackSendS2CPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleResourcePackPush", at = @At("HEAD"), cancellable = true)
+    private void islandtime$interceptResourcePack(ClientboundResourcePackPushPacket packet, CallbackInfo ci) {
         if (!ResourcePackConfig.isEnabled()) return;
 
         String url = packet.url();
@@ -31,7 +31,6 @@ public class ResourcePackMixin {
 
         boolean handled = ResourcePackManager.handleServerPack(url, hash, packId);
         if (handled) {
-            // Cancel the vanilla resource pack download/prompt — we handle it ourselves
             ci.cancel();
         }
     }

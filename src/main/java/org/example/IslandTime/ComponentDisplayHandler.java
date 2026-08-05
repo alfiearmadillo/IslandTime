@@ -1,11 +1,11 @@
 package org.example.islandtime;
 
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
-import net.minecraft.text.Text;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 
 import java.util.List;
 
@@ -32,29 +32,29 @@ public class ComponentDisplayHandler {
      * Appends component display lines to the tooltip list.
      * Call this after the tooltip has been built.
      */
-    public static void appendComponentLines(ItemStack stack, List<Text> tooltip) {
+    public static void appendComponentLines(ItemStack stack, List<Component> tooltip) {
         if (!isEnabled()) return;
 
         String[] names = getComponentNames();
         if (names.length == 0) return;
 
         // Get custom data NBT from the item
-        NbtComponent nbtComponent = stack.get(DataComponentTypes.CUSTOM_DATA);
-        if (nbtComponent == null || nbtComponent.isEmpty()) return;
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+        if (customData == null || customData.isEmpty()) return;
 
-        NbtCompound nbt = nbtComponent.copyNbt();
+        CompoundTag nbt = customData.copyTag();
 
         for (String name : names) {
             if (nbt.contains(name)) {
-                NbtElement element = nbt.get(name);
+                Tag element = nbt.get(name);
                 String value = element != null ? formatNbtValue(element) : "null";
                 // Dark gray text (§8)
-                tooltip.add(Text.literal("§8" + name + ": " + value));
+                tooltip.add(Component.literal("\u00A78" + name + ": " + value));
             }
         }
     }
 
-    private static String formatNbtValue(NbtElement element) {
+    private static String formatNbtValue(Tag element) {
         String raw = element.toString();
         // Strip surrounding quotes from strings
         if (raw.startsWith("\"") && raw.endsWith("\"")) {
