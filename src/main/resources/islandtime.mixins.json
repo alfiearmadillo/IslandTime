@@ -8,6 +8,7 @@
     "GabagoolPpgMixin",
     "HandledScreenMixin",
     "MouseMixin",
+    "ResourcePackMixin",
     "TooltipOverrideMixin"
   ],
   "injectors": {
