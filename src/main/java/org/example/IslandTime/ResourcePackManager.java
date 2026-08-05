@@ -1,7 +1,8 @@
 package org.example.islandtime;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.resource.ResourcePackProfile;
+import net.minecraft.client.Minecraft;
+import net.minecraft.server.packs.repository.Pack;
+import net.minecraft.server.packs.repository.PackRepository;
 
 import java.io.*;
 import java.net.URI;
@@ -51,11 +52,11 @@ public class ResourcePackManager {
         if (!hasCachedPack()) return;
 
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client == null) return;
 
             // Copy cached pack to resourcepacks directory
-            Path resourcePacksDir = client.getResourcePackDir();
+            Path resourcePacksDir = client.getResourcePackDirectory();
             Path targetPack = resourcePacksDir.resolve(PACK_FILE_NAME);
             Files.createDirectories(resourcePacksDir);
             Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
@@ -63,17 +64,17 @@ public class ResourcePackManager {
             // Enable the pack if not already enabled
             client.execute(() -> {
                 try {
-                    net.minecraft.resource.ResourcePackManager packManager = client.getResourcePackManager();
-                    packManager.scanPacks();
+                    PackRepository packRepository = client.getResourcePackRepository();
+                    packRepository.reload();
 
-                    Collection<String> enabled = new ArrayList<>(packManager.getEnabledIds());
+                    Collection<String> enabled = new ArrayList<>(packRepository.getSelectedIds());
                     if (!enabled.contains(PACK_PROFILE_ID)) {
-                        ResourcePackProfile profile = packManager.getProfile(PACK_PROFILE_ID);
+                        Pack profile = packRepository.getPack(PACK_PROFILE_ID);
                         if (profile != null) {
                             enabled.add(PACK_PROFILE_ID);
                             client.options.resourcePacks.clear();
                             client.options.resourcePacks.addAll(enabled);
-                            client.reloadResources();
+                            client.reloadResourcePacks();
                             System.out.println("[IslandTime] Applied cached SkyBlock resource pack");
                         }
                     }
@@ -144,7 +145,7 @@ public class ResourcePackManager {
                 System.out.println("[IslandTime] Resource pack cached successfully (" + data.length + " bytes)");
 
                 // Apply the new pack on the render thread
-                MinecraftClient.getInstance().execute(ResourcePackManager::applyCachedPack);
+                Minecraft.getInstance().execute(ResourcePackManager::applyCachedPack);
 
             } catch (Exception e) {
                 System.err.println("[IslandTime] Error downloading resource pack: " + e.getMessage());
@@ -168,7 +169,7 @@ public class ResourcePackManager {
     public static void reset() {
         // Remove from enabled packs on next resource reload
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client != null) {
                 client.options.resourcePacks.remove(PACK_PROFILE_ID);
             }

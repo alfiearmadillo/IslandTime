@@ -5,8 +5,8 @@ import com.google.gson.GsonBuilder;
 import io.github.notenoughupdates.moulconfig.processor.BuiltinMoulConfigGuis;
 import io.github.notenoughupdates.moulconfig.processor.ConfigProcessorDriver;
 import io.github.notenoughupdates.moulconfig.processor.MoulConfigProcessor;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 
 import java.io.File;
 import java.io.FileReader;
@@ -83,10 +83,10 @@ public class ConfigManager {
     /**
      * Call this from the client tick to detect when config screen closes
      */
-    public static void tick(MinecraftClient client) {
+    public static void tick(Minecraft client) {
         if (client == null) return;
 
-        Screen currentScreen = client.currentScreen;
+        Screen currentScreen = client.screen;
 
         // Detect if config screen just closed
         if (configScreenWasOpen && currentScreen == null) {

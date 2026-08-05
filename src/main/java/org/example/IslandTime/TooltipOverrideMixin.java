@@ -1,12 +1,12 @@
 package org.example.islandtime.mixin;
 
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.TooltipDisplayComponent;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.tooltip.TooltipType;
-import net.minecraft.text.Text;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.TooltipDisplay;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.network.chat.Component;
 import org.example.islandtime.ComponentDisplayHandler;
 import org.example.islandtime.TooltipOverrideConfig;
 import org.spongepowered.asm.mixin.Mixin;
@@ -24,53 +24,53 @@ public abstract class TooltipOverrideMixin {
     private static boolean islandtime$inTooltipOverride = false;
 
     @Inject(
-            method = "getTooltip",
+            method = "getTooltipLines",
             at = @At("HEAD"),
             cancellable = true
     )
     private void islandtime_overrideTooltipDisplay(
             Item.TooltipContext context,
-            PlayerEntity player,
-            TooltipType type,
-            CallbackInfoReturnable<List<Text>> cir) {
+            Player player,
+            TooltipFlag type,
+            CallbackInfoReturnable<List<Component>> cir) {
 
         if (!TooltipOverrideConfig.isShowHiddenTooltips()) return;
 
         ItemStack self = (ItemStack) (Object) this;
-        TooltipDisplayComponent display = self.getOrDefault(
-                DataComponentTypes.TOOLTIP_DISPLAY,
-                TooltipDisplayComponent.DEFAULT
+        TooltipDisplay display = self.getOrDefault(
+                DataComponents.TOOLTIP_DISPLAY,
+                TooltipDisplay.DEFAULT
         );
 
         if (!display.hideTooltip()) return;
 
         // Make a copy with hide_tooltip removed, get its tooltip, return that
         ItemStack copy = self.copy();
-        copy.set(DataComponentTypes.TOOLTIP_DISPLAY,
-                new TooltipDisplayComponent(false, display.hiddenComponents()));
+        copy.set(DataComponents.TOOLTIP_DISPLAY,
+                new TooltipDisplay(false, display.hiddenComponents()));
         islandtime$inTooltipOverride = true;
         try {
-            cir.setReturnValue(copy.getTooltip(context, player, type));
+            cir.setReturnValue(copy.getTooltipLines(context, player, type));
         } finally {
             islandtime$inTooltipOverride = false;
         }
     }
 
     @Inject(
-            method = "getTooltip",
+            method = "getTooltipLines",
             at = @At("RETURN")
     )
     private void islandtime_appendComponentDisplay(
             Item.TooltipContext context,
-            PlayerEntity player,
-            TooltipType type,
-            CallbackInfoReturnable<List<Text>> cir) {
+            Player player,
+            TooltipFlag type,
+            CallbackInfoReturnable<List<Component>> cir) {
 
         if (!ComponentDisplayHandler.isEnabled()) return;
         if (islandtime$inTooltipOverride) return;
 
         ItemStack self = (ItemStack) (Object) this;
-        List<Text> tooltip = cir.getReturnValue();
+        List<Component> tooltip = cir.getReturnValue();
         ComponentDisplayHandler.appendComponentLines(self, tooltip);
     }
 }

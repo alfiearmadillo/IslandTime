@@ -3,31 +3,34 @@ package org.example.islandtime;
 import com.mojang.datafixers.DataFixer;
 import com.mojang.serialization.Dynamic;
 import net.minecraft.SharedConstants;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LoreComponent;
-import net.minecraft.component.type.NbtComponent;
-import net.minecraft.component.type.ProfileComponent;
-import net.minecraft.datafixer.TypeReferences;
-import net.minecraft.item.ItemStack;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.item.component.ResolvableProfile;
+import net.minecraft.util.datafix.DataFixers;
+import net.minecraft.util.datafix.fixes.References;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.nbt.*;
-import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.world.item.Items;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 
 /**
  * Parses Hypixel Skyblock backpack contents from the compressed NBT byte array.
@@ -68,11 +71,11 @@ public class BackpackNbtParser {
     // -------------------------------------------------------------------------
 
     public static boolean hasBackpackData(ItemStack stack) {
-        var customData = stack.get(DataComponentTypes.CUSTOM_DATA);
+        var customData = stack.get(DataComponents.CUSTOM_DATA);
         if (customData == null) return false;
-        NbtCompound nbt = customData.copyNbt();
-        for (String key : nbt.getKeys()) {
-            if (key.endsWith("_backpack_data") && nbt.get(key) instanceof NbtByteArray) {
+        CompoundTag nbt = customData.copyTag();
+        for (String key : nbt.keySet()) {
+            if (key.endsWith("_backpack_data") && nbt.get(key) instanceof ByteArrayTag) {
                 return true;
             }
         }
@@ -81,28 +84,28 @@ public class BackpackNbtParser {
 
     /** Synchronous parse — for backward compatibility; prefer parseAsync(). */
     public static List<ItemStack> parse(ItemStack stack) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         byte[] data = extractData(stack);
         if (data == null || data.length < 4) return null;
         return parseBytes(data,
-                client.getDataFixer(),
-                SharedConstants.getGameVersion().dataVersion().id(),
+                DataFixers.getDataFixer(),
+                SharedConstants.getCurrentVersion().dataVersion().version(),
                 resolveRegistries(client));
     }
 
     /**
      * Starts an async parse.  Must be called from the main thread so that
-     * {@link MinecraftClient#getDataFixer()} and the registry manager are
+     * {@link Minecraft#getDataFixer()} and the registry manager are
      * captured safely before handing off to a background thread.
      *
      * @return a future that completes with the slot list (or null on failure).
      */
     public static CompletableFuture<List<ItemStack>> parseAsync(ItemStack stack) {
         // ── Capture everything we need on the main thread ──────────────────
-        MinecraftClient    client     = MinecraftClient.getInstance();
-        DataFixer          fixer      = client.getDataFixer();
-        int                currentVer = SharedConstants.getGameVersion().dataVersion().id();
-        DynamicRegistryManager reg    = resolveRegistries(client);
+        Minecraft    client     = Minecraft.getInstance();
+        DataFixer          fixer      = DataFixers.getDataFixer();
+        int                currentVer = SharedConstants.getCurrentVersion().dataVersion().version();
+        RegistryAccess reg    = resolveRegistries(client);
         byte[]             data       = extractData(stack);
 
         if (data == null || data.length < 4) {
@@ -119,37 +122,37 @@ public class BackpackNbtParser {
     // -------------------------------------------------------------------------
 
     private static byte[] extractData(ItemStack stack) {
-        var customData = stack.get(DataComponentTypes.CUSTOM_DATA);
+        var customData = stack.get(DataComponents.CUSTOM_DATA);
         if (customData == null) return null;
-        NbtCompound nbt = customData.copyNbt();
-        for (String key : nbt.getKeys()) {
-            if (key.endsWith("_backpack_data") && nbt.get(key) instanceof NbtByteArray arr) {
-                return arr.getByteArray();
+        CompoundTag nbt = customData.copyTag();
+        for (String key : nbt.keySet()) {
+            if (key.endsWith("_backpack_data") && nbt.get(key) instanceof ByteArrayTag arr) {
+                return arr.getAsByteArray();
             }
         }
         return null;
     }
 
-    private static DynamicRegistryManager resolveRegistries(MinecraftClient client) {
-        if (client.world != null)             return client.world.getRegistryManager();
-        if (client.getNetworkHandler() != null) return client.getNetworkHandler().getRegistryManager();
-        return DynamicRegistryManager.EMPTY;
+    private static RegistryAccess resolveRegistries(Minecraft client) {
+        if (client.level != null)             return client.level.registryAccess();
+        if (client.getConnection() != null) return client.getConnection().registryAccess();
+        return RegistryAccess.EMPTY;
     }
 
     private static List<ItemStack> parseBytes(byte[] data,
                                               DataFixer fixer,
                                               int currentVer,
-                                              DynamicRegistryManager reg) {
+                                              RegistryAccess reg) {
         List<ItemStack> result = new ArrayList<>();
         try {
-            NbtCompound root = NbtIo.readCompressed(
+            CompoundTag root = NbtIo.readCompressed(
                     new ByteArrayInputStream(data),
-                    new NbtSizeTracker(10_000_000L, 512));
+                    new NbtAccounter(10_000_000L, 512));
 
-            NbtList items = root.getListOrEmpty("i");
+            ListTag items = root.getListOrEmpty("i");
             for (int i = 0; i < items.size(); i++) {
-                NbtCompound itemNbt = items.getCompoundOrEmpty(i);
-                short rawId = itemNbt.getShort("id", (short) 0);
+                CompoundTag itemNbt = items.getCompoundOrEmpty(i);
+                short rawId = itemNbt.getShortOr("id", (short) 0);
                 result.add((itemNbt.isEmpty() || rawId == 0)
                         ? ItemStack.EMPTY
                         : parseItem(itemNbt, fixer, currentVer, reg));
@@ -163,24 +166,24 @@ public class BackpackNbtParser {
         return result;
     }
 
-    private static ItemStack parseItem(NbtCompound legacyNbt,
+    private static ItemStack parseItem(CompoundTag legacyNbt,
                                        DataFixer fixer,
                                        int currentVer,
-                                       DynamicRegistryManager reg) {
+                                       RegistryAccess reg) {
         try {
-            short numId = legacyNbt.getShort("id", (short) 0);
+            short numId = legacyNbt.getShortOr("id", (short) 0);
 
-            NbtCompound dfuInput = legacyNbt.copy();
-            Dynamic<NbtElement> dynamic = new Dynamic<>(NbtOps.INSTANCE, dfuInput);
-            Dynamic<NbtElement> updated = fixer.update(
-                    TypeReferences.ITEM_STACK, dynamic, LEGACY_DATA_VERSION, currentVer);
-            NbtCompound modernNbt = (NbtCompound) updated.getValue();
+            CompoundTag dfuInput = legacyNbt.copy();
+            Dynamic<Tag> dynamic = new Dynamic<>(NbtOps.INSTANCE, dfuInput);
+            Dynamic<Tag> updated = fixer.update(
+                    References.ITEM_STACK, dynamic, LEGACY_DATA_VERSION, currentVer);
+            CompoundTag modernNbt = (CompoundTag) updated.getValue();
 
             // resultOrPartial returns the partial result AND logs; suppress the log —
             // the "Item must not be minecraft:air" message is a DFU validation artefact
             // (every legacy item triggers it) but the partial ItemStack is correct.
             ItemStack stack = ItemStack.CODEC
-                    .parse(reg.getOps(NbtOps.INSTANCE), modernNbt)
+                    .parse(RegistryOps.create(NbtOps.INSTANCE, reg), modernNbt)
                     .resultOrPartial(err -> { /* suppress — partial result is usable */ })
                     .orElse(ItemStack.EMPTY);
 
@@ -188,10 +191,10 @@ public class BackpackNbtParser {
             if (stack.isEmpty() && numId != 0) {
                 String override = ITEM_ID_OVERRIDES.get((int) numId);
                 if (override != null) {
-                    net.minecraft.item.Item item =
-                            Registries.ITEM.get(Identifier.of("minecraft", override));
-                    if (item != Items.AIR) {
-                        int count = legacyNbt.getByte("Count", (byte) 1) & 0xFF;
+                    net.minecraft.world.item.Item item =
+                            BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", override)).orElse(null);
+                    if (item != null && item != Items.AIR) {
+                        int count = legacyNbt.getByteOr("Count", (byte) 1) & 0xFF;
                         stack = new ItemStack(item, Math.max(1, count));
                     }
                 }
@@ -199,14 +202,14 @@ public class BackpackNbtParser {
 
             // ── Spawn-egg overrides for post-1.8 entity types ───────────────
             if (numId == 383) {
-                int damage = legacyNbt.getShort("Damage", (short) 0) & 0xFFFF;
+                int damage = legacyNbt.getShortOr("Damage", (short) 0) & 0xFFFF;
                 String override = SPAWN_EGG_OVERRIDES.get(damage);
                 if (override != null) {
-                    net.minecraft.item.Item eggItem =
-                            Registries.ITEM.get(Identifier.of("minecraft", override));
-                    if (eggItem != Items.AIR) {
+                    net.minecraft.world.item.Item eggItem =
+                            BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", override)).orElse(null);
+                    if (eggItem != null && eggItem != Items.AIR) {
                         int count = stack.isEmpty()
-                                ? (legacyNbt.getByte("Count", (byte) 1) & 0xFF)
+                                ? (legacyNbt.getByteOr("Count", (byte) 1) & 0xFF)
                                 : stack.getCount();
                         stack = new ItemStack(eggItem, Math.max(1, count));
                     }
@@ -216,29 +219,29 @@ public class BackpackNbtParser {
             if (stack.isEmpty()) return ItemStack.EMPTY;
 
             // ── Layer Hypixel-specific data ──────────────────────────────────
-            NbtCompound tag = legacyNbt.getCompoundOrEmpty("tag");
+            CompoundTag tag = legacyNbt.getCompoundOrEmpty("tag");
 
-            if (tag.get("ExtraAttributes") instanceof NbtCompound ea) {
-                NbtCompound customData = new NbtCompound();
+            if (tag.get("ExtraAttributes") instanceof CompoundTag ea) {
+                CompoundTag customData = new CompoundTag();
                 customData.put("ExtraAttributes", ea);
-                stack.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(customData));
+                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(customData));
             }
 
-            if (tag.get("display") instanceof NbtCompound display) {
-                if (display.get("Name") instanceof NbtString) {
-                    stack.set(DataComponentTypes.CUSTOM_NAME,
-                            parseLegacy(display.getString("Name", "")));
+            if (tag.get("display") instanceof CompoundTag display) {
+                if (display.get("Name") instanceof StringTag) {
+                    stack.set(DataComponents.CUSTOM_NAME,
+                            parseLegacy(display.getStringOr("Name", "")));
                 }
-                if (display.get("Lore") instanceof NbtList loreNbt) {
-                    List<Text> lore = new ArrayList<>(loreNbt.size());
+                if (display.get("Lore") instanceof ListTag loreNbt) {
+                    List<Component> lore = new ArrayList<>(loreNbt.size());
                     for (int i = 0; i < loreNbt.size(); i++) {
-                        lore.add(parseLegacy(loreNbt.getString(i, "")));
+                        lore.add(parseLegacy(loreNbt.getString(i).orElse("")));
                     }
-                    stack.set(DataComponentTypes.LORE, new LoreComponent(lore));
+                    stack.set(DataComponents.LORE, new ItemLore(lore));
                 }
             }
 
-            if (numId == 397 && tag.get("SkullOwner") instanceof NbtCompound skullOwner) {
+            if (numId == 397 && tag.get("SkullOwner") instanceof CompoundTag skullOwner) {
                 applySkullTexture(stack, skullOwner);
             }
 
@@ -254,31 +257,31 @@ public class BackpackNbtParser {
     // Skull texture
     // -------------------------------------------------------------------------
 
-    private static void applySkullTexture(ItemStack stack, NbtCompound skullOwner) {
+    private static void applySkullTexture(ItemStack stack, CompoundTag skullOwner) {
         try {
-            NbtCompound profileNbt = new NbtCompound();
-            String name = skullOwner.getString("Name", "Player");
+            CompoundTag profileNbt = new CompoundTag();
+            String name = skullOwner.getStringOr("Name", "Player");
             if (!name.isBlank()) profileNbt.putString("name", name);
-            if (skullOwner.get("Id") instanceof NbtIntArray idArr) {
+            if (skullOwner.get("Id") instanceof IntArrayTag idArr) {
                 profileNbt.put("id", idArr);
             }
-            NbtCompound properties = skullOwner.getCompoundOrEmpty("Properties");
-            NbtList textures = properties.getListOrEmpty("textures");
+            CompoundTag properties = skullOwner.getCompoundOrEmpty("Properties");
+            ListTag textures = properties.getListOrEmpty("textures");
             if (!textures.isEmpty()) {
-                String value = textures.getCompoundOrEmpty(0).getString("Value", "");
+                String value = textures.getCompoundOrEmpty(0).getStringOr("Value", "");
                 if (!value.isBlank()) {
-                    NbtCompound texEntry = new NbtCompound();
+                    CompoundTag texEntry = new CompoundTag();
                     texEntry.putString("name", "textures");
                     texEntry.putString("value", value);
-                    NbtList propsOut = new NbtList();
+                    ListTag propsOut = new ListTag();
                     propsOut.add(texEntry);
                     profileNbt.put("properties", propsOut);
                 }
             }
-            ProfileComponent.CODEC
+            ResolvableProfile.CODEC
                     .parse(NbtOps.INSTANCE, profileNbt)
                     .result()
-                    .ifPresent(pc -> stack.set(DataComponentTypes.PROFILE, pc));
+                    .ifPresent(pc -> stack.set(DataComponents.PROFILE, pc));
         } catch (Exception e) {
             System.err.println("[IslandTime] Skull texture failed: " + e.getMessage());
         }
@@ -288,26 +291,26 @@ public class BackpackNbtParser {
     // §-code → Text parser
     // -------------------------------------------------------------------------
 
-    public static Text parseLegacy(String s) {
-        if (s == null || s.isEmpty()) return Text.empty();
-        MutableText root = Text.empty();
+    public static Component parseLegacy(String s) {
+        if (s == null || s.isEmpty()) return Component.empty();
+        MutableComponent root = Component.empty();
         String[] segments = s.split("§", -1);
         Style style = Style.EMPTY.withItalic(false);
         if (!segments[0].isEmpty()) {
-            root.append(Text.literal(segments[0]).setStyle(style));
+            root.append(Component.literal(segments[0]).setStyle(style));
         }
         for (int i = 1; i < segments.length; i++) {
             String seg = segments[i];
             if (seg.isEmpty()) continue;
             char code = Character.toLowerCase(seg.charAt(0));
             String text = seg.substring(1);
-            Formatting fmt = Formatting.byCode(code);
+            ChatFormatting fmt = ChatFormatting.getByCode(code);
             if (fmt != null) {
-                if (fmt == Formatting.RESET)       style = Style.EMPTY.withItalic(false);
+                if (fmt == ChatFormatting.RESET)       style = Style.EMPTY.withItalic(false);
                 else if (fmt.isColor())            style = Style.EMPTY.withItalic(false).withColor(fmt);
-                else                               style = style.withFormatting(fmt);
+                else                               style = style.applyFormat(fmt);
             }
-            if (!text.isEmpty()) root.append(Text.literal(text).setStyle(style));
+            if (!text.isEmpty()) root.append(Component.literal(text).setStyle(style));
         }
         return root;
     }
