@@ -287,6 +287,22 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean ghostEnabled = true;
+
+        @Expose
+        @ConfigOption(
+            name = "Show Component Display",
+            desc = "When enabled, shows specified item components at the bottom of item tooltips in dark gray text"
+        )
+        @ConfigEditorBoolean
+        public boolean componentDisplayEnabled = false;
+
+        @Expose
+        @ConfigOption(
+            name = "Component Names",
+            desc = "Space-separated list of component names to display (e.g. catacombs_level_requirement id color)"
+        )
+        @ConfigEditorText
+        public String componentNames = "";
     }
 
     public static class Signs {
