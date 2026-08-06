@@ -78,6 +78,7 @@ public class IslandTimeMod implements ClientModInitializer {
 
             DiscordWebhookManager.shutdown();
             IslandChatRelay.shutdown();      // stops poller + webhook thread
+            ResourcePackManager.shutdown();  // stops daemon threads + HTTP client
 
             System.out.println("IslandTimeMod shutdown complete");
         }));

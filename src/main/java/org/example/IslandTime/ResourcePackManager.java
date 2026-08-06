@@ -11,7 +11,7 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.*;
 
 /**
  * Manages downloading, caching, and loading the Hypixel SkyBlock resource pack.
@@ -30,7 +30,23 @@ public class ResourcePackManager {
     private static final Path CACHED_PACK = CACHE_DIR.resolve("resource_pack.zip");
     private static final String PACK_FILE_NAME = "IslandTime_SkyBlock.zip";
     private static final String PACK_PROFILE_ID = "file/" + PACK_FILE_NAME;
-    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
+
+    // Use a daemon-thread executor so it won't prevent JVM shutdown
+    private static final ExecutorService DAEMON_EXECUTOR = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "IslandTime-ResourcePack");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "IslandTime-ResourcePack-Scheduler");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .executor(DAEMON_EXECUTOR)
+            .build();
 
     /**
      * Returns true if we have a cached pack file on disk.
@@ -93,7 +109,7 @@ public class ResourcePackManager {
     }
 
     private static void downloadPackAsync(String url, String hash) {
-        CompletableFuture.runAsync(() -> {
+        DAEMON_EXECUTOR.submit(() -> {
             try {
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
@@ -132,16 +148,15 @@ public class ResourcePackManager {
                 Minecraft client = Minecraft.getInstance();
                 client.execute(() -> {
                     applyCachedPack();
-                    // Delay the reload by scheduling it on the main thread after 2 seconds
-                    CompletableFuture.delayedExecutor(2, java.util.concurrent.TimeUnit.SECONDS)
-                            .execute(() -> client.execute(() -> {
-                                try {
-                                    client.reloadResourcePacks();
-                                    System.out.println("[IslandTime] Resource pack reload triggered");
-                                } catch (Exception e) {
-                                    System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
-                                }
-                            }));
+                    // Delay the reload using our daemon scheduler
+                    SCHEDULER.schedule(() -> client.execute(() -> {
+                        try {
+                            client.reloadResourcePacks();
+                            System.out.println("[IslandTime] Resource pack reload triggered");
+                        } catch (Exception e) {
+                            System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
+                        }
+                    }), 2, TimeUnit.SECONDS);
                 });
 
             } catch (Exception e) {
@@ -171,5 +186,14 @@ public class ResourcePackManager {
                 client.options.resourcePacks.remove(PACK_PROFILE_ID);
             }
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Shut down background threads. Call on mod shutdown.
+     */
+    public static void shutdown() {
+        DAEMON_EXECUTOR.shutdownNow();
+        SCHEDULER.shutdownNow();
+        HTTP_CLIENT.close();
     }
 }
