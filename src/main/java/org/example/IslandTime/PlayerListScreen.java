@@ -162,6 +162,9 @@ public class PlayerListScreen extends Screen {
             int tw = font.width(titleC);
             context.text(font, titleC, width / 2 - tw / 2, dialogY + 8, 0xFFFFFF, true);
         }
+
+        // Render widgets (buttons, edit boxes) via parent
+        super.extractRenderState(context, mouseX, mouseY, delta);
     }
 
     private void renderPlayerList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
