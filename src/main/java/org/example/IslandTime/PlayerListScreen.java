@@ -45,6 +45,9 @@ public class PlayerListScreen extends Screen {
     // Color picker dialog state
     private boolean colorPickerOpen = false;
     private int colorPickerIndex = -1;
+
+    // Scrollbar drag state
+    private boolean draggingScrollbar = false;
     private static final int[] COLOR_OPTIONS = {
             0xFFFFFF, // White
             0xFF5555, // Red
@@ -277,6 +280,21 @@ public class PlayerListScreen extends Screen {
             float scrollRatio = maxScroll > 0 ? (float) scrollOffset / maxScroll : 0;
             int thumbY = listTop + (int) ((trackHeight - thumbHeight) * scrollRatio);
             context.fill(scrollbarX, thumbY, scrollbarX + scrollbarW, thumbY + thumbHeight, 0xAAFFFFFF);
+        }
+
+        // Last interacted time — to the right of the scrollbar
+        int timeX = listLeft + listWidth + 10;
+        for (int i = 0; i < players.size(); i++) {
+            int drawIndex = i - scrollOffset;
+            int rowY = listTop + drawIndex * ROW_HEIGHT;
+            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+
+            PlayerListManager.PlayerEntry entry = players.get(i);
+            if (entry.lastInteracted > 0) {
+                String timeStr = formatTimeSince(entry.lastInteracted);
+                context.text(font, Component.literal(timeStr).withStyle(ChatFormatting.GRAY),
+                        timeX, rowY + (ROW_HEIGHT - 8) / 2, 0xFFAAAAAA, true);
+            }
         }
     }
 
@@ -577,6 +595,19 @@ public class PlayerListScreen extends Screen {
 
         if (addDialogOpen || editDialogOpen) return false;
 
+        // Scrollbar drag
+        List<PlayerListManager.PlayerEntry> allPlayers = PlayerListManager.getPlayers();
+        int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
+        if (allPlayers.size() > visibleRows) {
+            int scrollbarX = listLeft + listWidth + 2;
+            int scrollbarW = 4;
+            if (isInBounds(mouseX, mouseY, scrollbarX - 2, listTop, scrollbarW + 4, listBottom - listTop)) {
+                draggingScrollbar = true;
+                updateScrollFromMouse(mouseY);
+                return true;
+            }
+        }
+
         // Check action button clicks and name/note area clicks in the player list
         List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
         for (int i = 0; i < players.size(); i++) {
@@ -592,6 +623,7 @@ public class PlayerListScreen extends Screen {
 
             // Party
             if (isInBounds(mouseX, mouseY, btnX, btnY, BUTTON_SIZE, BUTTON_SIZE)) {
+                PlayerListManager.touchLastInteracted(i);
                 sendCommand("party " + cmdName);
                 return true;
             }
@@ -599,6 +631,7 @@ public class PlayerListScreen extends Screen {
 
             // Invite
             if (isInBounds(mouseX, mouseY, btnX, btnY, BUTTON_SIZE, BUTTON_SIZE)) {
+                PlayerListManager.touchLastInteracted(i);
                 sendCommand("invite " + cmdName);
                 return true;
             }
@@ -635,6 +668,30 @@ public class PlayerListScreen extends Screen {
         if (addDialogOpen || editDialogOpen) return false;
         scrollOffset -= (int) verticalAmount;
         return true;
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+        if (draggingScrollbar) {
+            updateScrollFromMouse(mouseY);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        draggingScrollbar = false;
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private void updateScrollFromMouse(double mouseY) {
+        List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
+        int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
+        int maxScroll = Math.max(0, players.size() - visibleRows);
+        float ratio = (float) (mouseY - listTop) / (listBottom - listTop);
+        ratio = Math.max(0, Math.min(1, ratio));
+        scrollOffset = Math.round(ratio * maxScroll);
     }
 
     @Override
@@ -693,5 +750,17 @@ public class PlayerListScreen extends Screen {
      */
     private static String decodeNewlines(String text) {
         return text.replace("\\n", "\n");
+    }
+
+    private static String formatTimeSince(long epochMillis) {
+        long seconds = (System.currentTimeMillis() - epochMillis) / 1000;
+        if (seconds < 0) return "0s";
+        if (seconds < 60) return seconds + "s";
+        long minutes = seconds / 60;
+        if (minutes < 60) return minutes + "m";
+        long hours = minutes / 60;
+        if (hours < 24) return hours + "h";
+        long days = hours / 24;
+        return days + "d";
     }
 }

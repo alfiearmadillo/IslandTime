@@ -26,6 +26,7 @@ public class PlayerListManager {
         public String name;
         public String note;
         public int color = 0xFFFFFF; // RGB color for display name (default white)
+        public long lastInteracted = 0; // epoch millis of last interaction
 
         public PlayerEntry(String uuid, String name, String note) {
             this.uuid = uuid != null ? uuid : "";
@@ -85,6 +86,13 @@ public class PlayerListManager {
     public static void updateColor(int index, int color) {
         if (index >= 0 && index < players.size()) {
             players.get(index).color = color;
+            save();
+        }
+    }
+
+    public static void touchLastInteracted(int index) {
+        if (index >= 0 && index < players.size()) {
+            players.get(index).lastInteracted = System.currentTimeMillis();
             save();
         }
     }
