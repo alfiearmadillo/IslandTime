@@ -5,12 +5,10 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.Font;
 import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.resources.DefaultPlayerSkin;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
-import net.minecraft.resources.ResourceLocation;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
@@ -145,8 +143,9 @@ public class PlayerListScreen extends Screen {
         context.fill(0, 0, width, height, 0xC0101010);
 
         // Title
-        context.drawCenteredString(font, Component.literal("Player List").withStyle(ChatFormatting.GOLD),
-                width / 2, 2, 0xFFFFFF);
+        Component titleComp = Component.literal("Player List").withStyle(ChatFormatting.GOLD);
+        int titleWidth = font.width(titleComp);
+        context.text(font, titleComp, width / 2 - titleWidth / 2, 2, 0xFFFFFF, true);
 
         // Draw player list (when no dialog is open)
         if (!addDialogOpen && !editDialogOpen) {
@@ -159,7 +158,9 @@ public class PlayerListScreen extends Screen {
             int dialogY = height / 2 - 65;
             context.fill(dialogX, dialogY, dialogX + 220, dialogY + 140, 0xEE000000);
             String title = addDialogOpen ? "Add Player" : "Edit Player";
-            context.drawCenteredString(font, title, width / 2, dialogY + 8, 0xFFFFFF);
+            Component titleC = Component.literal(title);
+            int tw = font.width(titleC);
+            context.text(font, titleC, width / 2 - tw / 2, dialogY + 8, 0xFFFFFF, true);
         }
     }
 
@@ -167,10 +168,10 @@ public class PlayerListScreen extends Screen {
         List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
 
         if (players.isEmpty()) {
-            context.drawCenteredString(font,
-                    Component.literal("No players added yet. Click '+ Add Player' to get started.")
-                            .withStyle(ChatFormatting.GRAY),
-                    width / 2, height / 2, 0xAAAAAA);
+            Component emptyMsg = Component.literal("No players added yet. Click '+ Add Player' to get started.")
+                    .withStyle(ChatFormatting.GRAY);
+            int emptyW = font.width(emptyMsg);
+            context.text(font, emptyMsg, width / 2 - emptyW / 2, height / 2, 0xAAAAAA, true);
             return;
         }
 
@@ -191,17 +192,16 @@ public class PlayerListScreen extends Screen {
             int bgColor = (i % 2 == 0) ? 0x40000000 : 0x20000000;
             context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
 
-            // Player head placeholder (8x8 face from default skin)
-            ResourceLocation skinTexture = DefaultPlayerSkin.getDefaultTexture();
-            context.blit(skinTexture, listLeft + PADDING, rowY + PADDING + 2, 8, 8, 8, 8, 8, 8, 64, 64);
+            // Player head placeholder (small colored square)
+            context.fill(listLeft + PADDING, rowY + PADDING + 2, listLeft + PADDING + 8, rowY + PADDING + 10, 0xFF888888);
 
             // Name
             String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;
-            context.drawString(font, displayName, listLeft + PADDING + 14, rowY + 4, 0xFFFFFF);
+            context.text(font, Component.literal(displayName), listLeft + PADDING + 14, rowY + 4, 0xFFFFFF, true);
 
             // Note
             if (!entry.note.isEmpty()) {
-                context.drawString(font, entry.note, listLeft + PADDING + 14, rowY + 15, 0xAAAAAA);
+                context.text(font, Component.literal(entry.note), listLeft + PADDING + 14, rowY + 15, 0xAAAAAA, true);
             }
 
             // Action buttons on the right
@@ -229,14 +229,21 @@ public class PlayerListScreen extends Screen {
         boolean hovered = mouseX >= x && mouseX < x + BUTTON_SIZE && mouseY >= y && mouseY < y + BUTTON_SIZE;
         int bg = hovered ? 0x80FFFFFF : 0x60000000;
         context.fill(x, y, x + BUTTON_SIZE, y + BUTTON_SIZE, bg);
-        context.drawCenteredString(font, label, x + BUTTON_SIZE / 2, y + (BUTTON_SIZE - 8) / 2, color);
+        Component labelComp = Component.literal(label);
+        int lw = font.width(labelComp);
+        context.text(font, labelComp, x + BUTTON_SIZE / 2 - lw / 2, y + (BUTTON_SIZE - 8) / 2, color, true);
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (super.mouseClicked(mouseX, mouseY, button)) return true;
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (super.mouseClicked(event, doubleClick)) return true;
 
         if (addDialogOpen || editDialogOpen) return false;
+
+        // Get mouse position from Minecraft
+        Minecraft client = Minecraft.getInstance();
+        double mouseX = client.mouseHandler.xpos() * (double) client.getWindow().getGuiScaledWidth() / (double) client.getWindow().getScreenWidth();
+        double mouseY = client.mouseHandler.ypos() * (double) client.getWindow().getGuiScaledHeight() / (double) client.getWindow().getScreenHeight();
 
         // Check action button clicks in the player list
         List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
