@@ -23,6 +23,7 @@ public class IslandTimeMod implements ClientModInitializer {
 
         // Load chat relay config and register the chat listener
         ChatRelayConfig.load();
+        PlayerListManager.load();
         IslandChatRelay.register();
 
         // Initialize MoulConfig
