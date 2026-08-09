@@ -332,7 +332,7 @@ public class PlayerListScreen extends Screen {
         List<String> knownLabels = List.of("Item Name", "Rule", "Profile", "Location",
                 "Party Player", "Visit Player", "Extra Attrs");
         // Labels to hide from tooltip (including their value lines)
-        List<String> hiddenLabels = List.of("Party Player", "Visit Player", "Extra Attrs");
+        List<String> hiddenLabels = List.of("Party Player", "Visit Player");
 
         for (int i = 0; i < parts.length; i++) {
             String line = parts[i].trim();
@@ -368,6 +368,18 @@ public class PlayerListScreen extends Screen {
                             }
                         } else {
                             i++; // skip the single value line
+                        }
+                    } else if (line.equalsIgnoreCase("Extra Attrs")) {
+                        // Show the extra attrs values without the heading
+                        while (i + 1 < parts.length) {
+                            String next = parts[i + 1].trim();
+                            boolean isNextLabel = false;
+                            for (String l : knownLabels) {
+                                if (next.equalsIgnoreCase(l)) { isNextLabel = true; break; }
+                            }
+                            if (isNextLabel || next.isEmpty()) break;
+                            i++;
+                            lines.add(Component.literal(next).withStyle(ChatFormatting.GRAY));
                         }
                     } else if (i + 1 < parts.length) {
                         String value = parts[i + 1].trim();
