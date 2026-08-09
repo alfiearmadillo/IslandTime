@@ -247,7 +247,7 @@ public class PlayerListScreen extends Screen {
         Minecraft client = Minecraft.getInstance();
         if (client.getConnection() != null && !entry.name.isEmpty()) {
             for (PlayerInfo info : client.getConnection().getOnlinePlayers()) {
-                if (info.getProfile().getName().equalsIgnoreCase(entry.name)) {
+                if (info.getProfile().name().equalsIgnoreCase(entry.name)) {
                     online = true;
                     break;
                 }
