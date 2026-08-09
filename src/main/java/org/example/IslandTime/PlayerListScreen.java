@@ -43,6 +43,22 @@ public class PlayerListScreen extends Screen {
     private EditBox editNameField;
     private EditBox editNoteField;
 
+    // Color picker dialog state
+    private boolean colorPickerOpen = false;
+    private int colorPickerIndex = -1;
+    private static final int[] COLOR_OPTIONS = {
+            0xFFFFFF, // White
+            0xFF5555, // Red
+            0xFF5500, // Orange
+            0xFFFF55, // Yellow
+            0x55FF55, // Green
+            0x55FFFF, // Cyan
+            0x5555FF, // Blue
+            0xFF55FF, // Pink
+            0xAA00AA, // Purple
+            0xAAAAAA, // Gray
+    };
+
     public PlayerListScreen() {
         super(Component.literal("Player List"));
     }
@@ -55,7 +71,7 @@ public class PlayerListScreen extends Screen {
         listTop = HEADER_HEIGHT + 10;
         listBottom = height - 10;
 
-        if (!addDialogOpen && !editDialogOpen) {
+        if (!addDialogOpen && !editDialogOpen && !colorPickerOpen) {
             addRenderableWidget(Button.builder(Component.literal("+ Add Player"), btn -> openAddDialog())
                     .bounds(width / 2 - 50, 10, 100, 20)
                     .build());
@@ -137,7 +153,9 @@ public class PlayerListScreen extends Screen {
     private void closeDialog() {
         addDialogOpen = false;
         editDialogOpen = false;
+        colorPickerOpen = false;
         editIndex = -1;
+        colorPickerIndex = -1;
         clearWidgets();
         init();
     }
@@ -156,7 +174,7 @@ public class PlayerListScreen extends Screen {
         context.text(font, titleComp, width / 2 - titleWidth / 2, 2, -1, true);
 
         // Draw player list (when no dialog is open)
-        if (!addDialogOpen && !editDialogOpen) {
+        if (!addDialogOpen && !editDialogOpen && !colorPickerOpen) {
             renderPlayerList(context, mouseX, mouseY);
         }
 
@@ -171,11 +189,16 @@ public class PlayerListScreen extends Screen {
             context.text(font, titleC, width / 2 - tw / 2, dialogY + 8, -1, true);
         }
 
+        // Draw color picker
+        if (colorPickerOpen) {
+            renderColorPicker(context, mouseX, mouseY);
+        }
+
         // Render widgets (buttons, edit boxes) via parent
         super.extractRenderState(context, mouseX, mouseY, delta);
 
         // Tooltip (rendered after everything else so it's on top)
-        if (!addDialogOpen && !editDialogOpen) {
+        if (!addDialogOpen && !editDialogOpen && !colorPickerOpen) {
             renderTooltip(context, mouseX, mouseY);
         }
     }
@@ -208,10 +231,10 @@ public class PlayerListScreen extends Screen {
             int bgColor = (i % 2 == 0) ? 0x40000000 : 0x20000000;
             context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
 
-            // Name
+            // Name (bold, with saved color)
             String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;
-            context.text(font, Component.literal(displayName).withStyle(ChatFormatting.WHITE),
-                    listLeft + PADDING, rowY + 4, -1, true);
+            context.text(font, Component.literal(displayName).withStyle(ChatFormatting.BOLD),
+                    listLeft + PADDING, rowY + 4, 0xFF000000 | entry.color, true);
 
             // Note preview
             if (!entry.note.isEmpty()) {
@@ -272,6 +295,57 @@ public class PlayerListScreen extends Screen {
                 context.text(font, Component.literal(str), chatX, y, 0xFFCCCCCC, true);
             } else {
                 context.text(font, text, chatX, y, 0xFFCCCCCC, true);
+            }
+        }
+    }
+
+    /**
+     * Renders the color picker dialog — a grid of color swatches.
+     */
+    private void renderColorPicker(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        int dialogW = 160;
+        int dialogH = 80;
+        int dialogX = width / 2 - dialogW / 2;
+        int dialogY = height / 2 - dialogH / 2;
+
+        context.fill(dialogX, dialogY, dialogX + dialogW, dialogY + dialogH, 0xEE000000);
+
+        // Title
+        Component title = Component.literal("Pick Name Color");
+        int tw = font.width(title);
+        context.text(font, title, width / 2 - tw / 2, dialogY + 6, -1, true);
+
+        // Color swatches: 5 per row, 2 rows
+        int swatchSize = 20;
+        int gap = 4;
+        int colsPerRow = 5;
+        int startX = dialogX + (dialogW - colsPerRow * (swatchSize + gap) + gap) / 2;
+        int startY = dialogY + 22;
+
+        for (int i = 0; i < COLOR_OPTIONS.length; i++) {
+            int col = i % colsPerRow;
+            int row = i / colsPerRow;
+            int sx = startX + col * (swatchSize + gap);
+            int sy = startY + row * (swatchSize + gap);
+            int color = COLOR_OPTIONS[i];
+
+            // Swatch fill
+            context.fill(sx, sy, sx + swatchSize, sy + swatchSize, 0xFF000000 | color);
+
+            // Highlight if hovered
+            if (mouseX >= sx && mouseX < sx + swatchSize && mouseY >= sy && mouseY < sy + swatchSize) {
+                context.fill(sx, sy, sx + swatchSize, sy + 1, -1);
+                context.fill(sx, sy + swatchSize - 1, sx + swatchSize, sy + swatchSize, -1);
+                context.fill(sx, sy, sx + 1, sy + swatchSize, -1);
+                context.fill(sx + swatchSize - 1, sy, sx + swatchSize, sy + swatchSize, -1);
+            }
+
+            // Mark current color with a dot
+            if (colorPickerIndex >= 0 && colorPickerIndex < PlayerListManager.getPlayers().size()) {
+                int currentColor = PlayerListManager.getPlayers().get(colorPickerIndex).color;
+                if (color == currentColor) {
+                    context.text(font, Component.literal("•"), sx + swatchSize / 2 - 2, sy + swatchSize / 2 - 4, 0xFF000000, false);
+                }
             }
         }
     }
@@ -454,14 +528,42 @@ public class PlayerListScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
 
-        if (addDialogOpen || editDialogOpen) return false;
-
         // Get mouse position from Minecraft
         Minecraft client = Minecraft.getInstance();
         double mouseX = client.mouseHandler.xpos() * (double) client.getWindow().getGuiScaledWidth() / (double) client.getWindow().getScreenWidth();
         double mouseY = client.mouseHandler.ypos() * (double) client.getWindow().getGuiScaledHeight() / (double) client.getWindow().getScreenHeight();
 
-        // Check action button clicks in the player list
+        // Handle color picker clicks
+        if (colorPickerOpen) {
+            int dialogW = 160;
+            int dialogH = 80;
+            int dialogX = width / 2 - dialogW / 2;
+            int dialogY = height / 2 - dialogH / 2;
+            int swatchSize = 20;
+            int gap = 4;
+            int colsPerRow = 5;
+            int startX = dialogX + (dialogW - colsPerRow * (swatchSize + gap) + gap) / 2;
+            int startY = dialogY + 22;
+
+            for (int i = 0; i < COLOR_OPTIONS.length; i++) {
+                int col = i % colsPerRow;
+                int row = i / colsPerRow;
+                int sx = startX + col * (swatchSize + gap);
+                int sy = startY + row * (swatchSize + gap);
+                if (isInBounds(mouseX, mouseY, sx, sy, swatchSize, swatchSize)) {
+                    PlayerListManager.updateColor(colorPickerIndex, COLOR_OPTIONS[i]);
+                    closeDialog();
+                    return true;
+                }
+            }
+            // Click outside closes
+            closeDialog();
+            return true;
+        }
+
+        if (addDialogOpen || editDialogOpen) return false;
+
+        // Check action button clicks and name/note area clicks in the player list
         List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
         for (int i = 0; i < players.size(); i++) {
             int drawIndex = i - scrollOffset;
@@ -500,6 +602,15 @@ public class PlayerListScreen extends Screen {
                 PlayerListManager.removePlayer(i);
                 return true;
             }
+
+            // Click on name/description area (left of action buttons) opens color picker
+            int buttonsStartX = listLeft + listWidth - (BUTTON_SIZE + 2) * 4;
+            if (isInBounds(mouseX, mouseY, listLeft, rowY, buttonsStartX - listLeft, ROW_HEIGHT)) {
+                colorPickerOpen = true;
+                colorPickerIndex = i;
+                clearWidgets();
+                return true;
+            }
         }
 
         return false;
@@ -514,11 +625,12 @@ public class PlayerListScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (addDialogOpen || editDialogOpen) {
+        if (addDialogOpen || editDialogOpen || colorPickerOpen) {
             if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
                 closeDialog();
                 return true;
             }
+            if (colorPickerOpen) return true; // swallow other keys
             // Intercept Ctrl+V paste for note fields to preserve newlines
             long window = Minecraft.getInstance().getWindow().handle();
             boolean ctrlHeld = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS

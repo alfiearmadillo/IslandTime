@@ -25,6 +25,7 @@ public class PlayerListManager {
         public String uuid;      // can be empty if only name was provided
         public String name;
         public String note;
+        public int color = 0xFFFFFF; // RGB color for display name (default white)
 
         public PlayerEntry(String uuid, String name, String note) {
             this.uuid = uuid != null ? uuid : "";
@@ -77,6 +78,13 @@ public class PlayerListManager {
             PlayerEntry entry = players.get(index);
             entry.name = name;
             entry.note = note;
+            save();
+        }
+    }
+
+    public static void updateColor(int index, int color) {
+        if (index >= 0 && index < players.size()) {
+            players.get(index).color = color;
             save();
         }
     }
