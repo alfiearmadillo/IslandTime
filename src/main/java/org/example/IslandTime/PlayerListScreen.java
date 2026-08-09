@@ -7,7 +7,6 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import org.lwjgl.glfw.GLFW;
@@ -200,19 +199,16 @@ public class PlayerListScreen extends Screen {
             int bgColor = (i % 2 == 0) ? 0x40000000 : 0x20000000;
             context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
 
-            // Player head — try to get skin from tab list, fall back to default
-            renderPlayerHead(context, entry, listLeft + PADDING, rowY + PADDING);
-
             // Name
             String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;
             context.text(font, Component.literal(displayName).withStyle(ChatFormatting.WHITE),
-                    listLeft + PADDING + 22, rowY + 4, -1, true);
+                    listLeft + PADDING, rowY + 4, -1, true);
 
-            // Note preview — extract "Profile Match: X" or show first ~30 chars
+            // Note preview
             if (!entry.note.isEmpty()) {
                 String preview = extractNotePreview(entry.note);
                 context.text(font, Component.literal(preview).withStyle(ChatFormatting.GRAY),
-                        listLeft + PADDING + 22, rowY + 15, 0xFFAAAAAA, true);
+                        listLeft + PADDING, rowY + 15, 0xFFAAAAAA, true);
             }
 
             // Action buttons on the right
@@ -236,62 +232,20 @@ public class PlayerListScreen extends Screen {
         }
     }
 
-    private void renderPlayerHead(GuiGraphicsExtractor context, PlayerListManager.PlayerEntry entry, int x, int y) {
-        // Render a colored square with the player's initial as a head placeholder
-        // Full skin rendering requires blit which isn't available on GuiGraphicsExtractor
-        String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;
-        String initial = displayName.isEmpty() ? "?" : displayName.substring(0, 1).toUpperCase();
-
-        // Check if player is online (green tint) or offline (gray)
-        boolean online = false;
-        Minecraft client = Minecraft.getInstance();
-        if (client.getConnection() != null && !entry.name.isEmpty()) {
-            for (PlayerInfo info : client.getConnection().getOnlinePlayers()) {
-                if (info.getProfile().name().equalsIgnoreCase(entry.name)) {
-                    online = true;
-                    break;
-                }
-            }
-        }
-
-        int bgColor = online ? 0xFF2D5A2D : 0xFF3A3A3A;
-        context.fill(x, y, x + 18, y + 18, bgColor);
-        // Border
-        context.fill(x, y, x + 18, y + 1, 0xFF555555);
-        context.fill(x, y + 17, x + 18, y + 18, 0xFF555555);
-        context.fill(x, y, x + 1, y + 18, 0xFF555555);
-        context.fill(x + 17, y, x + 18, y + 18, 0xFF555555);
-        // Initial letter centered
-        Component initialComp = Component.literal(initial);
-        int iw = font.width(initialComp);
-        context.text(font, initialComp, x + 9 - iw / 2, y + 5, online ? 0xFF55FF55 : 0xFFCCCCCC, true);
-    }
-
     /**
-     * Extract a short preview from the note. Looks for "Profile Match: X" pattern,
+     * Extract a short preview from the note. Shows "ProfileMatch, ItemName" if found,
      * otherwise shows first ~40 characters.
      */
     private String extractNotePreview(String note) {
-        // Look for the profile match pattern in the Discord message format
-        String marker = "Profile Match:";
-        int idx = note.indexOf(marker);
-        if (idx != -1) {
-            // Extract from "Profile Match:" to end of that segment (newline or end)
-            String sub = note.substring(idx);
-            int newline = sub.indexOf('\n');
-            if (newline == -1) newline = sub.length();
-            String match = sub.substring(0, Math.min(newline, 50)).trim();
-            return "\uD83D\uDD0D " + match; // 🔍 prefix
-        }
+        String profileMatch = extractField(note, "Profile Match:");
+        String itemName = extractField(note, "Item Name:");
 
-        // Also check for the emoji prefix format
-        marker = "\uD83D\uDD0D Profile Match:";
-        idx = note.indexOf(marker);
-        if (idx != -1) {
-            String sub = note.substring(idx);
-            int newline = sub.indexOf('\n');
-            if (newline == -1) newline = sub.length();
-            return sub.substring(0, Math.min(newline, 50)).trim();
+        if (profileMatch != null || itemName != null) {
+            StringBuilder sb = new StringBuilder();
+            if (profileMatch != null) sb.append(profileMatch);
+            if (profileMatch != null && itemName != null) sb.append(", ");
+            if (itemName != null) sb.append(itemName);
+            return sb.toString();
         }
 
         // Fallback: show first 40 chars
@@ -299,6 +253,19 @@ public class PlayerListScreen extends Screen {
             return note.substring(0, 40) + "...";
         }
         return note;
+    }
+
+    /**
+     * Extract the value after a field marker (e.g. "Profile Match:") up to the next newline.
+     */
+    private String extractField(String note, String marker) {
+        int idx = note.indexOf(marker);
+        if (idx == -1) return null;
+        String sub = note.substring(idx + marker.length());
+        int newline = sub.indexOf('\n');
+        if (newline == -1) newline = sub.length();
+        String value = sub.substring(0, newline).trim();
+        return value.isEmpty() ? null : value;
     }
 
     /**
