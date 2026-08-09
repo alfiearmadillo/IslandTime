@@ -1,6 +1,7 @@
 package org.example.islandtime;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.GuiMessage;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -10,6 +11,7 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
+import org.example.islandtime.mixin.ChatComponentAccessor;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -283,14 +285,13 @@ public class PlayerListScreen extends Screen {
 
     /**
      * Renders a scaled-down mirror of recent chat messages to the left of the player list.
-     * Uses ChatComponent's allMessages field which contains GuiMessage records.
+     * Uses a mixin accessor to read ChatComponent's private allMessages field.
      */
     private void renderChatMirror(GuiGraphicsExtractor context) {
         Minecraft client = Minecraft.getInstance();
         ChatComponent chat = client.gui.getChat();
+        List<GuiMessage> messages = ((ChatComponentAccessor) chat).getAllMessages();
 
-        // Access allMessages via the public accessor
-        List<?> messages = chat.allMessages;
         if (messages == null || messages.isEmpty()) return;
 
         // Position chat to the left of the player list, at the bottom
@@ -302,9 +303,8 @@ public class PlayerListScreen extends Screen {
 
         int count = Math.min(messages.size(), maxLines);
         for (int i = 0; i < count; i++) {
-            Object msg = messages.get(i);
-            if (!(msg instanceof net.minecraft.client.gui.components.ChatComponent.GuiMessage guiMsg)) continue;
-            Component text = guiMsg.content();
+            GuiMessage msg = messages.get(i);
+            Component text = msg.content();
             if (text == null) continue;
 
             int y = startY - (i * lineHeight);
