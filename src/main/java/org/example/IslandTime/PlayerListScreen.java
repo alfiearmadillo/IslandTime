@@ -423,7 +423,10 @@ public class PlayerListScreen extends Screen {
                 return true;
             }
             // Intercept Ctrl+V paste for note fields to preserve newlines
-            if (event.key() == GLFW.GLFW_KEY_V && Screen.hasControlDown()) {
+            long window = Minecraft.getInstance().getWindow().handle();
+            boolean ctrlHeld = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
+                    || GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            if (event.key() == GLFW.GLFW_KEY_V && ctrlHeld) {
                 EditBox activeNote = addDialogOpen ? noteField : editNoteField;
                 if (activeNote != null && activeNote.isFocused()) {
                     String clipboard = Minecraft.getInstance().keyboardHandler.getClipboard();
