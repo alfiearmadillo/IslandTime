@@ -14,9 +14,7 @@ public class ChatMessageStore {
     private static final List<Component> messages = new ArrayList<>();
 
     public static void register() {
-        ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
-            addMessage(message);
-        });
+        // Use the same GAME event that IslandChatRelay uses (proven to work in MC 26.1)
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             if (!overlay) {
                 addMessage(message);
