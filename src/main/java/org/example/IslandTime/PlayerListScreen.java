@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -143,13 +144,11 @@ public class PlayerListScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        // Background darkening — leave chat area (bottom-left) uncovered
-        int chatHeight = 140;
-        int chatWidth = Math.min(330, width);
-        // Top section (full width, above chat)
-        context.fill(0, 0, width, height - chatHeight, 0xC0101010);
-        // Bottom-right section (to the right of chat)
-        context.fill(chatWidth, height - chatHeight, width, height, 0xC0101010);
+        // Full background darkening
+        context.fill(0, 0, width, height, 0xC0101010);
+
+        // Render chat mirror on top of the darkening, to the left of the player list
+        renderChatMirror(context);
 
         // Title
         Component titleComp = Component.literal("Player List").withStyle(ChatFormatting.GOLD);
@@ -239,6 +238,41 @@ public class PlayerListScreen extends Screen {
 
             // Delete button
             drawSmallButton(context, btnX, btnY, "X", 0xFFFF5555, mouseX, mouseY);
+        }
+    }
+
+    /**
+     * Renders a scaled-down mirror of recent chat messages to the left of the player list.
+     */
+    private void renderChatMirror(GuiGraphicsExtractor context) {
+        Minecraft client = Minecraft.getInstance();
+        ChatComponent chat = client.gui.getChat();
+        List<ChatComponent.OverlayMessage> recentMessages = chat.getRecentChat();
+
+        if (recentMessages == null || recentMessages.isEmpty()) return;
+
+        // Position chat to the left of the player list, at the bottom
+        int chatX = 4;
+        int chatMaxWidth = listLeft - 10;
+        int lineHeight = 9;
+        int maxLines = 20;
+        int startY = height - 40; // Start from bottom, go up
+
+        int count = Math.min(recentMessages.size(), maxLines);
+        for (int i = 0; i < count; i++) {
+            ChatComponent.OverlayMessage msg = recentMessages.get(i);
+            Component text = msg.content();
+            if (text == null) continue;
+
+            int y = startY - (i * lineHeight);
+            // Truncate if too wide
+            String str = text.getString();
+            if (font.width(str) > chatMaxWidth) {
+                str = font.plainSubstrByWidth(str, chatMaxWidth - 6) + "...";
+                context.text(font, Component.literal(str), chatX, y, 0xFFCCCCCC, true);
+            } else {
+                context.text(font, text, chatX, y, 0xFFCCCCCC, true);
+            }
         }
     }
 
