@@ -143,8 +143,13 @@ public class PlayerListScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        // Background darkening
-        context.fill(0, 0, width, height, 0xC0101010);
+        // Background darkening — leave chat area (bottom-left) uncovered
+        int chatHeight = 140;
+        int chatWidth = Math.min(330, width);
+        // Top section (full width, above chat)
+        context.fill(0, 0, width, height - chatHeight, 0xC0101010);
+        // Bottom-right section (to the right of chat)
+        context.fill(chatWidth, height - chatHeight, width, height, 0xC0101010);
 
         // Title
         Component titleComp = Component.literal("Player List").withStyle(ChatFormatting.GOLD);
