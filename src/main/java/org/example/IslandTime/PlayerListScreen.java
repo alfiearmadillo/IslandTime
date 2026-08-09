@@ -1,7 +1,7 @@
 package org.example.islandtime;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.GuiMessage;
+import net.minecraft.client.gui.components.GuiMessage;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
