@@ -283,13 +283,15 @@ public class PlayerListScreen extends Screen {
 
     /**
      * Renders a scaled-down mirror of recent chat messages to the left of the player list.
+     * Uses ChatComponent's allMessages field which contains GuiMessage records.
      */
     private void renderChatMirror(GuiGraphicsExtractor context) {
         Minecraft client = Minecraft.getInstance();
         ChatComponent chat = client.gui.getChat();
-        List<ChatComponent.OverlayMessage> recentMessages = chat.getRecentChat();
 
-        if (recentMessages == null || recentMessages.isEmpty()) return;
+        // Access allMessages via the public accessor
+        List<?> messages = chat.allMessages;
+        if (messages == null || messages.isEmpty()) return;
 
         // Position chat to the left of the player list, at the bottom
         int chatX = 4;
@@ -298,10 +300,11 @@ public class PlayerListScreen extends Screen {
         int maxLines = 20;
         int startY = height - 40; // Start from bottom, go up
 
-        int count = Math.min(recentMessages.size(), maxLines);
+        int count = Math.min(messages.size(), maxLines);
         for (int i = 0; i < count; i++) {
-            ChatComponent.OverlayMessage msg = recentMessages.get(i);
-            Component text = msg.content();
+            Object msg = messages.get(i);
+            if (!(msg instanceof net.minecraft.client.gui.components.ChatComponent.GuiMessage guiMsg)) continue;
+            Component text = guiMsg.content();
             if (text == null) continue;
 
             int y = startY - (i * lineHeight);
