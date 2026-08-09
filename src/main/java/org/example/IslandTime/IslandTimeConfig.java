@@ -287,6 +287,30 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean ghostEnabled = true;
+
+        @Expose
+        @ConfigOption(
+            name = "Keep Resource Pack",
+            desc = "When enabled, caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel). Hides the pack download prompt and only re-downloads if the pack changes."
+        )
+        @ConfigEditorBoolean
+        public boolean keepResourcePack = false;
+
+        @Expose
+        @ConfigOption(
+            name = "Show Component Display",
+            desc = "When enabled, shows specified item components at the bottom of item tooltips in dark gray text"
+        )
+        @ConfigEditorBoolean
+        public boolean componentDisplayEnabled = false;
+
+        @Expose
+        @ConfigOption(
+            name = "Component Names",
+            desc = "Space-separated list of component names to display (e.g. catacombs_level_requirement id color)"
+        )
+        @ConfigEditorText
+        public String componentNames = "";
     }
 
     public static class Signs {

@@ -13,11 +13,16 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, fuel cycles
 - **Favourite GUI** — Save and view container snapshots (e.g. minion layouts) as read-only overlays
 - **Island Player Tracking** — Detects when visitors leave your island with optional chat/Discord notifications
 - **Show Hidden Tooltips** — Reveals tooltips on items that have `hide_tooltip` set (e.g. GUI filler panes)
+- **PPG Display** — Shows Price Per Gabagool in the Very Crude Gabagool sell offer menu
+- **Ghost Command** — Client-side block removal with `/it ghost`
+- **Keep Resource Pack** — Caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel), skipping re-download if unchanged
+- **Component Display** — Shows specified item components (e.g. `id`, `color`) at the bottom of tooltips in dark gray
+- **Sign Helpers** — Adds paste buttons to the sign edit screen with configurable pre-set text per line
 - **MoulConfig GUI** — All settings accessible from a single GUI opened with `/islandtime`
 
 ## Installation
 
-1. Requires **Minecraft 1.21+** with **Fabric Loader** and **Fabric API**
+1. Requires **Minecraft 26.1** with **Fabric Loader** and **Fabric API**
 2. Download the latest release from the [Releases](../../releases) page
 3. Place the JAR in your `.minecraft/mods` folder
 
@@ -45,6 +50,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/favouritegui toggle` | Enable/disable container snapshot tracking |
 | `/chatrelay` | View/configure chat relay settings |
 | `/showtooltips` | Toggle hidden tooltip visibility |
+| `/it ghost` | Client-side block removal tool |
 | `/islandtime help [page]` | View help pages |
 
 `/it` is an alias for `/islandtime`.

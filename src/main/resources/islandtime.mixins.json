@@ -11,6 +11,7 @@
     "MouseMixin",
     "LevelRendererMixin",
     "MultiPlayerGameModeMixin",
+    "ResourcePackMixin",
     "TooltipOverrideMixin"
   ],
   "injectors": {

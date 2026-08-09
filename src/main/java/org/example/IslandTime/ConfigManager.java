@@ -146,6 +146,7 @@ public class ConfigManager {
 
         // Misc
         config.misc.showHiddenTooltips = TooltipOverrideConfig.isShowHiddenTooltips();
+        config.misc.keepResourcePack = ResourcePackConfig.isEnabled();
 
         saveToFile();
     }
@@ -230,6 +231,14 @@ public class ConfigManager {
         // Misc — tooltip override
         if (TooltipOverrideConfig.isShowHiddenTooltips() != config.misc.showHiddenTooltips) {
             TooltipOverrideConfig.setShowHiddenTooltips(config.misc.showHiddenTooltips);
+        }
+
+        // Misc — keep resource pack
+        if (ResourcePackConfig.isEnabled() != config.misc.keepResourcePack) {
+            ResourcePackConfig.setEnabled(config.misc.keepResourcePack);
+            if (!config.misc.keepResourcePack) {
+                ResourcePackManager.reset();
+            }
         }
 
         saveToFile();

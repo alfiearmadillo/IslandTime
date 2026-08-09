@@ -19,6 +19,7 @@ public class IslandTimeMod implements ClientModInitializer {
         FavouriteGuiManager.load();
         TrackingToggleConfig.load(); // applies toggle flags to trackers
         TooltipOverrideConfig.load(); // NEW: load tooltip override flag
+        ResourcePackConfig.load();   // Load resource pack persistence config
 
         // Load chat relay config and register the chat listener
         ChatRelayConfig.load();
@@ -47,8 +48,10 @@ public class IslandTimeMod implements ClientModInitializer {
 
         // Start the localhost poller when the player connects to a server,
         // stop it when they disconnect (handles /server switches too).
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
-                IslandChatRelay.startPolling());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+                IslandChatRelay.startPolling();
+                ResourcePackManager.applyCachedPack();
+        });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
                 IslandChatRelay.stopPolling());
@@ -71,9 +74,11 @@ public class IslandTimeMod implements ClientModInitializer {
             FavouriteGuiManager.save();
             ChatRelayConfig.save();
             TooltipOverrideConfig.save();    // NEW: save tooltip override flag
+            ResourcePackConfig.save();       // Save resource pack config
 
             DiscordWebhookManager.shutdown();
             IslandChatRelay.shutdown();      // stops poller + webhook thread
+            ResourcePackManager.shutdown();  // stops daemon threads + HTTP client
 
             System.out.println("IslandTimeMod shutdown complete");
         }));
