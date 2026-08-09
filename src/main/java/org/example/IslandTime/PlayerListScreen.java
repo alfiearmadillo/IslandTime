@@ -262,6 +262,23 @@ public class PlayerListScreen extends Screen {
             // Delete button
             drawSmallButton(context, btnX, btnY, "X", 0xFFFF5555, mouseX, mouseY);
         }
+
+        // Scrollbar
+        if (players.size() > visibleRows) {
+            int scrollbarX = listLeft + listWidth + 2;
+            int scrollbarW = 4;
+            int trackHeight = listBottom - listTop;
+
+            // Track background
+            context.fill(scrollbarX, listTop, scrollbarX + scrollbarW, listBottom, 0x40FFFFFF);
+
+            // Thumb
+            float thumbRatio = (float) visibleRows / players.size();
+            int thumbHeight = Math.max(10, (int) (trackHeight * thumbRatio));
+            float scrollRatio = maxScroll > 0 ? (float) scrollOffset / maxScroll : 0;
+            int thumbY = listTop + (int) ((trackHeight - thumbHeight) * scrollRatio);
+            context.fill(scrollbarX, thumbY, scrollbarX + scrollbarW, thumbY + thumbHeight, 0xAAFFFFFF);
+        }
     }
 
     /**
