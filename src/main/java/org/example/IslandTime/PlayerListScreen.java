@@ -80,6 +80,11 @@ public class PlayerListScreen extends Screen {
 
         addRenderableWidget(Button.builder(Component.literal("Add"), btn -> {
             String input = nameField.getValue().trim();
+            String noteText = decodeNewlines(noteField.getValue().trim());
+            // If no name provided, try to extract from party/visit command in note
+            if (input.isEmpty()) {
+                input = extractPlayerNameFromNote(noteText);
+            }
             if (!input.isEmpty()) {
                 String uuid = "";
                 String name = input;
@@ -87,7 +92,7 @@ public class PlayerListScreen extends Screen {
                     uuid = input;
                     name = "";
                 }
-                PlayerListManager.addPlayer(uuid, name, decodeNewlines(noteField.getValue().trim()));
+                PlayerListManager.addPlayer(uuid, name, noteText);
                 closeDialog();
             }
         }).bounds(dialogX, dialogY + 58, 95, 20).build());
@@ -233,18 +238,17 @@ public class PlayerListScreen extends Screen {
     }
 
     /**
-     * Extract a short preview from the note. Shows "ProfileMatch, ItemName" if found,
+     * Extract a short preview from the note. Shows "Rule, ItemName" if found,
      * otherwise shows first ~40 characters.
      */
     private String extractNotePreview(String note) {
-        String profileMatch = extractField(note, "Profile Match:");
-        if (profileMatch == null) profileMatch = extractField(note, "\uD83D\uDD0D Profile Match:");
+        String rule = extractFieldNextLine(note, "Rule");
         String itemName = extractFieldNextLine(note, "Item Name");
 
-        if (profileMatch != null || itemName != null) {
+        if (rule != null || itemName != null) {
             StringBuilder sb = new StringBuilder();
-            if (profileMatch != null) sb.append(profileMatch);
-            if (profileMatch != null && itemName != null) sb.append(", ");
+            if (rule != null) sb.append(rule);
+            if (rule != null && itemName != null) sb.append(", ");
             if (itemName != null) sb.append(itemName);
             return sb.toString();
         }
@@ -254,19 +258,6 @@ public class PlayerListScreen extends Screen {
             return note.substring(0, 40) + "...";
         }
         return note;
-    }
-
-    /**
-     * Extract the value after a field marker on the SAME line (e.g. "Profile Match: Dyed Farmhand").
-     */
-    private String extractField(String note, String marker) {
-        int idx = note.indexOf(marker);
-        if (idx == -1) return null;
-        String sub = note.substring(idx + marker.length());
-        int newline = sub.indexOf('\n');
-        if (newline == -1) newline = sub.length();
-        String value = sub.substring(0, newline).trim();
-        return value.isEmpty() ? null : value;
     }
 
     /**
@@ -281,6 +272,24 @@ public class PlayerListScreen extends Screen {
             }
         }
         return null;
+    }
+
+    /**
+     * Extract player name from /party or /visit command in the note.
+     * Looks for lines like "/party DK_wind02" or "/visit DK_wind02".
+     */
+    private String extractPlayerNameFromNote(String note) {
+        String[] lines = note.split("\n");
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("/party ") && trimmed.length() > 7) {
+                return trimmed.substring(7).trim();
+            }
+            if (trimmed.startsWith("/visit ") && trimmed.length() > 7) {
+                return trimmed.substring(7).trim();
+            }
+        }
+        return "";
     }
 
     /**
@@ -312,7 +321,8 @@ public class PlayerListScreen extends Screen {
 
     /**
      * Build a multi-line tooltip from the note content.
-     * Formats "label\nvalue" pairs as "Label: value" and hides Party/Visit commands.
+     * Formats "label\nvalue" pairs as "Label: value" with bold white titles and gray values.
+     * Hides Party/Visit commands, Extra Attrs, and the Profile Match line.
      */
     private List<Component> buildNoteTooltip(String note) {
         List<Component> lines = new ArrayList<>();
@@ -321,12 +331,17 @@ public class PlayerListScreen extends Screen {
         // Known labels that have their value on the next line
         List<String> knownLabels = List.of("Item Name", "Rule", "Profile", "Location",
                 "Party Player", "Visit Player", "Extra Attrs");
-        // Labels to hide from tooltip
-        List<String> hiddenLabels = List.of("Party Player", "Visit Player");
+        // Labels to hide from tooltip (including their value lines)
+        List<String> hiddenLabels = List.of("Party Player", "Visit Player", "Extra Attrs");
 
         for (int i = 0; i < parts.length; i++) {
             String line = parts[i].trim();
             if (line.isEmpty()) continue;
+
+            // Hide the Profile Match line entirely (starts with 🔍 or "Profile Match:")
+            if (line.startsWith("\uD83D\uDD0D") || line.startsWith("Profile Match:")) {
+                continue;
+            }
 
             // Check if this line is a known label
             boolean isLabel = false;
@@ -339,17 +354,33 @@ public class PlayerListScreen extends Screen {
                         if (line.equalsIgnoreCase(h)) { hidden = true; break; }
                     }
                     if (hidden) {
-                        i++; // skip the value line too
+                        // Skip all following value lines until next known label or end
+                        // For Extra Attrs, skip multiple lines
+                        if (line.equalsIgnoreCase("Extra Attrs")) {
+                            while (i + 1 < parts.length) {
+                                String next = parts[i + 1].trim();
+                                boolean isNextLabel = false;
+                                for (String l : knownLabels) {
+                                    if (next.equalsIgnoreCase(l)) { isNextLabel = true; break; }
+                                }
+                                if (isNextLabel || next.isEmpty()) break;
+                                i++;
+                            }
+                        } else {
+                            i++; // skip the single value line
+                        }
                     } else if (i + 1 < parts.length) {
                         String value = parts[i + 1].trim();
-                        lines.add(Component.literal(label + ": " + value).withStyle(ChatFormatting.GRAY));
+                        // Bold white title + gray value
+                        Component titlePart = Component.literal(label + ": ").withStyle(ChatFormatting.BOLD, ChatFormatting.WHITE);
+                        Component valuePart = Component.literal(value).withStyle(ChatFormatting.GRAY);
+                        lines.add(Component.empty().append(titlePart).append(valuePart));
                         i++; // skip value line
                     }
                     break;
                 }
             }
             if (!isLabel) {
-                // Regular line (e.g. "🔍 Profile Match: Dyed Farmhand" or extra attrs values)
                 // Hide lines starting with /party or /visit
                 if (!line.startsWith("/party") && !line.startsWith("/visit")) {
                     lines.add(Component.literal(line).withStyle(ChatFormatting.GRAY));
