@@ -671,18 +671,20 @@ public class PlayerListScreen extends Screen {
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+    public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
         if (draggingScrollbar) {
+            Minecraft client = Minecraft.getInstance();
+            double mouseY = client.mouseHandler.ypos() * (double) client.getWindow().getGuiScaledHeight() / (double) client.getWindow().getScreenHeight();
             updateScrollFromMouse(mouseY);
             return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+        return super.mouseDragged(event, deltaX, deltaY);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(MouseButtonEvent event) {
         draggingScrollbar = false;
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(event);
     }
 
     private void updateScrollFromMouse(double mouseY) {
