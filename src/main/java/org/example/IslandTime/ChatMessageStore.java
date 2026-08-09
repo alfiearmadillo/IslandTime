@@ -1,18 +1,30 @@
 package org.example.islandtime;
 
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Stores recent chat messages captured via mixin for display in PlayerListScreen.
+ * Stores recent chat messages captured via Fabric API event for display in PlayerListScreen.
  */
 public class ChatMessageStore {
     private static final int MAX_MESSAGES = 100;
     private static final List<Component> messages = new ArrayList<>();
 
-    public static void addMessage(Component message) {
+    public static void register() {
+        ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
+            addMessage(message);
+        });
+        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            if (!overlay) {
+                addMessage(message);
+            }
+        });
+    }
+
+    private static void addMessage(Component message) {
         messages.add(0, message);
         if (messages.size() > MAX_MESSAGES) {
             messages.remove(messages.size() - 1);
