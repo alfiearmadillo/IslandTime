@@ -7,10 +7,12 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -54,7 +56,6 @@ public class PlayerListScreen extends Screen {
         listBottom = height - 10;
 
         if (!addDialogOpen && !editDialogOpen) {
-            // "Add Player" button pinned to top
             addRenderableWidget(Button.builder(Component.literal("+ Add Player"), btn -> openAddDialog())
                     .bounds(width / 2 - 50, 10, 100, 20)
                     .build());
@@ -74,8 +75,8 @@ public class PlayerListScreen extends Screen {
         addRenderableWidget(nameField);
 
         noteField = new EditBox(font, dialogX, dialogY + 28, 200, 20, Component.literal("Note"));
-        noteField.setMaxLength(128);
-        noteField.setHint(Component.literal("Note (optional)").withStyle(ChatFormatting.GRAY));
+        noteField.setMaxLength(2048);
+        noteField.setHint(Component.literal("Note (paste Discord message)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(noteField);
 
         addRenderableWidget(Button.builder(Component.literal("Add"), btn -> {
@@ -83,7 +84,6 @@ public class PlayerListScreen extends Screen {
             if (!input.isEmpty()) {
                 String uuid = "";
                 String name = input;
-                // If input looks like a UUID, set it as uuid
                 if (input.length() > 16 && input.contains("-")) {
                     uuid = input;
                     name = "";
@@ -114,7 +114,7 @@ public class PlayerListScreen extends Screen {
         addRenderableWidget(editNameField);
 
         editNoteField = new EditBox(font, dialogX, dialogY + 28, 200, 20, Component.literal("Note"));
-        editNoteField.setMaxLength(128);
+        editNoteField.setMaxLength(2048);
         editNoteField.setValue(entry.note);
         addRenderableWidget(editNoteField);
 
@@ -165,6 +165,11 @@ public class PlayerListScreen extends Screen {
 
         // Render widgets (buttons, edit boxes) via parent
         super.extractRenderState(context, mouseX, mouseY, delta);
+
+        // Tooltip (rendered after everything else so it's on top)
+        if (!addDialogOpen && !editDialogOpen) {
+            renderTooltip(context, mouseX, mouseY);
+        }
     }
 
     private void renderPlayerList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
@@ -195,16 +200,19 @@ public class PlayerListScreen extends Screen {
             int bgColor = (i % 2 == 0) ? 0x40000000 : 0x20000000;
             context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
 
-            // Player head placeholder (small colored square)
-            context.fill(listLeft + PADDING, rowY + PADDING + 2, listLeft + PADDING + 8, rowY + PADDING + 10, 0xFF888888);
+            // Player head — try to get skin from tab list, fall back to default
+            renderPlayerHead(context, entry, listLeft + PADDING, rowY + PADDING);
 
             // Name
             String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;
-            context.text(font, Component.literal(displayName), listLeft + PADDING + 14, rowY + 4, 0xFFFFFF, true);
+            context.text(font, Component.literal(displayName).withStyle(ChatFormatting.WHITE),
+                    listLeft + PADDING + 22, rowY + 4, 0xFFFFFF, true);
 
-            // Note
+            // Note preview — extract "Profile Match: X" or show first ~30 chars
             if (!entry.note.isEmpty()) {
-                context.text(font, Component.literal(entry.note), listLeft + PADDING + 14, rowY + 15, 0xAAAAAA, true);
+                String preview = extractNotePreview(entry.note);
+                context.text(font, Component.literal(preview).withStyle(ChatFormatting.GRAY),
+                        listLeft + PADDING + 22, rowY + 15, 0xAAAAAA, true);
             }
 
             // Action buttons on the right
@@ -219,13 +227,121 @@ public class PlayerListScreen extends Screen {
             drawSmallButton(context, btnX, btnY, "I", 0xFF55FFFF, mouseX, mouseY);
             btnX += BUTTON_SIZE + 2;
 
-            // Edit button
-            drawSmallButton(context, btnX, btnY, "E", 0xFFFFFF55, mouseX, mouseY);
+            // Edit button (pencil emoji)
+            drawSmallButton(context, btnX, btnY, "\u270F", 0xFFFFFF55, mouseX, mouseY);
             btnX += BUTTON_SIZE + 2;
 
             // Delete button
             drawSmallButton(context, btnX, btnY, "X", 0xFFFF5555, mouseX, mouseY);
         }
+    }
+
+    private void renderPlayerHead(GuiGraphicsExtractor context, PlayerListManager.PlayerEntry entry, int x, int y) {
+        // Render a colored square with the player's initial as a head placeholder
+        // Full skin rendering requires blit which isn't available on GuiGraphicsExtractor
+        String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;
+        String initial = displayName.isEmpty() ? "?" : displayName.substring(0, 1).toUpperCase();
+
+        // Check if player is online (green tint) or offline (gray)
+        boolean online = false;
+        Minecraft client = Minecraft.getInstance();
+        if (client.getConnection() != null && !entry.name.isEmpty()) {
+            for (PlayerInfo info : client.getConnection().getOnlinePlayers()) {
+                if (info.getProfile().getName().equalsIgnoreCase(entry.name)) {
+                    online = true;
+                    break;
+                }
+            }
+        }
+
+        int bgColor = online ? 0xFF2D5A2D : 0xFF3A3A3A;
+        context.fill(x, y, x + 18, y + 18, bgColor);
+        // Border
+        context.fill(x, y, x + 18, y + 1, 0xFF555555);
+        context.fill(x, y + 17, x + 18, y + 18, 0xFF555555);
+        context.fill(x, y, x + 1, y + 18, 0xFF555555);
+        context.fill(x + 17, y, x + 18, y + 18, 0xFF555555);
+        // Initial letter centered
+        Component initialComp = Component.literal(initial);
+        int iw = font.width(initialComp);
+        context.text(font, initialComp, x + 9 - iw / 2, y + 5, online ? 0xFF55FF55 : 0xFFCCCCCC, true);
+    }
+
+    /**
+     * Extract a short preview from the note. Looks for "Profile Match: X" pattern,
+     * otherwise shows first ~40 characters.
+     */
+    private String extractNotePreview(String note) {
+        // Look for the profile match pattern in the Discord message format
+        String marker = "Profile Match:";
+        int idx = note.indexOf(marker);
+        if (idx != -1) {
+            // Extract from "Profile Match:" to end of that segment (newline or end)
+            String sub = note.substring(idx);
+            int newline = sub.indexOf('\n');
+            if (newline == -1) newline = sub.length();
+            String match = sub.substring(0, Math.min(newline, 50)).trim();
+            return "\uD83D\uDD0D " + match; // 🔍 prefix
+        }
+
+        // Also check for the emoji prefix format
+        marker = "\uD83D\uDD0D Profile Match:";
+        idx = note.indexOf(marker);
+        if (idx != -1) {
+            String sub = note.substring(idx);
+            int newline = sub.indexOf('\n');
+            if (newline == -1) newline = sub.length();
+            return sub.substring(0, Math.min(newline, 50)).trim();
+        }
+
+        // Fallback: show first 40 chars
+        if (note.length() > 40) {
+            return note.substring(0, 40) + "...";
+        }
+        return note;
+    }
+
+    /**
+     * Render tooltip when hovering over the left portion of a player row
+     * (head, name, or note area — everything to the left of action buttons).
+     */
+    private void renderTooltip(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
+
+        for (int i = 0; i < players.size(); i++) {
+            int drawIndex = i - scrollOffset;
+            int rowY = listTop + drawIndex * ROW_HEIGHT;
+            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+
+            // Left area is from listLeft to the start of action buttons
+            int buttonsStartX = listLeft + listWidth - (BUTTON_SIZE + 2) * 4;
+            if (mouseX >= listLeft && mouseX < buttonsStartX
+                    && mouseY >= rowY && mouseY < rowY + ROW_HEIGHT) {
+
+                PlayerListManager.PlayerEntry entry = players.get(i);
+                if (!entry.note.isEmpty()) {
+                    List<Component> tooltipLines = buildNoteTooltip(entry.note);
+                    context.setComponentTooltipForNextFrame(font, tooltipLines, mouseX, mouseY);
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * Build a multi-line tooltip from the note content.
+     */
+    private List<Component> buildNoteTooltip(String note) {
+        List<Component> lines = new ArrayList<>();
+        String[] parts = note.split("\n");
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                lines.add(Component.empty());
+            } else {
+                lines.add(Component.literal(part).withStyle(ChatFormatting.GRAY));
+            }
+        }
+        return lines;
     }
 
     private void drawSmallButton(GuiGraphicsExtractor context, int x, int y, String label, int color, int mouseX, int mouseY) {
