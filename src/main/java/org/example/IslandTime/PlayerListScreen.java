@@ -238,7 +238,8 @@ public class PlayerListScreen extends Screen {
      */
     private String extractNotePreview(String note) {
         String profileMatch = extractField(note, "Profile Match:");
-        String itemName = extractField(note, "Item Name:");
+        if (profileMatch == null) profileMatch = extractField(note, "\uD83D\uDD0D Profile Match:");
+        String itemName = extractFieldNextLine(note, "Item Name");
 
         if (profileMatch != null || itemName != null) {
             StringBuilder sb = new StringBuilder();
@@ -256,7 +257,7 @@ public class PlayerListScreen extends Screen {
     }
 
     /**
-     * Extract the value after a field marker (e.g. "Profile Match:") up to the next newline.
+     * Extract the value after a field marker on the SAME line (e.g. "Profile Match: Dyed Farmhand").
      */
     private String extractField(String note, String marker) {
         int idx = note.indexOf(marker);
@@ -266,6 +267,20 @@ public class PlayerListScreen extends Screen {
         if (newline == -1) newline = sub.length();
         String value = sub.substring(0, newline).trim();
         return value.isEmpty() ? null : value;
+    }
+
+    /**
+     * Extract the value on the NEXT line after a label line (e.g. "Item Name\nfarmhand helmet").
+     */
+    private String extractFieldNextLine(String note, String label) {
+        String[] lines = note.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            if (lines[i].trim().equalsIgnoreCase(label)) {
+                String value = lines[i + 1].trim();
+                return value.isEmpty() ? null : value;
+            }
+        }
+        return null;
     }
 
     /**
@@ -297,15 +312,48 @@ public class PlayerListScreen extends Screen {
 
     /**
      * Build a multi-line tooltip from the note content.
+     * Formats "label\nvalue" pairs as "Label: value" and hides Party/Visit commands.
      */
     private List<Component> buildNoteTooltip(String note) {
         List<Component> lines = new ArrayList<>();
         String[] parts = note.split("\n");
-        for (String part : parts) {
-            if (part.isEmpty()) {
-                lines.add(Component.empty());
-            } else {
-                lines.add(Component.literal(part).withStyle(ChatFormatting.GRAY));
+
+        // Known labels that have their value on the next line
+        List<String> knownLabels = List.of("Item Name", "Rule", "Profile", "Location",
+                "Party Player", "Visit Player", "Extra Attrs");
+        // Labels to hide from tooltip
+        List<String> hiddenLabels = List.of("Party Player", "Visit Player");
+
+        for (int i = 0; i < parts.length; i++) {
+            String line = parts[i].trim();
+            if (line.isEmpty()) continue;
+
+            // Check if this line is a known label
+            boolean isLabel = false;
+            for (String label : knownLabels) {
+                if (line.equalsIgnoreCase(label)) {
+                    isLabel = true;
+                    // Check if hidden
+                    boolean hidden = false;
+                    for (String h : hiddenLabels) {
+                        if (line.equalsIgnoreCase(h)) { hidden = true; break; }
+                    }
+                    if (hidden) {
+                        i++; // skip the value line too
+                    } else if (i + 1 < parts.length) {
+                        String value = parts[i + 1].trim();
+                        lines.add(Component.literal(label + ": " + value).withStyle(ChatFormatting.GRAY));
+                        i++; // skip value line
+                    }
+                    break;
+                }
+            }
+            if (!isLabel) {
+                // Regular line (e.g. "🔍 Profile Match: Dyed Farmhand" or extra attrs values)
+                // Hide lines starting with /party or /visit
+                if (!line.startsWith("/party") && !line.startsWith("/visit")) {
+                    lines.add(Component.literal(line).withStyle(ChatFormatting.GRAY));
+                }
             }
         }
         return lines;
