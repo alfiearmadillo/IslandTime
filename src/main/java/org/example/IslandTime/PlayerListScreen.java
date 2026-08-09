@@ -88,7 +88,7 @@ public class PlayerListScreen extends Screen {
                     uuid = input;
                     name = "";
                 }
-                PlayerListManager.addPlayer(uuid, name, noteField.getValue().trim());
+                PlayerListManager.addPlayer(uuid, name, decodeNewlines(noteField.getValue().trim()));
                 closeDialog();
             }
         }).bounds(dialogX, dialogY + 58, 95, 20).build());
@@ -115,11 +115,11 @@ public class PlayerListScreen extends Screen {
 
         editNoteField = new EditBox(font, dialogX, dialogY + 28, 200, 20, Component.literal("Note"));
         editNoteField.setMaxLength(2048);
-        editNoteField.setValue(entry.note);
+        editNoteField.setValue(encodeNewlines(entry.note));
         addRenderableWidget(editNoteField);
 
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
-            PlayerListManager.updatePlayer(editIndex, editNameField.getValue().trim(), editNoteField.getValue().trim());
+            PlayerListManager.updatePlayer(editIndex, editNameField.getValue().trim(), decodeNewlines(editNoteField.getValue().trim()));
             closeDialog();
         }).bounds(dialogX, dialogY + 58, 95, 20).build());
 
@@ -145,7 +145,7 @@ public class PlayerListScreen extends Screen {
         // Title
         Component titleComp = Component.literal("Player List").withStyle(ChatFormatting.GOLD);
         int titleWidth = font.width(titleComp);
-        context.text(font, titleComp, width / 2 - titleWidth / 2, 2, 0xFFFFFF, true);
+        context.text(font, titleComp, width / 2 - titleWidth / 2, 2, -1, true);
 
         // Draw player list (when no dialog is open)
         if (!addDialogOpen && !editDialogOpen) {
@@ -160,7 +160,7 @@ public class PlayerListScreen extends Screen {
             String title = addDialogOpen ? "Add Player" : "Edit Player";
             Component titleC = Component.literal(title);
             int tw = font.width(titleC);
-            context.text(font, titleC, width / 2 - tw / 2, dialogY + 8, 0xFFFFFF, true);
+            context.text(font, titleC, width / 2 - tw / 2, dialogY + 8, -1, true);
         }
 
         // Render widgets (buttons, edit boxes) via parent
@@ -179,7 +179,7 @@ public class PlayerListScreen extends Screen {
             Component emptyMsg = Component.literal("No players added yet. Click '+ Add Player' to get started.")
                     .withStyle(ChatFormatting.GRAY);
             int emptyW = font.width(emptyMsg);
-            context.text(font, emptyMsg, width / 2 - emptyW / 2, height / 2, 0xAAAAAA, true);
+            context.text(font, emptyMsg, width / 2 - emptyW / 2, height / 2, 0xFFAAAAAA, true);
             return;
         }
 
@@ -206,13 +206,13 @@ public class PlayerListScreen extends Screen {
             // Name
             String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;
             context.text(font, Component.literal(displayName).withStyle(ChatFormatting.WHITE),
-                    listLeft + PADDING + 22, rowY + 4, 0xFFFFFF, true);
+                    listLeft + PADDING + 22, rowY + 4, -1, true);
 
             // Note preview — extract "Profile Match: X" or show first ~30 chars
             if (!entry.note.isEmpty()) {
                 String preview = extractNotePreview(entry.note);
                 context.text(font, Component.literal(preview).withStyle(ChatFormatting.GRAY),
-                        listLeft + PADDING + 22, rowY + 15, 0xAAAAAA, true);
+                        listLeft + PADDING + 22, rowY + 15, 0xFFAAAAAA, true);
             }
 
             // Action buttons on the right
@@ -422,6 +422,19 @@ public class PlayerListScreen extends Screen {
                 closeDialog();
                 return true;
             }
+            // Intercept Ctrl+V paste for note fields to preserve newlines
+            if (event.key() == GLFW.GLFW_KEY_V && hasControlDown()) {
+                EditBox activeNote = addDialogOpen ? noteField : editNoteField;
+                if (activeNote != null && activeNote.isFocused()) {
+                    String clipboard = Minecraft.getInstance().keyboardHandler.getClipboard();
+                    if (clipboard != null && !clipboard.isEmpty()) {
+                        // Convert real newlines to literal \n for single-line EditBox storage
+                        String encoded = clipboard.replace("\n", "\\n").replace("\r", "");
+                        activeNote.insertText(encoded);
+                        return true;
+                    }
+                }
+            }
             return super.keyPressed(event);
         }
         if (event.key() == GLFW.GLFW_KEY_ESCAPE || event.key() == GLFW.GLFW_KEY_E) {
@@ -440,5 +453,19 @@ public class PlayerListScreen extends Screen {
         if (client.player != null) {
             client.player.connection.sendCommand(command);
         }
+    }
+
+    /**
+     * Encode real newlines as the literal string "\\n" for display in single-line EditBox.
+     */
+    private static String encodeNewlines(String text) {
+        return text.replace("\n", "\\n");
+    }
+
+    /**
+     * Decode the literal string "\\n" back to real newlines for storage.
+     */
+    private static String decodeNewlines(String text) {
+        return text.replace("\\n", "\n");
     }
 }
