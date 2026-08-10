@@ -3,20 +3,17 @@ package org.example.islandtime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.DepthTestFunction;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.shaders.UniformType;
 import org.joml.Matrix4fc;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.LayeringTransform;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -51,17 +48,12 @@ public class BlockHighlightRenderer {
     };
 
     // Custom RenderType that disables depth testing so highlights show through walls
-    private static final RenderPipeline NO_DEPTH_FILLED_PIPELINE = RenderPipeline.builder()
-            .withLocation("pipeline/islandtime_no_depth_filled")
-            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
-            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
-            .withVertexShader("core/position_color")
-            .withFragmentShader("core/position_color")
-            .withBlend(BlendFunction.TRANSLUCENT)
-            .withDepthWrite(false)
-            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-            .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS)
-            .build();
+    private static final RenderPipeline NO_DEPTH_FILLED_PIPELINE = RenderPipelines.register(
+            RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+                    .withLocation(Identifier.fromNamespaceAndPath("islandtime", "pipeline/no_depth_filled_box"))
+                    .withDepthStencilState(Optional.empty())
+                    .build()
+    );
 
     private static final RenderType NO_DEPTH_FILLED_BOX = RenderType.create(
             "islandtime_no_depth_filled_box",
