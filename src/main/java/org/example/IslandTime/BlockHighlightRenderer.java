@@ -9,7 +9,7 @@ import org.joml.Matrix4fc;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -112,7 +112,7 @@ public class BlockHighlightRenderer {
 
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
-        VertexConsumer buffer = bufferSource.getBuffer(RenderType.debugFilledBox());
+        VertexConsumer buffer = bufferSource.getBuffer(RenderTypes.debugFilledBox());
 
         var cameraState = context.levelState().cameraRenderState;
         double camX = cameraState.pos.x;
