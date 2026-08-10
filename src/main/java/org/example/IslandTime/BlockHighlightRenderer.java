@@ -35,8 +35,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
  */
 public class BlockHighlightRenderer {
 
-    private static final int SCAN_RADIUS = 48;
-
     private static final float[][] COLORS = {
             {1.0f, 1.0f, 0.2f},  // YELLOW
             {1.0f, 0.2f, 0.2f},  // RED
@@ -129,7 +127,7 @@ public class BlockHighlightRenderer {
 
         throughWalls = config.blockHighlight.throughWalls;
 
-        int radius = Math.min(SCAN_RADIUS, 16 + (intensity * 32 / 100));
+        int radius = Math.min(config.blockHighlight.range, 16 + (intensity * 32 / 100));
         List<BlockPos> positions = new ArrayList<>();
 
         for (int x = -radius; x <= radius; x++) {

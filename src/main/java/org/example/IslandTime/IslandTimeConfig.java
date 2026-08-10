@@ -369,6 +369,11 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Through Walls", desc = "Show highlights through blocks (disable obstruction)")
         @ConfigEditorBoolean
         public boolean throughWalls = true;
+
+        @Expose
+        @ConfigOption(name = "Range", desc = "How far away to scan for blocks (in blocks)")
+        @ConfigEditorSlider(minValue = 1, maxValue = 64, minStep = 1)
+        public int range = 48;
     }
 
     public static class Messages {
