@@ -18,6 +18,7 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, fuel cycles
 - **Keep Resource Pack** — Caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel), skipping re-download if unchanged
 - **Component Display** — Shows specified item components (e.g. `id`, `color`) at the bottom of tooltips in dark gray
 - **Sign Helpers** — Adds paste buttons to the sign edit screen with configurable pre-set text per line
+- **Block Highlight** — Highlights all blocks of a given type with a configurable intensity overlay; toggle with `/highlight on|off`
 - **MoulConfig GUI** — All settings accessible from a single GUI opened with `/islandtime`
 
 ## Installation
@@ -50,6 +51,8 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/favouritegui toggle` | Enable/disable container snapshot tracking |
 | `/chatrelay` | View/configure chat relay settings |
 | `/showtooltips` | Toggle hidden tooltip visibility |
+| `/highlight <block_id\|clear>` | Set or clear the highlighted block |
+| `/highlight on\|off` | Enable/disable block highlight |
 | `/it ghost` | Client-side block removal tool |
 | `/islandtime help [page]` | View help pages |
 
