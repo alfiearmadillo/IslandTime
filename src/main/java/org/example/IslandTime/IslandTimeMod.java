@@ -56,6 +56,9 @@ public class IslandTimeMod implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
                 IslandChatRelay.stopPolling());
 
+        // Register block highlight renderer
+        BlockHighlightRenderer.register();
+
         // Register commands
         IslandTimeCommand.register();
 

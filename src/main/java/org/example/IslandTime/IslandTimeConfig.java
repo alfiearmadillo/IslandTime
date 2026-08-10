@@ -52,6 +52,10 @@ public class IslandTimeConfig extends Config {
     public Signs signs = new Signs();
 
     @Expose
+    @Category(name = "Block Highlight", desc = "Highlight all blocks of a specific type")
+    public BlockHighlight blockHighlight = new BlockHighlight();
+
+    @Expose
     @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
     public Misc misc = new Misc();
 
@@ -338,6 +342,18 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Line 4", desc = "Pre-set text for sign line 4")
         @ConfigEditorText
         public String line4 = "";
+    }
+
+    public static class BlockHighlight {
+        @Expose
+        @ConfigOption(name = "Block ID", desc = "Minecraft block ID to highlight (e.g. oak_planks or minecraft:diamond_ore)")
+        @ConfigEditorText
+        public String blockId = "";
+
+        @Expose
+        @ConfigOption(name = "Highlight Intensity", desc = "How visible the highlight is (0 = off, 100 = maximum brightness)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int intensity = 0;
     }
 
     public static class Messages {

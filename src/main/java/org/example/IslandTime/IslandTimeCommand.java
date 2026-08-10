@@ -738,6 +738,47 @@ public class IslandTimeCommand {
                                             .withStyle(enabled ? ChatFormatting.GREEN : ChatFormatting.RED)));
                     return 1;
                 }));
+
+        // /highlight <blockid> — set block highlight target
+        dispatcher.register(literal("highlight")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    IslandTimeConfig cfg = ConfigManager.getConfig();
+                    String current = cfg.blockHighlight.blockId;
+                    if (current == null || current.isBlank()) {
+                        client.player.sendSystemMessage(
+                                Component.literal("No block highlight set. Use /highlight <block_id> to set one.")
+                                        .withStyle(ChatFormatting.YELLOW));
+                    } else {
+                        client.player.sendSystemMessage(
+                                Component.literal("Highlighting: ").withStyle(ChatFormatting.AQUA)
+                                        .append(Component.literal(current).withStyle(ChatFormatting.GREEN))
+                                        .append(Component.literal(" (intensity: " + cfg.blockHighlight.intensity + ")")
+                                                .withStyle(ChatFormatting.GRAY)));
+                    }
+                    return 1;
+                })
+                .then(literal("clear")
+                        .executes(ctx -> {
+                            ConfigManager.getConfig().blockHighlight.blockId = "";
+                            ConfigManager.saveToFile();
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Block highlight cleared.").withStyle(ChatFormatting.GREEN));
+                            return 1;
+                        }))
+                .then(argument("blockid", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            String id = StringArgumentType.getString(ctx, "blockid");
+                            ConfigManager.getConfig().blockHighlight.blockId = id.trim();
+                            if (ConfigManager.getConfig().blockHighlight.intensity == 0) {
+                                ConfigManager.getConfig().blockHighlight.intensity = 50;
+                            }
+                            ConfigManager.saveToFile();
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Now highlighting: ").withStyle(ChatFormatting.GREEN)
+                                            .append(Component.literal(id.trim()).withStyle(ChatFormatting.AQUA)));
+                            return 1;
+                        })));
     }
 
     // -------------------------------------------------------------------------
