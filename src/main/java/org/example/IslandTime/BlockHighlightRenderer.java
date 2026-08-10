@@ -5,12 +5,21 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.DepthTestFunction;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.shaders.UniformType;
 import org.joml.Matrix4fc;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.rendertype.LayeringTransform;
+import net.minecraft.client.renderer.rendertype.RenderSetup;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -40,6 +49,27 @@ public class BlockHighlightRenderer {
             {0.2f, 1.0f, 1.0f},  // CYAN
             {1.0f, 1.0f, 1.0f},  // WHITE
     };
+
+    // Custom RenderType that disables depth testing so highlights show through walls
+    private static final RenderPipeline NO_DEPTH_FILLED_PIPELINE = RenderPipeline.builder()
+            .withLocation("pipeline/islandtime_no_depth_filled")
+            .withUniform("DynamicTransforms", UniformType.UNIFORM_BUFFER)
+            .withUniform("Projection", UniformType.UNIFORM_BUFFER)
+            .withVertexShader("core/position_color")
+            .withFragmentShader("core/position_color")
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthWrite(false)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+            .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS)
+            .build();
+
+    private static final RenderType NO_DEPTH_FILLED_BOX = RenderType.create(
+            "islandtime_no_depth_filled_box",
+            RenderSetup.builder(NO_DEPTH_FILLED_PIPELINE)
+                    .sortOnUpload()
+                    .setLayeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING)
+                    .createRenderSetup()
+    );
 
     private static List<BlockPos> highlightedPositions = List.of();
     private static float highlightR, highlightG, highlightB, highlightA;
@@ -130,7 +160,9 @@ public class BlockHighlightRenderer {
 
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
-        VertexConsumer buffer = bufferSource.getBuffer(RenderTypes.debugFilledBox());
+        VertexConsumer buffer = bufferSource.getBuffer(
+                throughWalls ? NO_DEPTH_FILLED_BOX : RenderTypes.debugFilledBox()
+        );
 
         var cameraState = context.levelState().cameraRenderState;
         double camX = cameraState.pos.x;
