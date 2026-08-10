@@ -84,6 +84,12 @@ public class IslandTimeCommand {
                             showRecent();
                             return 1;
                         }))
+                .then(literal("players")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new PlayerListScreen()));
+                            return 1;
+                        }))
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
