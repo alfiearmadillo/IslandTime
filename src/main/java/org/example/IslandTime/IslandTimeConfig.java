@@ -351,7 +351,7 @@ public class IslandTimeConfig extends Config {
         public boolean enabled = true;
 
         @Expose
-        @ConfigOption(name = "Block ID", desc = "Minecraft block ID to highlight (e.g. oak_planks or minecraft:diamond_ore)")
+        @ConfigOption(name = "Block IDs", desc = "Comma-separated list of block IDs to highlight (e.g. oak_planks, minecraft:diamond_ore)")
         @ConfigEditorText
         public String blockId = "";
 
@@ -359,6 +359,16 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Highlight Intensity", desc = "How visible the highlight is (0 = off, 100 = maximum brightness)")
         @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
         public int intensity = 0;
+
+        @Expose
+        @ConfigOption(name = "Color", desc = "Highlight color")
+        @ConfigEditorDropdown(values = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"})
+        public int color = 0;
+
+        @Expose
+        @ConfigOption(name = "Through Walls", desc = "Show highlights through blocks (disable obstruction)")
+        @ConfigEditorBoolean
+        public boolean throughWalls = true;
     }
 
     public static class Messages {

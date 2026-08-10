@@ -745,16 +745,22 @@ public class IslandTimeCommand {
                     Minecraft client = ctx.getSource().getClient();
                     IslandTimeConfig cfg = ConfigManager.getConfig();
                     String current = cfg.blockHighlight.blockId;
+                    String[] colorNames = {"Yellow", "Red", "Green", "Blue", "Magenta", "Cyan", "White"};
+                    String colorName = colorNames[Math.max(0, Math.min(cfg.blockHighlight.color, colorNames.length - 1))];
                     if (current == null || current.isBlank()) {
                         client.player.sendSystemMessage(
-                                Component.literal("No block highlight set. Use /highlight <block_id> to set one.")
+                                Component.literal("No block highlight set. Use /highlight <block_id> to add one.")
                                         .withStyle(ChatFormatting.YELLOW));
                     } else {
                         client.player.sendSystemMessage(
                                 Component.literal("Highlighting: ").withStyle(ChatFormatting.AQUA)
-                                        .append(Component.literal(current).withStyle(ChatFormatting.GREEN))
-                                        .append(Component.literal(" (intensity: " + cfg.blockHighlight.intensity + ", " + (cfg.blockHighlight.enabled ? "enabled" : "disabled") + ")")
-                                                .withStyle(ChatFormatting.GRAY)));
+                                        .append(Component.literal(current).withStyle(ChatFormatting.GREEN)));
+                        client.player.sendSystemMessage(
+                                Component.literal("  Intensity: " + cfg.blockHighlight.intensity
+                                        + " | Color: " + colorName
+                                        + " | Walls: " + (cfg.blockHighlight.throughWalls ? "through" : "normal")
+                                        + " | " + (cfg.blockHighlight.enabled ? "enabled" : "disabled"))
+                                        .withStyle(ChatFormatting.GRAY));
                     }
                     return 1;
                 })
@@ -798,6 +804,92 @@ public class IslandTimeCommand {
                                     Component.literal("Block highlight disabled.").withStyle(ChatFormatting.YELLOW));
                             return 1;
                         }))
+                .then(literal("add")
+                        .then(argument("blockid", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String id = StringArgumentType.getString(ctx, "blockid").trim();
+                                    IslandTimeConfig cfg = ConfigManager.getConfig();
+                                    String current = cfg.blockHighlight.blockId;
+                                    if (current == null || current.isBlank()) {
+                                        cfg.blockHighlight.blockId = id;
+                                    } else {
+                                        cfg.blockHighlight.blockId = current + ", " + id;
+                                    }
+                                    if (cfg.blockHighlight.intensity == 0) cfg.blockHighlight.intensity = 50;
+                                    ConfigManager.saveToFile();
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Added to highlights: ").withStyle(ChatFormatting.GREEN)
+                                                    .append(Component.literal(id).withStyle(ChatFormatting.AQUA)));
+                                    return 1;
+                                })))
+                .then(literal("remove")
+                        .then(argument("blockid", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String id = StringArgumentType.getString(ctx, "blockid").trim().toLowerCase();
+                                    IslandTimeConfig cfg = ConfigManager.getConfig();
+                                    String current = cfg.blockHighlight.blockId;
+                                    if (current == null || current.isBlank()) {
+                                        ctx.getSource().getClient().player.sendSystemMessage(
+                                                Component.literal("No blocks highlighted.").withStyle(ChatFormatting.YELLOW));
+                                        return 1;
+                                    }
+                                    String[] parts = current.split(",");
+                                    StringBuilder result = new StringBuilder();
+                                    for (String part : parts) {
+                                        String trimmed = part.trim().toLowerCase();
+                                        String normalized = trimmed.contains(":") ? trimmed : "minecraft:" + trimmed;
+                                        String normalizedId = id.contains(":") ? id : "minecraft:" + id;
+                                        if (!normalized.equals(normalizedId)) {
+                                            if (result.length() > 0) result.append(", ");
+                                            result.append(part.trim());
+                                        }
+                                    }
+                                    cfg.blockHighlight.blockId = result.toString();
+                                    ConfigManager.saveToFile();
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Removed from highlights: ").withStyle(ChatFormatting.GREEN)
+                                                    .append(Component.literal(id).withStyle(ChatFormatting.AQUA)));
+                                    return 1;
+                                })))
+                .then(literal("color")
+                        .then(argument("color", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    String colorArg = StringArgumentType.getString(ctx, "color").toUpperCase();
+                                    String[] colorNames = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"};
+                                    int idx = -1;
+                                    for (int i = 0; i < colorNames.length; i++) {
+                                        if (colorNames[i].equals(colorArg)) { idx = i; break; }
+                                    }
+                                    if (idx == -1) {
+                                        ctx.getSource().getClient().player.sendSystemMessage(
+                                                Component.literal("Unknown color. Options: yellow, red, green, blue, magenta, cyan, white")
+                                                        .withStyle(ChatFormatting.RED));
+                                        return 0;
+                                    }
+                                    ConfigManager.getConfig().blockHighlight.color = idx;
+                                    ConfigManager.saveToFile();
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Highlight color set to: ").withStyle(ChatFormatting.GREEN)
+                                                    .append(Component.literal(colorArg).withStyle(ChatFormatting.AQUA)));
+                                    return 1;
+                                })))
+                .then(literal("walls")
+                        .then(literal("on")
+                                .executes(ctx -> {
+                                    ConfigManager.getConfig().blockHighlight.throughWalls = true;
+                                    ConfigManager.saveToFile();
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Highlight now visible through walls.").withStyle(ChatFormatting.GREEN));
+                                    return 1;
+                                }))
+                        .then(literal("off")
+                                .executes(ctx -> {
+                                    ConfigManager.getConfig().blockHighlight.throughWalls = false;
+                                    ConfigManager.saveToFile();
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Highlight no longer visible through walls.").withStyle(ChatFormatting.YELLOW));
+                                    return 1;
+                                })))
                 .then(argument("blockid", StringArgumentType.greedyString())
                         .executes(ctx -> {
                             String id = StringArgumentType.getString(ctx, "blockid");
