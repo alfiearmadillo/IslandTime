@@ -21,11 +21,14 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
@@ -166,17 +169,73 @@ public class BlockHighlightRenderer {
 
             scanFuture = CompletableFuture.runAsync(() -> {
                 List<BlockPos> positions = new ArrayList<>();
-                for (int x = -scanRadius; x <= scanRadius; x++) {
-                    for (int y = -scanRadius; y <= scanRadius; y++) {
-                        for (int z = -scanRadius; z <= scanRadius; z++) {
-                            BlockPos pos = scanCenter.offset(x, y, z);
-                            try {
-                                BlockState state = level.getBlockState(pos);
-                                if (targetBlocks.contains(state.getBlock())) {
-                                    positions.add(pos.immutable());
+
+                // Convert target blocks to a set of BlockStates for palette checking
+                Set<BlockState> targetStates = new HashSet<>();
+                for (Block block : targetBlocks) {
+                    targetStates.addAll(block.getStateDefinition().getPossibleStates());
+                }
+
+                // Determine chunk and section bounds
+                int minX = scanCenter.getX() - scanRadius;
+                int maxX = scanCenter.getX() + scanRadius;
+                int minY = scanCenter.getY() - scanRadius;
+                int maxY = scanCenter.getY() + scanRadius;
+                int minZ = scanCenter.getZ() - scanRadius;
+                int maxZ = scanCenter.getZ() + scanRadius;
+
+                int minChunkX = SectionPos.blockToSectionCoord(minX);
+                int maxChunkX = SectionPos.blockToSectionCoord(maxX);
+                int minChunkZ = SectionPos.blockToSectionCoord(minZ);
+                int maxChunkZ = SectionPos.blockToSectionCoord(maxZ);
+
+                for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+                    for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                        LevelChunk chunk;
+                        try {
+                            chunk = level.getChunk(cx, cz);
+                        } catch (Exception e) {
+                            continue;
+                        }
+                        if (chunk == null) continue;
+
+                        LevelChunkSection[] sections = chunk.getSections();
+                        int minSectionY = chunk.getMinSectionY();
+
+                        for (int si = 0; si < sections.length; si++) {
+                            LevelChunkSection section = sections[si];
+                            if (section == null || section.hasOnlyAir()) continue;
+
+                            int sectionWorldY = (minSectionY + si) << 4;
+                            // Skip sections outside Y range
+                            if (sectionWorldY + 15 < minY || sectionWorldY > maxY) continue;
+
+                            // Palette check: does this section contain any target state?
+                            boolean hasTarget = section.getStates().maybeHas(targetStates::contains);
+                            if (!hasTarget) continue;
+
+                            // Scan this 16x16x16 section, clamped to our radius bounds
+                            int secBaseX = cx << 4;
+                            int secBaseZ = cz << 4;
+                            int startX = Math.max(secBaseX, minX);
+                            int endX = Math.min(secBaseX + 15, maxX);
+                            int startY = Math.max(sectionWorldY, minY);
+                            int endY = Math.min(sectionWorldY + 15, maxY);
+                            int startZ = Math.max(secBaseZ, minZ);
+                            int endZ = Math.min(secBaseZ + 15, maxZ);
+
+                            for (int bx = startX; bx <= endX; bx++) {
+                                for (int by = startY; by <= endY; by++) {
+                                    for (int bz = startZ; bz <= endZ; bz++) {
+                                        try {
+                                            BlockState state = level.getBlockState(new BlockPos(bx, by, bz));
+                                            if (targetBlocks.contains(state.getBlock())) {
+                                                positions.add(new BlockPos(bx, by, bz));
+                                            }
+                                        } catch (Exception ignored) {
+                                        }
+                                    }
                                 }
-                            } catch (Exception ignored) {
-                                // Chunk may be unloaded
                             }
                         }
                     }
