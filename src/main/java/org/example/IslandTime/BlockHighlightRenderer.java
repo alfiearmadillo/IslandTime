@@ -5,6 +5,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -65,6 +67,18 @@ public class BlockHighlightRenderer {
     private static float highlightR, highlightG, highlightB, highlightA;
     private static boolean throughWalls;
 
+    // Caching: avoid rescanning every frame
+    private static BlockPos lastScanPos = null;
+    private static String lastBlockIdField = "";
+    private static int lastRange = 0;
+    private static long lastScanTick = -1;
+    private static final int SCAN_INTERVAL_TICKS = 20; // rescan every 1 second
+    private static final int RESCAN_MOVE_THRESHOLD_SQ = 64; // rescan if moved 8+ blocks
+
+    // Async scanning
+    private static final AtomicReference<List<BlockPos>> pendingResult = new AtomicReference<>(null);
+    private static CompletableFuture<Void> scanFuture = null;
+
     public static void register() {
         LevelRenderEvents.END_EXTRACTION.register(BlockHighlightRenderer::extract);
         LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register(BlockHighlightRenderer::render);
@@ -95,54 +109,81 @@ public class BlockHighlightRenderer {
             return;
         }
 
-        // Parse comma-separated block IDs
-        Set<Block> targetBlocks = new HashSet<>();
-        for (String entry : blockIdField.split(",")) {
-            String normalized = entry.trim().toLowerCase();
-            if (normalized.isEmpty()) continue;
-            if (!normalized.contains(":")) {
-                normalized = "minecraft:" + normalized;
-            }
-            Identifier targetId = Identifier.tryParse(normalized);
-            if (targetId == null) continue;
-            if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
-            targetBlocks.add(BuiltInRegistries.BLOCK.getValue(targetId));
-        }
-
-        if (targetBlocks.isEmpty()) {
-            highlightedPositions = List.of();
-            return;
-        }
-
-        Level level = client.level;
-        BlockPos playerPos = client.player.blockPosition();
-
         // Color from config
         int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
         highlightR = COLORS[colorIdx][0];
         highlightG = COLORS[colorIdx][1];
         highlightB = COLORS[colorIdx][2];
-        // Alpha scales from 0 at intensity=1 to 0.8 at intensity=100
         highlightA = intensity / 125.0f;
 
         throughWalls = config.blockHighlight.throughWalls;
 
-        int radius = config.blockHighlight.range;
-        List<BlockPos> positions = new ArrayList<>();
-
-        for (int x = -radius; x <= radius; x++) {
-            for (int y = -radius; y <= radius; y++) {
-                for (int z = -radius; z <= radius; z++) {
-                    BlockPos pos = playerPos.offset(x, y, z);
-                    BlockState state = level.getBlockState(pos);
-                    if (targetBlocks.contains(state.getBlock())) {
-                        positions.add(pos.immutable());
-                    }
-                }
-            }
+        // Pick up completed async scan results
+        List<BlockPos> completed = pendingResult.getAndSet(null);
+        if (completed != null) {
+            highlightedPositions = completed;
         }
 
-        highlightedPositions = positions;
+        // Determine if we need to rescan
+        BlockPos playerPos = client.player.blockPosition();
+        int range = config.blockHighlight.range;
+        long currentTick = client.level.getGameTime();
+
+        boolean configChanged = !blockIdField.equals(lastBlockIdField) || range != lastRange;
+        boolean moved = lastScanPos == null || playerPos.distSqr(lastScanPos) >= RESCAN_MOVE_THRESHOLD_SQ;
+        boolean timedOut = (currentTick - lastScanTick) >= SCAN_INTERVAL_TICKS;
+        boolean scanRunning = scanFuture != null && !scanFuture.isDone();
+
+        if (!scanRunning && (configChanged || moved || timedOut)) {
+            lastScanPos = playerPos.immutable();
+            lastBlockIdField = blockIdField;
+            lastRange = range;
+            lastScanTick = currentTick;
+
+            // Parse target blocks on main thread (registry access)
+            Set<Block> targetBlocks = new HashSet<>();
+            for (String entry : blockIdField.split(",")) {
+                String normalized = entry.trim().toLowerCase();
+                if (normalized.isEmpty()) continue;
+                if (!normalized.contains(":")) {
+                    normalized = "minecraft:" + normalized;
+                }
+                Identifier targetId = Identifier.tryParse(normalized);
+                if (targetId == null) continue;
+                if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
+                targetBlocks.add(BuiltInRegistries.BLOCK.getValue(targetId));
+            }
+
+            if (targetBlocks.isEmpty()) {
+                highlightedPositions = List.of();
+                return;
+            }
+
+            // Capture references for async work
+            Level level = client.level;
+            BlockPos scanCenter = lastScanPos;
+            int scanRadius = range;
+
+            scanFuture = CompletableFuture.runAsync(() -> {
+                List<BlockPos> positions = new ArrayList<>();
+                for (int x = -scanRadius; x <= scanRadius; x++) {
+                    for (int y = -scanRadius; y <= scanRadius; y++) {
+                        for (int z = -scanRadius; z <= scanRadius; z++) {
+                            BlockPos pos = scanCenter.offset(x, y, z);
+                            try {
+                                BlockState state = level.getBlockState(pos);
+                                if (targetBlocks.contains(state.getBlock())) {
+                                    positions.add(pos.immutable());
+                                }
+                            } catch (Exception ignored) {
+                                // Chunk may be unloaded
+                            }
+                        }
+                    }
+                }
+                pendingResult.set(positions);
+            });
+        }
     }
 
     private static void render(LevelRenderContext context) {
