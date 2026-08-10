@@ -127,7 +127,7 @@ public class BlockHighlightRenderer {
 
         throughWalls = config.blockHighlight.throughWalls;
 
-        int radius = Math.min(config.blockHighlight.range, 16 + (intensity * 32 / 100));
+        int radius = config.blockHighlight.range;
         List<BlockPos> positions = new ArrayList<>();
 
         for (int x = -radius; x <= radius; x++) {
