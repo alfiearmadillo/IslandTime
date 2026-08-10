@@ -372,7 +372,7 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(name = "Range", desc = "How far away to scan for blocks (in blocks)")
-        @ConfigEditorSlider(minValue = 1, maxValue = 64, minStep = 1)
+        @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
     }
 
