@@ -1,8 +1,10 @@
 package org.example.islandtime;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -40,6 +42,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
  */
 public class BlockHighlightRenderer {
 
+    private static final String[] COLOR_NAMES = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"};
     private static final float[][] COLORS = {
             {1.0f, 1.0f, 0.2f},  // YELLOW
             {1.0f, 0.2f, 0.2f},  // RED
@@ -66,8 +69,11 @@ public class BlockHighlightRenderer {
                     .createRenderSetup()
     );
 
-    private static List<BlockPos> highlightedPositions = List.of();
-    private static float highlightR, highlightG, highlightB, highlightA;
+    // Each highlighted position stores its color
+    private record ColoredPos(BlockPos pos, float r, float g, float b) {}
+
+    private static List<ColoredPos> highlightedPositions = List.of();
+    private static float highlightA;
     private static boolean throughWalls;
 
     // Caching: avoid rescanning every frame
@@ -75,16 +81,81 @@ public class BlockHighlightRenderer {
     private static String lastBlockIdField = "";
     private static int lastRange = 0;
     private static long lastScanTick = -1;
-    private static final int SCAN_INTERVAL_TICKS = 20; // rescan every 1 second
-    private static final int RESCAN_MOVE_THRESHOLD_SQ = 64; // rescan if moved 8+ blocks
+    private static final int SCAN_INTERVAL_TICKS = 20;
+    private static final int RESCAN_MOVE_THRESHOLD_SQ = 64;
 
     // Async scanning
-    private static final AtomicReference<List<BlockPos>> pendingResult = new AtomicReference<>(null);
+    private static final AtomicReference<List<ColoredPos>> pendingResult = new AtomicReference<>(null);
     private static CompletableFuture<Void> scanFuture = null;
 
     public static void register() {
         LevelRenderEvents.END_EXTRACTION.register(BlockHighlightRenderer::extract);
         LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register(BlockHighlightRenderer::render);
+    }
+
+    /**
+     * Parses a color string into [r, g, b]. Supports named colors and hex codes (#rrggbb).
+     * Returns null if unrecognized.
+     */
+    public static float[] parseColor(String color) {
+        if (color == null || color.isEmpty()) return null;
+        // Hex color
+        if (color.startsWith("#") && color.length() == 7) {
+            try {
+                int rgb = Integer.parseInt(color.substring(1), 16);
+                return new float[]{
+                        ((rgb >> 16) & 0xFF) / 255.0f,
+                        ((rgb >> 8) & 0xFF) / 255.0f,
+                        (rgb & 0xFF) / 255.0f
+                };
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        // Named color
+        String upper = color.toUpperCase();
+        for (int i = 0; i < COLOR_NAMES.length; i++) {
+            if (COLOR_NAMES[i].equals(upper)) {
+                return COLORS[i];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Parses the blockId config field. Format: space-separated entries, each is BLOCKID or BLOCKID,COLOR.
+     * Returns a map of Block -> color (float[3]).
+     */
+    private static Map<Block, float[]> parseBlockEntries(String blockIdField, float[] defaultColor) {
+        Map<Block, float[]> result = new HashMap<>();
+        if (blockIdField == null || blockIdField.isBlank()) return result;
+
+        for (String entry : blockIdField.trim().split("\\s+")) {
+            if (entry.isEmpty()) continue;
+            String blockPart;
+            float[] color = defaultColor;
+
+            int commaIdx = entry.indexOf(',');
+            if (commaIdx >= 0) {
+                blockPart = entry.substring(0, commaIdx);
+                String colorPart = entry.substring(commaIdx + 1);
+                float[] parsed = parseColor(colorPart);
+                if (parsed != null) color = parsed;
+            } else {
+                blockPart = entry;
+            }
+
+            String normalized = blockPart.trim().toLowerCase();
+            if (normalized.isEmpty()) continue;
+            if (!normalized.contains(":")) {
+                normalized = "minecraft:" + normalized;
+            }
+            Identifier targetId = Identifier.tryParse(normalized);
+            if (targetId == null) continue;
+            if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
+            result.put(BuiltInRegistries.BLOCK.getValue(targetId), color);
+        }
+        return result;
     }
 
     private static void extract(LevelExtractionContext context) {
@@ -112,17 +183,11 @@ public class BlockHighlightRenderer {
             return;
         }
 
-        // Color from config
-        int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
-        highlightR = COLORS[colorIdx][0];
-        highlightG = COLORS[colorIdx][1];
-        highlightB = COLORS[colorIdx][2];
         highlightA = intensity / 125.0f;
-
         throughWalls = config.blockHighlight.throughWalls;
 
         // Pick up completed async scan results
-        List<BlockPos> completed = pendingResult.getAndSet(null);
+        List<ColoredPos> completed = pendingResult.getAndSet(null);
         if (completed != null) {
             highlightedPositions = completed;
         }
@@ -143,24 +208,17 @@ public class BlockHighlightRenderer {
             lastRange = range;
             lastScanTick = currentTick;
 
-            // Parse target blocks on main thread (registry access)
-            Set<Block> targetBlocks = new HashSet<>();
-            for (String entry : blockIdField.split(",")) {
-                String normalized = entry.trim().toLowerCase();
-                if (normalized.isEmpty()) continue;
-                if (!normalized.contains(":")) {
-                    normalized = "minecraft:" + normalized;
-                }
-                Identifier targetId = Identifier.tryParse(normalized);
-                if (targetId == null) continue;
-                if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
-                targetBlocks.add(BuiltInRegistries.BLOCK.getValue(targetId));
-            }
+            // Parse target blocks with per-block colors on main thread (registry access)
+            int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
+            float[] defaultColor = COLORS[colorIdx];
+            Map<Block, float[]> blockColors = parseBlockEntries(blockIdField, defaultColor);
 
-            if (targetBlocks.isEmpty()) {
+            if (blockColors.isEmpty()) {
                 highlightedPositions = List.of();
                 return;
             }
+
+            Set<Block> targetBlocks = blockColors.keySet();
 
             // Capture references for async work
             Level level = client.level;
@@ -168,7 +226,7 @@ public class BlockHighlightRenderer {
             int scanRadius = range;
 
             scanFuture = CompletableFuture.runAsync(() -> {
-                List<BlockPos> positions = new ArrayList<>();
+                List<ColoredPos> positions = new ArrayList<>();
 
                 // Convert target blocks to a set of BlockStates for palette checking
                 Set<BlockState> targetStates = new HashSet<>();
@@ -207,14 +265,11 @@ public class BlockHighlightRenderer {
                             if (section == null || section.hasOnlyAir()) continue;
 
                             int sectionWorldY = (minSectionY + si) << 4;
-                            // Skip sections outside Y range
                             if (sectionWorldY + 15 < minY || sectionWorldY > maxY) continue;
 
-                            // Palette check: does this section contain any target state?
                             boolean hasTarget = section.getStates().maybeHas(targetStates::contains);
                             if (!hasTarget) continue;
 
-                            // Scan this 16x16x16 section, clamped to our radius bounds
                             int secBaseX = cx << 4;
                             int secBaseZ = cz << 4;
                             int startX = Math.max(secBaseX, minX);
@@ -229,8 +284,10 @@ public class BlockHighlightRenderer {
                                     for (int bz = startZ; bz <= endZ; bz++) {
                                         try {
                                             BlockState state = level.getBlockState(new BlockPos(bx, by, bz));
-                                            if (targetBlocks.contains(state.getBlock())) {
-                                                positions.add(new BlockPos(bx, by, bz));
+                                            Block block = state.getBlock();
+                                            float[] color = blockColors.get(block);
+                                            if (color != null) {
+                                                positions.add(new ColoredPos(new BlockPos(bx, by, bz), color[0], color[1], color[2]));
                                             }
                                         } catch (Exception ignored) {
                                         }
@@ -265,21 +322,20 @@ public class BlockHighlightRenderer {
         Matrix4fc pose = poseStack.last().pose();
 
         if (throughWalls) {
-            // Render all faces (visible through walls)
-            for (BlockPos pos : highlightedPositions) {
+            for (ColoredPos cp : highlightedPositions) {
+                BlockPos pos = cp.pos;
                 renderFilledBox(pose, buffer,
                         pos.getX() - 0.001f, pos.getY() - 0.001f, pos.getZ() - 0.001f,
                         pos.getX() + 1.001f, pos.getY() + 1.001f, pos.getZ() + 1.001f,
-                        highlightR, highlightG, highlightB, highlightA);
+                        cp.r, cp.g, cp.b, highlightA);
             }
         } else {
-            // Only render faces adjacent to non-solid blocks (natural occlusion)
             Minecraft client = Minecraft.getInstance();
             Level level = client.level;
             if (level != null) {
-                for (BlockPos pos : highlightedPositions) {
-                    renderExposedFaces(pose, buffer, pos, level,
-                            highlightR, highlightG, highlightB, highlightA);
+                for (ColoredPos cp : highlightedPositions) {
+                    renderExposedFaces(pose, buffer, cp.pos, level,
+                            cp.r, cp.g, cp.b, highlightA);
                 }
             }
         }
@@ -298,42 +354,36 @@ public class BlockHighlightRenderer {
         float y1 = pos.getY() + 1.001f;
         float z1 = pos.getZ() + 1.001f;
 
-        // South face (+Z)
         if (!level.getBlockState(pos.south()).isSolidRender()) {
             buffer.addVertex(pose, x0, y0, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y0, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y1, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x0, y1, z1).setColor(r, g, b, a);
         }
-        // North face (-Z)
         if (!level.getBlockState(pos.north()).isSolidRender()) {
             buffer.addVertex(pose, x1, y0, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x0, y0, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x0, y1, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y1, z0).setColor(r, g, b, a);
         }
-        // West face (-X)
         if (!level.getBlockState(pos.west()).isSolidRender()) {
             buffer.addVertex(pose, x0, y0, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x0, y0, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x0, y1, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x0, y1, z0).setColor(r, g, b, a);
         }
-        // East face (+X)
         if (!level.getBlockState(pos.east()).isSolidRender()) {
             buffer.addVertex(pose, x1, y0, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y0, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y1, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y1, z1).setColor(r, g, b, a);
         }
-        // Top face (+Y)
         if (!level.getBlockState(pos.above()).isSolidRender()) {
             buffer.addVertex(pose, x0, y1, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y1, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y1, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x0, y1, z0).setColor(r, g, b, a);
         }
-        // Bottom face (-Y)
         if (!level.getBlockState(pos.below()).isSolidRender()) {
             buffer.addVertex(pose, x0, y0, z0).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y0, z0).setColor(r, g, b, a);
@@ -346,37 +396,31 @@ public class BlockHighlightRenderer {
                                          float minX, float minY, float minZ,
                                          float maxX, float maxY, float maxZ,
                                          float r, float g, float b, float a) {
-        // Front face (south)
         buffer.addVertex(positionMatrix, minX, minY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, minY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, maxY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, minX, maxY, maxZ).setColor(r, g, b, a);
 
-        // Back face (north)
         buffer.addVertex(positionMatrix, maxX, minY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, minX, minY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, minX, maxY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, maxY, minZ).setColor(r, g, b, a);
 
-        // Left face (west)
         buffer.addVertex(positionMatrix, minX, minY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, minX, minY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, minX, maxY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, minX, maxY, minZ).setColor(r, g, b, a);
 
-        // Right face (east)
         buffer.addVertex(positionMatrix, maxX, minY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, minY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, maxY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, maxY, maxZ).setColor(r, g, b, a);
 
-        // Top face
         buffer.addVertex(positionMatrix, minX, maxY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, maxY, maxZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, maxY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, minX, maxY, minZ).setColor(r, g, b, a);
 
-        // Bottom face
         buffer.addVertex(positionMatrix, minX, minY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, minY, minZ).setColor(r, g, b, a);
         buffer.addVertex(positionMatrix, maxX, minY, maxZ).setColor(r, g, b, a);
