@@ -346,6 +346,11 @@ public class IslandTimeConfig extends Config {
 
     public static class BlockHighlight {
         @Expose
+        @ConfigOption(name = "Enabled", desc = "Toggle the block highlight on or off")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
         @ConfigOption(name = "Block ID", desc = "Minecraft block ID to highlight (e.g. oak_planks or minecraft:diamond_ore)")
         @ConfigEditorText
         public String blockId = "";

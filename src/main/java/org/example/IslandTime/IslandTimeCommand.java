@@ -753,7 +753,7 @@ public class IslandTimeCommand {
                         client.player.sendSystemMessage(
                                 Component.literal("Highlighting: ").withStyle(ChatFormatting.AQUA)
                                         .append(Component.literal(current).withStyle(ChatFormatting.GREEN))
-                                        .append(Component.literal(" (intensity: " + cfg.blockHighlight.intensity + ")")
+                                        .append(Component.literal(" (intensity: " + cfg.blockHighlight.intensity + ", " + (cfg.blockHighlight.enabled ? "enabled" : "disabled") + ")")
                                                 .withStyle(ChatFormatting.GRAY)));
                     }
                     return 1;
@@ -764,6 +764,38 @@ public class IslandTimeCommand {
                             ConfigManager.saveToFile();
                             ctx.getSource().getClient().player.sendSystemMessage(
                                     Component.literal("Block highlight cleared.").withStyle(ChatFormatting.GREEN));
+                            return 1;
+                        }))
+                .then(literal("on")
+                        .executes(ctx -> {
+                            ConfigManager.getConfig().blockHighlight.enabled = true;
+                            ConfigManager.saveToFile();
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Block highlight enabled.").withStyle(ChatFormatting.GREEN));
+                            return 1;
+                        }))
+                .then(literal("enable")
+                        .executes(ctx -> {
+                            ConfigManager.getConfig().blockHighlight.enabled = true;
+                            ConfigManager.saveToFile();
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Block highlight enabled.").withStyle(ChatFormatting.GREEN));
+                            return 1;
+                        }))
+                .then(literal("off")
+                        .executes(ctx -> {
+                            ConfigManager.getConfig().blockHighlight.enabled = false;
+                            ConfigManager.saveToFile();
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Block highlight disabled.").withStyle(ChatFormatting.YELLOW));
+                            return 1;
+                        }))
+                .then(literal("disable")
+                        .executes(ctx -> {
+                            ConfigManager.getConfig().blockHighlight.enabled = false;
+                            ConfigManager.saveToFile();
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Block highlight disabled.").withStyle(ChatFormatting.YELLOW));
                             return 1;
                         }))
                 .then(argument("blockid", StringArgumentType.greedyString())

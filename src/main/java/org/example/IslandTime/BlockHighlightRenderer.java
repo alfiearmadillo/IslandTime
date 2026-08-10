@@ -33,6 +33,8 @@ public class BlockHighlightRenderer {
         IslandTimeConfig config = ConfigManager.getConfig();
         if (config == null) return;
 
+        if (!config.blockHighlight.enabled) return;
+
         int intensity = config.blockHighlight.intensity;
         if (intensity <= 0) return;
 
