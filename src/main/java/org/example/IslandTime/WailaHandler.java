@@ -89,6 +89,7 @@ public class WailaHandler {
         // Block entity / tile entity data
         BlockEntity blockEntity = level.getBlockEntity(pos);
         String skyblockId = null;
+        String skullTextureHash = null;
         if (blockEntity != null) {
             String beType = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()).toString();
             client.player.sendSystemMessage(
@@ -97,7 +98,7 @@ public class WailaHandler {
 
             // Skull-specific handling
             if (blockEntity instanceof SkullBlockEntity skull) {
-                handleSkull(client, skull);
+                skullTextureHash = handleSkull(client, skull);
             }
 
             // Full NBT (clickable to copy)
@@ -132,6 +133,20 @@ public class WailaHandler {
             } catch (Exception e) {
                 // NBT serialization can fail for some block entities
             }
+        }
+
+        // Top-level SkyBlock ID from skull texture hash (when no NBT-based ID)
+        if (skyblockId == null && skullTextureHash != null) {
+            skyblockId = skullTextureHash;
+            String hash = skullTextureHash;
+            client.player.sendSystemMessage(
+                    Component.literal("SkyBlock ID (extracted): ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(hash).withStyle(ChatFormatting.GOLD)
+                                    .withStyle(style -> style
+                                            .withClickEvent(new ClickEvent.CopyToClipboard(hash))
+                                            .withHoverEvent(new HoverEvent.ShowText(
+                                                    Component.literal("Texture hash extracted from skull profile\nClick to copy\nUse with /it highlight add skyblock:" + hash)
+                                                            .withStyle(ChatFormatting.GRAY))))));
         }
 
         // Highlight command suggestion — prefer SkyBlock ID if available
@@ -179,9 +194,10 @@ public class WailaHandler {
         return null;
     }
 
-    private static void handleSkull(Minecraft client, SkullBlockEntity skull) {
+    private static String handleSkull(Minecraft client, SkullBlockEntity skull) {
         // Try to get the skull profile
         // In modern MC, SkullBlockEntity has getOwnerProfile()
+        String extractedHash = null;
         try {
             var profile = skull.getOwnerProfile();
             if (profile != null) {
@@ -230,7 +246,8 @@ public class WailaHandler {
                                                                 Component.literal("Click to copy decoded texture JSON").withStyle(ChatFormatting.GRAY))))));
 
                         // Try to extract SkyBlock ID from texture URL
-                        extractSkyBlockId(client, decoded);
+                        String hash = extractSkyBlockId(client, decoded);
+                        if (hash != null) extractedHash = hash;
                     } catch (Exception ignored) {
                     }
                 }
@@ -238,6 +255,7 @@ public class WailaHandler {
         } catch (Exception e) {
             // getOwnerProfile may not exist in this version
         }
+        return extractedHash;
     }
 
     /**
@@ -246,14 +264,14 @@ public class WailaHandler {
      * {"textures":{"SKIN":{"url":"http://textures.minecraft.net/texture/HASH"}}}
      * We extract the hash and display it as a potential SkyBlock identifier.
      */
-    private static void extractSkyBlockId(Minecraft client, String decodedJson) {
+    private static String extractSkyBlockId(Minecraft client, String decodedJson) {
         // Extract texture hash from URL
         int urlIdx = decodedJson.indexOf("textures.minecraft.net/texture/");
-        if (urlIdx < 0) return;
+        if (urlIdx < 0) return null;
         int hashStart = urlIdx + "textures.minecraft.net/texture/".length();
         int hashEnd = decodedJson.indexOf('"', hashStart);
         if (hashEnd < 0) hashEnd = decodedJson.indexOf('}', hashStart);
-        if (hashEnd < 0) return;
+        if (hashEnd < 0) return null;
 
         String textureHash = decodedJson.substring(hashStart, hashEnd);
         client.player.sendSystemMessage(
@@ -264,5 +282,6 @@ public class WailaHandler {
                                         .withHoverEvent(new HoverEvent.ShowText(
                                                 Component.literal("Click to copy texture hash\nUse this with /it highlight add for SkyBlock skull matching")
                                                         .withStyle(ChatFormatting.GRAY))))));
+        return textureHash;
     }
 }
