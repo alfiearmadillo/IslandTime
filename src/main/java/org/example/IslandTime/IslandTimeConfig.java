@@ -365,7 +365,7 @@ public class IslandTimeConfig extends Config {
         public boolean enabled = true;
 
         @Expose
-        @ConfigOption(name = "Block IDs", desc = "Space-separated block entries. Each entry is BLOCKID or BLOCKID,COLOR. Color can be a name (yellow, red, green, blue, magenta, cyan, white) or hex (#ff0000). Example: diamond_ore,cyan gold_ore,#ffaa00 iron_ore")
+        @ConfigOption(name = "Block IDs", desc = "Space-separated block entries. Each entry is BLOCKID or BLOCKID,COLOR. Supports skyblock:ID for SkyBlock custom items (e.g. skyblock:DITTO_SKULL). Color can be a name (yellow, red, green, blue, magenta, cyan, white) or hex (#ff0000). Example: diamond_ore,cyan skyblock:DITTO_SKULL,yellow iron_ore")
         @ConfigEditorText
         public String blockId = "";
 

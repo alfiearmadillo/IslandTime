@@ -229,9 +229,17 @@ public class PlayerListScreen extends Screen {
 
             PlayerListManager.PlayerEntry entry = players.get(i);
 
-            // Row background
+            // Row background — add a subtle tint based on name color (white = no tint)
             int bgColor = (i % 2 == 0) ? 0x40000000 : 0x20000000;
-            context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
+            if (entry.color != 0xFFFFFF) {
+                // Blend the name color into the background at low opacity
+                int tintAlpha = 0x20; // subtle tint
+                int tintColor = (tintAlpha << 24) | (entry.color & 0x00FFFFFF);
+                context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
+                context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, tintColor);
+            } else {
+                context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
+            }
 
             // Name (bold, with saved color)
             String displayName = entry.name.isEmpty() ? entry.uuid : entry.name;

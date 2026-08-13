@@ -18,6 +18,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.joml.Matrix4fc;
 
+import net.minecraft.nbt.CompoundTag;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -140,6 +142,10 @@ public class BlockHighlightRenderer {
         final Map<String, Float> skullHashAlpha = new HashMap<>();
         final Map<String, Boolean> skullHashThroughWalls = new HashMap<>();
         final Map<String, Integer> skullHashRange = new HashMap<>();
+        final Map<String, float[]> skyblockIdColors = new HashMap<>();
+        final Map<String, Float> skyblockIdAlpha = new HashMap<>();
+        final Map<String, Boolean> skyblockIdThroughWalls = new HashMap<>();
+        final Map<String, Integer> skyblockIdRange = new HashMap<>();
     }
 
     /**
@@ -184,6 +190,18 @@ public class BlockHighlightRenderer {
                     continue;
                 }
 
+                // Check if it's a SkyBlock custom ID target
+                if (blockPart.startsWith("skyblock:")) {
+                    String sbId = blockPart.substring(9);
+                    if (!sbId.isEmpty()) {
+                        targets.skyblockIdColors.put(sbId, color);
+                        targets.skyblockIdAlpha.put(sbId, defaultAlpha);
+                        targets.skyblockIdThroughWalls.put(sbId, defaultThroughWalls);
+                        targets.skyblockIdRange.put(sbId, defaultRange);
+                    }
+                    continue;
+                }
+
                 String normalized = blockPart.trim().toLowerCase();
                 if (normalized.isEmpty()) continue;
                 if (!normalized.contains(":")) {
@@ -215,6 +233,14 @@ public class BlockHighlightRenderer {
                     targets.skullHashAlpha.put(hash, alpha);
                     targets.skullHashThroughWalls.put(hash, he.throughWalls);
                     targets.skullHashRange.put(hash, he.range);
+                }
+            } else if (he.isSkyBlockTarget()) {
+                String sbId = he.getSkyBlockId();
+                if (sbId != null && !sbId.isEmpty()) {
+                    targets.skyblockIdColors.put(sbId, color);
+                    targets.skyblockIdAlpha.put(sbId, alpha);
+                    targets.skyblockIdThroughWalls.put(sbId, he.throughWalls);
+                    targets.skyblockIdRange.put(sbId, he.range);
                 }
             } else {
                 String blockId = he.getBlockId();
@@ -292,6 +318,29 @@ public class BlockHighlightRenderer {
         return null;
     }
 
+    /**
+     * Extract a SkyBlock custom item ID from a block entity's NBT data.
+     * Checks custom_data.id and PublicBukkitValues."hypixel:id".
+     */
+    private static String extractSkyBlockId(BlockEntity be, Level level) {
+        try {
+            CompoundTag nbt = be.saveWithoutMetadata(level.registryAccess());
+            if (nbt.contains("custom_data")) {
+                CompoundTag customData = nbt.getCompound("custom_data");
+                if (customData.contains("id")) {
+                    return customData.getString("id");
+                }
+            }
+            if (nbt.contains("PublicBukkitValues")) {
+                CompoundTag bukkit = nbt.getCompound("PublicBukkitValues");
+                if (bukkit.contains("hypixel:id")) {
+                    return bukkit.getString("hypixel:id");
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     private static void extract(LevelExtractionContext context) {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.level == null) {
@@ -341,7 +390,7 @@ public class BlockHighlightRenderer {
 
             ScanTarget targets = buildScanTargets(config);
 
-            if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty()) {
+            if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty() && targets.skyblockIdColors.isEmpty()) {
                 highlightedBoxes = List.of();
                 return;
             }
@@ -350,9 +399,11 @@ public class BlockHighlightRenderer {
             int maxRange = 0;
             for (int r : targets.blockRange.values()) maxRange = Math.max(maxRange, r);
             for (int r : targets.skullHashRange.values()) maxRange = Math.max(maxRange, r);
+            for (int r : targets.skyblockIdRange.values()) maxRange = Math.max(maxRange, r);
 
             Set<Block> targetBlocks = targets.blockColors.keySet();
             boolean hasSkullTargets = !targets.skullHashColors.isEmpty();
+            boolean hasSkyBlockTargets = !targets.skyblockIdColors.isEmpty();
 
             // If we have skull targets, also scan for player_head/player_wall_head blocks
             Set<Block> allScanBlocks = new HashSet<>(targetBlocks);
@@ -376,10 +427,16 @@ public class BlockHighlightRenderer {
             Map<String, Float> skullAlphas = new HashMap<>(targets.skullHashAlpha);
             Map<String, Boolean> skullWalls = new HashMap<>(targets.skullHashThroughWalls);
             Map<String, Integer> skullRanges = new HashMap<>(targets.skullHashRange);
+            Map<String, float[]> sbIdColors = new HashMap<>(targets.skyblockIdColors);
+            Map<String, Float> sbIdAlphas = new HashMap<>(targets.skyblockIdAlpha);
+            Map<String, Boolean> sbIdWalls = new HashMap<>(targets.skyblockIdThroughWalls);
+            Map<String, Integer> sbIdRanges = new HashMap<>(targets.skyblockIdRange);
             Map<Block, float[]> bColors = new HashMap<>(targets.blockColors);
             Map<Block, Float> bAlphas = new HashMap<>(targets.blockAlpha);
             Map<Block, Boolean> bWalls = new HashMap<>(targets.blockThroughWalls);
             Map<Block, Integer> bRanges = new HashMap<>(targets.blockRange);
+
+            final boolean capturedHasSkyBlockTargets = hasSkyBlockTargets;
 
             scanFuture = CompletableFuture.runAsync(() -> {
                 List<HighlightBox> boxes = new ArrayList<>();
@@ -489,6 +546,62 @@ public class BlockHighlightRenderer {
                         }
                     }
                 }
+
+                // SkyBlock ID matching: iterate chunk block entities directly
+                if (capturedHasSkyBlockTargets) {
+                    for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+                        for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                            LevelChunk chunk;
+                            try {
+                                chunk = level.getChunk(cx, cz);
+                            } catch (Exception e) {
+                                continue;
+                            }
+                            if (chunk == null) continue;
+
+                            for (Map.Entry<BlockPos, BlockEntity> entry : chunk.getBlockEntities().entrySet()) {
+                                try {
+                                    BlockPos bpos = entry.getKey();
+                                    if (bpos.getX() < minX || bpos.getX() > maxX
+                                            || bpos.getY() < minY || bpos.getY() > maxY
+                                            || bpos.getZ() < minZ || bpos.getZ() > maxZ) continue;
+
+                                    BlockEntity be = entry.getValue();
+                                    String sbId = extractSkyBlockId(be, level);
+                                    if (sbId == null) continue;
+
+                                    float[] sbColor = sbIdColors.get(sbId);
+                                    if (sbColor == null) {
+                                        // Try case-insensitive match
+                                        for (Map.Entry<String, float[]> e2 : sbIdColors.entrySet()) {
+                                            if (e2.getKey().equalsIgnoreCase(sbId)) {
+                                                sbColor = e2.getValue();
+                                                sbId = e2.getKey(); // use the key for lookups below
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (sbColor == null) continue;
+
+                                    int range = sbIdRanges.getOrDefault(sbId, scanRadius);
+                                    if (bpos.distSqr(scanCenter) > (long) range * range) continue;
+
+                                    float alpha = sbIdAlphas.getOrDefault(sbId, 0.4f);
+                                    boolean tw = sbIdWalls.getOrDefault(sbId, true);
+                                    BlockState state = level.getBlockState(bpos);
+                                    AABB bounds = getBlockBounds(state, level, bpos);
+                                    boxes.add(new HighlightBox(bpos,
+                                            sbColor[0], sbColor[1], sbColor[2], alpha,
+                                            (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
+                                            (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
+                                            tw));
+                                } catch (Exception ignored) {
+                                }
+                            }
+                        }
+                    }
+                }
+
                 pendingResult.set(boxes);
             });
         }

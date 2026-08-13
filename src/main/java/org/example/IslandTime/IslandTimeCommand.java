@@ -930,7 +930,15 @@ public class IslandTimeCommand {
             String normalized = blockPart.toLowerCase();
             if (!normalized.contains(":")) normalized = "minecraft:" + normalized;
             String normalizedId = id.contains(":") ? id : "minecraft:" + id;
-            if (!normalized.equals(normalizedId)) {
+            // For skull: and skyblock: targets, compare the raw strings (case-insensitive)
+            boolean match;
+            if (normalized.startsWith("skull:") || normalized.startsWith("skyblock:")
+                    || normalizedId.startsWith("skull:") || normalizedId.startsWith("skyblock:")) {
+                match = blockPart.equalsIgnoreCase(id);
+            } else {
+                match = normalized.equals(normalizedId);
+            }
+            if (!match) {
                 if (result.length() > 0) result.append(" ");
                 result.append(entry);
             }
@@ -1059,7 +1067,8 @@ public class IslandTimeCommand {
 
                 // Page 8 - Ghost, WAILA & Block Highlights
                 {"/islandtime ghost", "Client-side remove the block you are looking at (alias: /it ghost). Can be disabled in /islandtime under Misc."},
-                {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock data"},
+                {"/it highlight add <id>", "Add block to highlights. Supports block IDs, skull:HASH, and skyblock:ID (e.g. skyblock:DITTO_SKULL)"},
+                {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/it highlights", "Open the Block Highlights GUI to manage individual highlight entries with per-entry color, range, and intensity"},
                 {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
                 {"/islandtime help [page]", "Show this help (pages 1-8)"},

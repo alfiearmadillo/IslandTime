@@ -52,6 +52,13 @@ public class BlockHighlightManager {
         }
 
         /**
+         * Returns true if this entry targets a SkyBlock custom item ID.
+         */
+        public boolean isSkyBlockTarget() {
+            return target != null && target.startsWith("skyblock:");
+        }
+
+        /**
          * Returns the skull texture hash (without the "skull:" prefix).
          */
         public String getSkullHash() {
@@ -60,11 +67,19 @@ public class BlockHighlightManager {
         }
 
         /**
+         * Returns the SkyBlock item ID (without the "skyblock:" prefix).
+         */
+        public String getSkyBlockId() {
+            if (!isSkyBlockTarget()) return null;
+            return target.substring(9);
+        }
+
+        /**
          * Returns the block ID (with minecraft: prefix if needed).
-         * Returns null for skull targets.
+         * Returns null for skull and skyblock targets.
          */
         public String getBlockId() {
-            if (isSkullTarget()) return null;
+            if (isSkullTarget() || isSkyBlockTarget()) return null;
             if (target == null) return null;
             String normalized = target.trim().toLowerCase();
             if (!normalized.contains(":")) {
@@ -82,6 +97,9 @@ public class BlockHighlightManager {
                 if (hash.length() > 12) {
                     return "skull:" + hash.substring(0, 12) + "...";
                 }
+                return target;
+            }
+            if (isSkyBlockTarget()) {
                 return target;
             }
             return target != null ? target : "(empty)";

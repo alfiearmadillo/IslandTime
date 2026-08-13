@@ -89,6 +89,7 @@ public class WailaHandler {
 
         // Block entity / tile entity data
         BlockEntity blockEntity = level.getBlockEntity(pos);
+        String skyblockId = null;
         if (blockEntity != null) {
             String beType = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()).toString();
             client.player.sendSystemMessage(
@@ -114,20 +115,69 @@ public class WailaHandler {
                                                     .withClickEvent(new ClickEvent.CopyToClipboard(nbtStr))
                                                     .withHoverEvent(new HoverEvent.ShowText(
                                                             Component.literal("Click to copy full NBT data").withStyle(ChatFormatting.GRAY))))));
+
+                    // Extract SkyBlock custom item ID from NBT
+                    skyblockId = extractSkyBlockItemId(nbt);
+                    if (skyblockId != null) {
+                        String finalSkyblockId = skyblockId;
+                        client.player.sendSystemMessage(
+                                Component.literal("  SkyBlock ID: ").withStyle(ChatFormatting.GRAY)
+                                        .append(Component.literal(skyblockId).withStyle(ChatFormatting.GOLD)
+                                                .withStyle(style -> style
+                                                        .withClickEvent(new ClickEvent.CopyToClipboard(finalSkyblockId))
+                                                        .withHoverEvent(new HoverEvent.ShowText(
+                                                                Component.literal("Click to copy SkyBlock ID\nUse with /it highlight add skyblock:" + finalSkyblockId)
+                                                                        .withStyle(ChatFormatting.GRAY))))));
+                    }
                 }
             } catch (Exception e) {
                 // NBT serialization can fail for some block entities
             }
         }
 
-        // Highlight command suggestion
+        // Highlight command suggestion — prefer SkyBlock ID if available
         String shortId = blockIdStr.startsWith("minecraft:") ? blockIdStr.substring(10) : blockIdStr;
+        if (skyblockId != null) {
+            String skyblockTarget = "skyblock:" + skyblockId;
+            client.player.sendSystemMessage(
+                    Component.literal("[+ Add to Highlighter (SkyBlock)]").withStyle(ChatFormatting.GREEN)
+                            .withStyle(style -> style
+                                    .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + skyblockTarget))
+                                    .withHoverEvent(new HoverEvent.ShowText(
+                                            Component.literal("Click to highlight all " + skyblockTarget + " blocks").withStyle(ChatFormatting.GRAY)))));
+        }
         client.player.sendSystemMessage(
                 Component.literal("[+ Add to Highlighter]").withStyle(ChatFormatting.GREEN)
                         .withStyle(style -> style
                                 .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + shortId))
                                 .withHoverEvent(new HoverEvent.ShowText(
                                         Component.literal("Click to highlight all " + shortId + " blocks").withStyle(ChatFormatting.GRAY)))));
+    }
+
+    /**
+     * Extract a SkyBlock custom item ID from block entity NBT.
+     * Looks for patterns like custom_data.id, PublicBukkitValues."hypixel:id", etc.
+     */
+    private static String extractSkyBlockItemId(CompoundTag nbt) {
+        // Check custom_data compound for "id" key
+        if (nbt.contains("custom_data")) {
+            try {
+                CompoundTag customData = nbt.getCompound("custom_data");
+                if (customData.contains("id")) {
+                    return customData.getString("id");
+                }
+            } catch (Exception ignored) {}
+        }
+        // Check PublicBukkitValues for hypixel:id
+        if (nbt.contains("PublicBukkitValues")) {
+            try {
+                CompoundTag bukkit = nbt.getCompound("PublicBukkitValues");
+                if (bukkit.contains("hypixel:id")) {
+                    return bukkit.getString("hypixel:id");
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
     }
 
     private static void handleSkull(Minecraft client, SkullBlockEntity skull) {
