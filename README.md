@@ -21,7 +21,7 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, fuel cycles
 - **Sign Helpers** — Adds paste buttons to the sign edit screen with configurable pre-set text per line
 - **WAILA (What Am I Looking At)** — Inspect any targeted block with `/it waila` to see block ID, position, state properties, tile entity data, skull textures, and SkyBlock custom IDs
 - **Block Highlight** — Multi-entry block highlight system with a dedicated GUI (`/it highlights`). Each entry has its own target (block ID, `sb:` SkyBlock ID, or `skull:` texture hash), color, range, intensity, through-walls toggle, and optional area filter. Quickly add highlights from WAILA results or via `/it highlight add`
-- **Copy Skin** — Download a Minecraft skin texture from a URL with `/it copyskin <url>`, generate a front-facing player render locally, and save it to `config/IslandTime/skin.png`
+- **Copy Skin** — Copy the skin texture of a targeted player head block to clipboard with `/it copyskin`, or copy from a skull item in any inventory/GUI by pressing a configurable keybind (default: `V`). Preserves transparency. The keybind and toggle are configurable in the MoulConfig GUI under Misc
 - **MoulConfig GUI** — All settings accessible from a single GUI opened with `/islandtime`
 
 ## Installation
