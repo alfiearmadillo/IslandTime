@@ -174,12 +174,13 @@ public class WailaHandler {
         // If there's a skyblock ID, show skyblock ID highlighter button
         if (skyblockId != null) {
             String sbTarget = "sb:" + skyblockId;
+            String finalSbId = skyblockId;
             client.player.sendSystemMessage(
                     Component.literal("[+ Add SkyBlock ID to Highlighter]").withStyle(ChatFormatting.GREEN)
                             .withStyle(style -> style
                                     .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + sbTarget))
                                     .withHoverEvent(new HoverEvent.ShowText(
-                                            Component.literal("Click to highlight all blocks with SkyBlock ID " + skyblockId).withStyle(ChatFormatting.GRAY)))));
+                                            Component.literal("Click to highlight all blocks with SkyBlock ID " + finalSbId).withStyle(ChatFormatting.GRAY)))));
         }
     }
 
