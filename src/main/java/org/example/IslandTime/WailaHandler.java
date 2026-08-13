@@ -90,6 +90,7 @@ public class WailaHandler {
         BlockEntity blockEntity = level.getBlockEntity(pos);
         String skyblockId = null;
         String skullTextureHash = null;
+        String skullSkyblockId = null;
         if (blockEntity != null) {
             String beType = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType()).toString();
             client.player.sendSystemMessage(
@@ -98,7 +99,10 @@ public class WailaHandler {
 
             // Skull-specific handling
             if (blockEntity instanceof SkullBlockEntity skull) {
-                skullTextureHash = handleSkull(client, skull);
+                SkullInfo skullInfo = handleSkull(client, skull);
+                skullTextureHash = skullInfo.textureHash();
+                // Use skull signature as SkyBlock ID if no NBT-based ID found later
+                skullSkyblockId = skullInfo.skyblockId();
             }
 
             // Full NBT (clickable to copy)
@@ -135,16 +139,17 @@ public class WailaHandler {
             }
         }
 
-        // Top-level SkyBlock ID from skull texture hash (when no NBT-based ID)
-        if (skyblockId == null && skullTextureHash != null) {
-            String hash = skullTextureHash;
+        // Use skull signature-based SkyBlock ID as fallback if no NBT-based ID found
+        if (skyblockId == null && skullSkyblockId != null) {
+            skyblockId = skullSkyblockId;
+            String sbId = skyblockId;
             client.player.sendSystemMessage(
-                    Component.literal("SkyBlock ID (extracted): ").withStyle(ChatFormatting.GRAY)
-                            .append(Component.literal(hash).withStyle(ChatFormatting.GOLD)
+                    Component.literal("SkyBlock ID (from signature): ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(sbId).withStyle(ChatFormatting.GOLD)
                                     .withStyle(style -> style
-                                            .withClickEvent(new ClickEvent.CopyToClipboard(hash))
+                                            .withClickEvent(new ClickEvent.CopyToClipboard(sbId))
                                             .withHoverEvent(new HoverEvent.ShowText(
-                                                    Component.literal("Texture hash extracted from skull profile\nClick to copy")
+                                                    Component.literal("SkyBlock item ID from skull profile signature\nClick to copy")
                                                             .withStyle(ChatFormatting.GRAY))))));
         }
 
@@ -210,8 +215,12 @@ public class WailaHandler {
         return null;
     }
 
-    private static String handleSkull(Minecraft client, SkullBlockEntity skull) {
+    /** Result from skull inspection: texture hash and optional SkyBlock ID from signature. */
+    private record SkullInfo(String textureHash, String skyblockId) {}
+
+    private static SkullInfo handleSkull(Minecraft client, SkullBlockEntity skull) {
         String extractedHash = null;
+        String extractedSbId = null;
         try {
             var profile = skull.getOwnerProfile();
             if (profile != null) {
@@ -239,6 +248,15 @@ public class WailaHandler {
                 // Extract texture and provide Copy as Skin button
                 for (Property prop : gp.properties().get("textures")) {
                     String textureValue = prop.value();
+
+                    // Check signature for SkyBlock ID (e.g. "DITTO_BLOB")
+                    String sig = prop.signature();
+                    if (sig != null && !sig.isEmpty() && !sig.equals(textureValue)) {
+                        // Signatures that look like item IDs (uppercase with underscores, not base64)
+                        if (sig.matches("[A-Z0-9_]+")) {
+                            extractedSbId = sig;
+                        }
+                    }
 
                     // Decode base64 to get texture URL and extract hash
                     try {
@@ -279,7 +297,7 @@ public class WailaHandler {
         } catch (Exception e) {
             // getOwnerProfile may not exist in this version
         }
-        return extractedHash;
+        return new SkullInfo(extractedHash, extractedSbId);
     }
 
     /**

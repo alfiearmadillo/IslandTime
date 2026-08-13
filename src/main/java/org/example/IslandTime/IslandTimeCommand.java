@@ -25,6 +25,8 @@ import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
 import java.io.IOException;
 import java.net.URI;
+import java.net.HttpURLConnection;
+import java.io.InputStream;
 import javax.imageio.ImageIO;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
@@ -838,34 +840,55 @@ public class IslandTimeCommand {
         // Run download off the main thread
         new Thread(() -> {
             try {
-                BufferedImage image = ImageIO.read(URI.create(url).toURL());
-                if (image == null) {
-                    client.execute(() -> client.player.sendSystemMessage(
-                            Component.literal("Failed to download skin image.").withStyle(ChatFormatting.RED)));
-                    return;
+                // Use HttpURLConnection to properly handle redirects (http -> https)
+                HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
+                conn.connect();
+
+                // Follow manual redirects if needed (http->https redirects sometimes aren't auto-followed)
+                int status = conn.getResponseCode();
+                if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 303) {
+                    String newUrl = conn.getHeaderField("Location");
+                    conn.disconnect();
+                    conn = (HttpURLConnection) URI.create(newUrl).toURL().openConnection();
+                    conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
+                    conn.connect();
                 }
-                // Copy image to system clipboard
-                Transferable transferable = new Transferable() {
-                    @Override
-                    public DataFlavor[] getTransferDataFlavors() {
-                        return new DataFlavor[]{DataFlavor.imageFlavor};
+
+                try (InputStream in = conn.getInputStream()) {
+                    BufferedImage image = ImageIO.read(in);
+                    if (image == null) {
+                        client.execute(() -> client.player.sendSystemMessage(
+                                Component.literal("Failed to decode skin image from server.").withStyle(ChatFormatting.RED)));
+                        return;
                     }
-                    @Override
-                    public boolean isDataFlavorSupported(DataFlavor flavor) {
-                        return DataFlavor.imageFlavor.equals(flavor);
-                    }
-                    @Override
-                    public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
-                        if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
-                        return image;
-                    }
-                };
-                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
-                client.execute(() -> client.player.sendSystemMessage(
-                        Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
+                    // Copy image to system clipboard
+                    Transferable transferable = new Transferable() {
+                        @Override
+                        public DataFlavor[] getTransferDataFlavors() {
+                            return new DataFlavor[]{DataFlavor.imageFlavor};
+                        }
+                        @Override
+                        public boolean isDataFlavorSupported(DataFlavor flavor) {
+                            return DataFlavor.imageFlavor.equals(flavor);
+                        }
+                        @Override
+                        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+                            if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
+                            return image;
+                        }
+                    };
+                    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
+                } finally {
+                    conn.disconnect();
+                }
             } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 client.execute(() -> client.player.sendSystemMessage(
-                        Component.literal("Failed to copy skin: " + e.getMessage()).withStyle(ChatFormatting.RED)));
+                        Component.literal("Failed to copy skin: " + msg).withStyle(ChatFormatting.RED)));
             }
         }, "IslandTime-CopySkin").start();
     }

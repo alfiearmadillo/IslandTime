@@ -336,6 +336,21 @@ public class BlockHighlightRenderer {
                 }
             }
         } catch (Exception ignored) {}
+        // Check skull profile signature for SkyBlock item ID (e.g. "DITTO_BLOB")
+        if (be instanceof SkullBlockEntity skull) {
+            try {
+                var profile = skull.getOwnerProfile();
+                if (profile != null) {
+                    var gp = profile.partialProfile();
+                    for (com.mojang.authlib.properties.Property prop : gp.properties().get("textures")) {
+                        String sig = prop.signature();
+                        if (sig != null && !sig.isEmpty() && sig.matches("[A-Z0-9_]+")) {
+                            return sig;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
         return null;
     }
 
