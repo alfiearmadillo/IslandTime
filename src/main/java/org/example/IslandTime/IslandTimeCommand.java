@@ -842,19 +842,10 @@ public class IslandTimeCommand {
             return;
         }
 
-        net.minecraft.resources.Identifier textureId;
+        String hash = textureHash;
 
-        if (textureHash != null && !textureHash.isBlank()) {
-            // Build a GameProfile with the texture hash to look up the cached skin
-            String textureUrl = "http://textures.minecraft.net/texture/" + textureHash.trim();
-            String textureJson = "{\"textures\":{\"SKIN\":{\"url\":\"" + textureUrl + "\"}}}";
-            String textureValue = Base64.getEncoder().encodeToString(textureJson.getBytes());
-            com.mojang.authlib.GameProfile fakeProfile = new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "");
-            fakeProfile.getProperties().put("textures", new com.mojang.authlib.properties.Property("textures", textureValue));
-            var playerSkin = client.getSkinManager().getInsecureSkin(fakeProfile);
-            textureId = playerSkin.texture();
-        } else {
-            // Fall back to looking at the targeted block
+        if (hash == null || hash.isBlank()) {
+            // Extract texture hash from the targeted skull block
             if (client.hitResult == null || client.hitResult.getType() != HitResult.Type.BLOCK) {
                 client.player.sendSystemMessage(
                         Component.literal("Look at a player head/skull block and try again.").withStyle(ChatFormatting.RED));
@@ -874,46 +865,63 @@ public class IslandTimeCommand {
                         Component.literal("This skull has no owner profile.").withStyle(ChatFormatting.RED));
                 return;
             }
-            var playerSkin = client.getSkinManager().getInsecureSkin(profile.partialProfile());
-            textureId = playerSkin.texture();
+            // Extract texture hash from profile properties
+            var gp = profile.partialProfile();
+            for (com.mojang.authlib.properties.Property prop : gp.properties().get("textures")) {
+                try {
+                    String decoded = new String(Base64.getDecoder().decode(prop.value()));
+                    int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
+                    if (urlIdx >= 0) {
+                        int hashStart = urlIdx + "textures.minecraft.net/texture/".length();
+                        int hashEnd = decoded.indexOf('"', hashStart);
+                        if (hashEnd < 0) hashEnd = decoded.indexOf('}', hashStart);
+                        if (hashEnd >= 0) {
+                            hash = decoded.substring(hashStart, hashEnd);
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (hash == null || hash.isBlank()) {
+                client.player.sendSystemMessage(
+                        Component.literal("Could not extract texture hash from skull.").withStyle(ChatFormatting.RED));
+                return;
+            }
         }
 
+        hash = hash.trim();
+
         client.player.sendSystemMessage(
-                Component.literal("Reading skin texture...").withStyle(ChatFormatting.GRAY));
+                Component.literal("Reading skin texture from cache...").withStyle(ChatFormatting.GRAY));
 
-        final net.minecraft.resources.Identifier finalTextureId = textureId;
-
-        // Read the texture from the texture manager — must be done on the render thread
-        client.execute(() -> {
+        // Read the skin PNG from Minecraft's local skin cache
+        final String finalHash = hash;
+        new Thread(() -> {
             try {
-                var texture = client.getTextureManager().getTexture(finalTextureId);
-                if (texture == null) {
-                    client.player.sendSystemMessage(
-                            Component.literal("Skin texture not found in texture manager.").withStyle(ChatFormatting.RED));
+                // Skin cache path: <game_dir>/assets/skins/<first2>/<hash>.png
+                java.io.File gameDir = client.gameDirectory;
+                String subDir = finalHash.substring(0, 2);
+                java.io.File skinFile = new java.io.File(gameDir, "assets/skins/" + subDir + "/" + finalHash + ".png");
+
+                BufferedImage image;
+                if (skinFile.exists()) {
+                    image = ImageIO.read(skinFile);
+                } else {
+                    // Fallback: download from Mojang texture server
+                    String url = "https://textures.minecraft.net/texture/" + finalHash;
+                    try (java.io.InputStream in = java.net.URI.create(url).toURL().openStream()) {
+                        image = ImageIO.read(in);
+                    }
+                }
+
+                if (image == null) {
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Failed to read skin image.").withStyle(ChatFormatting.RED)));
                     return;
                 }
 
-                // Read the texture pixels into a NativeImage via the texture's GL ID
-                int glId = texture.getId();
-                com.mojang.blaze3d.platform.NativeImage nativeImage = new com.mojang.blaze3d.platform.NativeImage(64, 64, false);
-                nativeImage.downloadTexture(glId, 0, false);
-
-                // Convert NativeImage to BufferedImage
-                BufferedImage image = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
-                for (int y = 0; y < 64; y++) {
-                    for (int x = 0; x < 64; x++) {
-                        // NativeImage uses ABGR format, convert to ARGB
-                        int abgr = nativeImage.getPixel(x, y);
-                        int a = (abgr >>> 24) & 0xFF;
-                        int b = (abgr >>> 16) & 0xFF;
-                        int g = (abgr >>> 8) & 0xFF;
-                        int r = abgr & 0xFF;
-                        image.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b);
-                    }
-                }
-                nativeImage.close();
-
-                // Copy to clipboard on a separate thread (AWT operations can block)
+                // Copy to clipboard on AWT thread
+                final BufferedImage finalImage = image;
                 new Thread(() -> {
                     try {
                         String prevHeadless = System.getProperty("java.awt.headless");
@@ -931,7 +939,7 @@ public class IslandTimeCommand {
                                 @Override
                                 public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
                                     if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
-                                    return image;
+                                    return finalImage;
                                 }
                             };
                             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
@@ -952,10 +960,10 @@ public class IslandTimeCommand {
                 }, "IslandTime-CopySkin").start();
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                client.player.sendSystemMessage(
-                        Component.literal("Failed to read skin texture: " + msg).withStyle(ChatFormatting.RED));
+                client.execute(() -> client.player.sendSystemMessage(
+                        Component.literal("Failed to read skin texture: " + msg).withStyle(ChatFormatting.RED)));
             }
-        });
+        }, "IslandTime-SkinRead").start();
     }
 
     // -------------------------------------------------------------------------
