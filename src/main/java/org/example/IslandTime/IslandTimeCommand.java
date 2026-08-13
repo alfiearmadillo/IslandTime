@@ -19,14 +19,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.awt.image.BufferedImage;
-import java.awt.Toolkit;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.Transferable;
-import java.awt.datatransfer.UnsupportedFlavorException;
+
 import java.io.IOException;
-import java.net.URI;
-import java.net.HttpURLConnection;
-import java.io.InputStream;
 import javax.imageio.ImageIO;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
@@ -61,10 +55,13 @@ public class IslandTimeCommand {
                             return 1;
                         }))
                 .then(literal("copyskin")
-                        .then(argument("url", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            copySkinImage(ctx.getSource().getClient(), null);
+                            return 1;
+                        })
+                        .then(argument("hash", StringArgumentType.greedyString())
                                 .executes(ctx -> {
-                                    String url = StringArgumentType.getString(ctx, "url");
-                                    copySkinImage(ctx.getSource().getClient(), url);
+                                    copySkinImage(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "hash"));
                                     return 1;
                                 })))
                 .then(literal("recent")
@@ -125,10 +122,13 @@ public class IslandTimeCommand {
                             return 1;
                         }))
                 .then(literal("copyskin")
-                        .then(argument("url", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            copySkinImage(ctx.getSource().getClient(), null);
+                            return 1;
+                        })
+                        .then(argument("hash", StringArgumentType.greedyString())
                                 .executes(ctx -> {
-                                    String url = StringArgumentType.getString(ctx, "url");
-                                    copySkinImage(ctx.getSource().getClient(), url);
+                                    copySkinImage(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "hash"));
                                     return 1;
                                 })))
                 .then(literal("recent")
@@ -834,63 +834,169 @@ public class IslandTimeCommand {
     // Copy skin image to clipboard
     // -------------------------------------------------------------------------
 
-    private static void copySkinImage(Minecraft client, String url) {
+    private static void copySkinImage(Minecraft client, String textureHash) {
+        if (client.level == null || client.player == null) {
+            return;
+        }
+
+        String hash = textureHash;
+
+        if (hash == null || hash.isBlank()) {
+            // Extract texture hash from the targeted skull block
+            if (client.hitResult == null || client.hitResult.getType() != HitResult.Type.BLOCK) {
+                client.player.sendSystemMessage(
+                        Component.literal("Look at a player head/skull block and try again.").withStyle(ChatFormatting.RED));
+                return;
+            }
+            BlockHitResult hit = (BlockHitResult) client.hitResult;
+            BlockPos pos = hit.getBlockPos();
+            net.minecraft.world.level.block.entity.BlockEntity blockEntity = client.level.getBlockEntity(pos);
+            if (!(blockEntity instanceof net.minecraft.world.level.block.entity.SkullBlockEntity skull)) {
+                client.player.sendSystemMessage(
+                        Component.literal("Not a player head/skull block.").withStyle(ChatFormatting.RED));
+                return;
+            }
+            var profile = skull.getOwnerProfile();
+            if (profile == null) {
+                client.player.sendSystemMessage(
+                        Component.literal("This skull has no owner profile.").withStyle(ChatFormatting.RED));
+                return;
+            }
+            // Extract texture hash from profile properties
+            var gp = profile.partialProfile();
+            for (com.mojang.authlib.properties.Property prop : gp.properties().get("textures")) {
+                try {
+                    String decoded = new String(Base64.getDecoder().decode(prop.value()));
+                    int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
+                    if (urlIdx >= 0) {
+                        int hashStart = urlIdx + "textures.minecraft.net/texture/".length();
+                        int hashEnd = decoded.indexOf('"', hashStart);
+                        if (hashEnd < 0) hashEnd = decoded.indexOf('}', hashStart);
+                        if (hashEnd >= 0) {
+                            hash = decoded.substring(hashStart, hashEnd);
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            if (hash == null || hash.isBlank()) {
+                client.player.sendSystemMessage(
+                        Component.literal("Could not extract texture hash from skull.").withStyle(ChatFormatting.RED));
+                return;
+            }
+        }
+
+        hash = hash.trim();
+
         client.player.sendSystemMessage(
-                Component.literal("Downloading skin texture...").withStyle(ChatFormatting.GRAY));
-        // Run download off the main thread
+                Component.literal("Reading skin texture from cache...").withStyle(ChatFormatting.GRAY));
+
+        // Read the skin PNG from Minecraft's local skin cache
+        final String finalHash = hash;
         new Thread(() -> {
             try {
-                // Use HttpURLConnection to properly handle redirects (http -> https)
-                HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-                conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
-                conn.connect();
+                // Skin cache path: <game_dir>/assets/skins/<first2>/<hash>.png
+                java.io.File gameDir = client.gameDirectory;
+                String subDir = finalHash.substring(0, 2);
+                java.io.File skinFile = new java.io.File(gameDir, "assets/skins/" + subDir + "/" + finalHash + ".png");
 
-                // Follow manual redirects if needed (http->https redirects sometimes aren't auto-followed)
-                int status = conn.getResponseCode();
-                if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 303) {
-                    String newUrl = conn.getHeaderField("Location");
-                    conn.disconnect();
-                    conn = (HttpURLConnection) URI.create(newUrl).toURL().openConnection();
-                    conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
-                    conn.connect();
+                BufferedImage image;
+                if (skinFile.exists()) {
+                    image = ImageIO.read(skinFile);
+                } else {
+                    // Fallback: download from Mojang texture server
+                    String url = "https://textures.minecraft.net/texture/" + finalHash;
+                    try (java.io.InputStream in = java.net.URI.create(url).toURL().openStream()) {
+                        image = ImageIO.read(in);
+                    }
                 }
 
-                try (InputStream in = conn.getInputStream()) {
-                    BufferedImage image = ImageIO.read(in);
-                    if (image == null) {
-                        client.execute(() -> client.player.sendSystemMessage(
-                                Component.literal("Failed to decode skin image from server.").withStyle(ChatFormatting.RED)));
-                        return;
+                if (image == null) {
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Failed to read skin image.").withStyle(ChatFormatting.RED)));
+                    return;
+                }
+
+                // Save to temp file and copy to clipboard via platform command
+                java.io.File tempFile = java.io.File.createTempFile("islandtime_skin_", ".png");
+                tempFile.deleteOnExit();
+                ImageIO.write(image, "png", tempFile);
+
+                String os = System.getProperty("os.name", "").toLowerCase();
+                String copyError = null;
+                if (os.contains("win")) {
+                    String absPath = tempFile.getAbsolutePath().replace("'", "''");
+                    String psScript =
+                            "Add-Type -AssemblyName System.Windows.Forms; " +
+                            "Add-Type -AssemblyName System.Drawing; " +
+                            "$img = [System.Drawing.Image]::FromFile('" + absPath + "'); " +
+                            "[System.Windows.Forms.Clipboard]::SetImage($img); " +
+                            "$img.Dispose()";
+                    copyError = runClipboardCommand(
+                            new String[]{"powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-Command", psScript},
+                            null);
+                } else if (os.contains("mac") || os.contains("darwin")) {
+                    String absPath = tempFile.getAbsolutePath().replace("\"", "\\\"");
+                    String appleScript = "set the clipboard to (read POSIX file \"" + absPath + "\" as \u00ABclass PNGf\u00BB)";
+                    copyError = runClipboardCommand(new String[]{"osascript", "-e", appleScript}, null);
+                } else {
+                    // Linux: try wl-copy (Wayland) then xclip (X11)
+                    byte[] pngBytes = java.nio.file.Files.readAllBytes(tempFile.toPath());
+                    if (isCommandAvailable("wl-copy")) {
+                        copyError = runClipboardCommand(new String[]{"wl-copy", "--type", "image/png"}, pngBytes);
+                    } else if (isCommandAvailable("xclip")) {
+                        copyError = runClipboardCommand(new String[]{"xclip", "-selection", "clipboard", "-t", "image/png", "-i"}, pngBytes);
+                    } else {
+                        copyError = "No clipboard tool found. Install wl-copy (Wayland) or xclip (X11).";
                     }
-                    // Copy image to system clipboard
-                    Transferable transferable = new Transferable() {
-                        @Override
-                        public DataFlavor[] getTransferDataFlavors() {
-                            return new DataFlavor[]{DataFlavor.imageFlavor};
-                        }
-                        @Override
-                        public boolean isDataFlavorSupported(DataFlavor flavor) {
-                            return DataFlavor.imageFlavor.equals(flavor);
-                        }
-                        @Override
-                        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
-                            if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
-                            return image;
-                        }
-                    };
-                    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
+                }
+
+                if (copyError == null || copyError.isEmpty()) {
                     client.execute(() -> client.player.sendSystemMessage(
                             Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
-                } finally {
-                    conn.disconnect();
+                } else {
+                    String path = tempFile.getAbsolutePath();
+                    final String errMsg = copyError;
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Clipboard failed: " + errMsg + ". Skin saved to: " + path).withStyle(ChatFormatting.YELLOW)));
                 }
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 client.execute(() -> client.player.sendSystemMessage(
-                        Component.literal("Failed to copy skin: " + msg).withStyle(ChatFormatting.RED)));
+                        Component.literal("Failed to read skin texture: " + msg).withStyle(ChatFormatting.RED)));
             }
-        }, "IslandTime-CopySkin").start();
+        }, "IslandTime-SkinRead").start();
+    }
+
+    /** Run a clipboard command with optional stdin bytes. Returns null on success, error message on failure. */
+    private static String runClipboardCommand(String[] cmd, byte[] stdin) {
+        try {
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();
+            if (stdin != null) {
+                p.getOutputStream().write(stdin);
+                p.getOutputStream().close();
+            }
+            boolean exited = p.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
+            if (!exited) {
+                p.destroyForcibly();
+                return "Command timed out";
+            }
+            if (p.exitValue() == 0) return null;
+            String err = new String(p.getErrorStream().readAllBytes()).trim();
+            return err.isEmpty() ? "Exit code " + p.exitValue() : err;
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+    }
+
+    /** Check if a command-line tool is available on the system. */
+    private static boolean isCommandAvailable(String command) {
+        try {
+            Process p = new ProcessBuilder("which", command).redirectErrorStream(true).start();
+            return p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // -------------------------------------------------------------------------
