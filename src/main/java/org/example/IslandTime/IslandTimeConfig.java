@@ -52,6 +52,10 @@ public class IslandTimeConfig extends Config {
     public Signs signs = new Signs();
 
     @Expose
+    @Category(name = "Block Highlight", desc = "Highlight all blocks of a specific type")
+    public BlockHighlight blockHighlight = new BlockHighlight();
+
+    @Expose
     @Category(name = "Player List", desc = "Manage a list of players for quick party/invite actions")
     public PlayerList playerList = new PlayerList();
 
@@ -342,6 +346,38 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Line 4", desc = "Pre-set text for sign line 4")
         @ConfigEditorText
         public String line4 = "";
+    }
+
+    public static class BlockHighlight {
+        @Expose
+        @ConfigOption(name = "Enabled", desc = "Toggle the block highlight on or off")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(name = "Block IDs", desc = "Space-separated block entries. Each entry is BLOCKID or BLOCKID,COLOR. Color can be a name (yellow, red, green, blue, magenta, cyan, white) or hex (#ff0000). Example: diamond_ore,cyan gold_ore,#ffaa00 iron_ore")
+        @ConfigEditorText
+        public String blockId = "";
+
+        @Expose
+        @ConfigOption(name = "Highlight Intensity", desc = "How visible the highlight is (0 = off, 100 = maximum brightness)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int intensity = 0;
+
+        @Expose
+        @ConfigOption(name = "Color", desc = "Highlight color")
+        @ConfigEditorDropdown(values = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"})
+        public int color = 0;
+
+        @Expose
+        @ConfigOption(name = "Through Walls", desc = "Show highlights through blocks (disable obstruction)")
+        @ConfigEditorBoolean
+        public boolean throughWalls = true;
+
+        @Expose
+        @ConfigOption(name = "Range", desc = "How far away to scan for blocks (in blocks)")
+        @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
+        public int range = 48;
     }
 
     public static class Messages {

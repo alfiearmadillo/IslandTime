@@ -19,6 +19,7 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, fuel cycles
 - **Component Display** — Shows specified item components (e.g. `id`, `color`) at the bottom of tooltips in dark gray
 - **Player List** — Scrollable GUI (`/it players`) to manage a list of players with quick party/invite buttons, editable notes, and head skin display
 - **Sign Helpers** — Adds paste buttons to the sign edit screen with configurable pre-set text per line
+- **Block Highlight** — Highlights all blocks of a given type with a configurable intensity overlay; toggle with `/highlight on|off`
 - **MoulConfig GUI** — All settings accessible from a single GUI opened with `/islandtime`
 
 ## Installation
@@ -51,6 +52,8 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/favouritegui toggle` | Enable/disable container snapshot tracking |
 | `/chatrelay` | View/configure chat relay settings |
 | `/showtooltips` | Toggle hidden tooltip visibility |
+| `/it highlight <blockid[,color]> [blockid[,color] ...]` | Set highlighted blocks (optional per-block color name or hex like `#fcf3ff`) |
+| `/it highlight on\|off\|clear` | Enable/disable/clear block highlight |
 | `/it players` | Open the player list GUI (add/edit/delete/party/invite) |
 | `/it ghost` | Client-side block removal tool |
 | `/islandtime help [page]` | View help pages |
