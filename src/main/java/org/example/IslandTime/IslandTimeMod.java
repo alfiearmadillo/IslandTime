@@ -24,6 +24,7 @@ public class IslandTimeMod implements ClientModInitializer {
         // Load chat relay config and register the chat listener
         ChatRelayConfig.load();
         PlayerListManager.load();
+        BlockHighlightManager.load();
         IslandChatRelay.register();
         ChatMessageStore.register();
 
@@ -80,6 +81,7 @@ public class IslandTimeMod implements ClientModInitializer {
             ChatRelayConfig.save();
             TooltipOverrideConfig.save();    // NEW: save tooltip override flag
             ResourcePackConfig.save();       // Save resource pack config
+            BlockHighlightManager.save();    // Save block highlight entries
 
             DiscordWebhookManager.shutdown();
             IslandChatRelay.shutdown();      // stops poller + webhook thread

@@ -1,6 +1,7 @@
 package org.example.islandtime;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -10,11 +11,16 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.mojang.authlib.properties.Property;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.joml.Matrix4fc;
 
+import net.minecraft.nbt.CompoundTag;
+
+import net.minecraft.network.chat.Component;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -28,22 +34,28 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 
 /**
- * Renders a colored overlay on all blocks matching the configured block IDs
- * within the player's vicinity. Fully client-side.
+ * Renders colored overlays on blocks matching configured targets.
+ * Supports regular block IDs and skull texture hashes (skull:HASH).
+ * Highlights use the block's actual collision/visual shape for accurate sizing.
  */
 public class BlockHighlightRenderer {
 
-    private static final String[] COLOR_NAMES = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"};
-    private static final float[][] COLORS = {
+    public static final String[] COLOR_NAMES = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"};
+    public static final float[][] COLORS = {
             {1.0f, 1.0f, 0.2f},  // YELLOW
             {1.0f, 0.2f, 0.2f},  // RED
             {0.2f, 1.0f, 0.2f},  // GREEN
@@ -69,23 +81,23 @@ public class BlockHighlightRenderer {
                     .createRenderSetup()
     );
 
-    // Each highlighted position stores its color
-    private record ColoredPos(BlockPos pos, float r, float g, float b) {}
+    // Each highlighted position stores its color, alpha, bounds, and through-walls flag
+    record HighlightBox(BlockPos pos, float r, float g, float b, float a,
+                               float minX, float minY, float minZ,
+                               float maxX, float maxY, float maxZ,
+                               boolean throughWalls) {}
 
-    private static List<ColoredPos> highlightedPositions = List.of();
-    private static float highlightA;
-    private static boolean throughWalls;
+    private static List<HighlightBox> highlightedBoxes = List.of();
 
-    // Caching: avoid rescanning every frame
+    // Caching
     private static BlockPos lastScanPos = null;
-    private static String lastBlockIdField = "";
-    private static int lastRange = 0;
+    private static String lastConfigFingerprint = "";
     private static long lastScanTick = -1;
     private static final int SCAN_INTERVAL_TICKS = 20;
     private static final int RESCAN_MOVE_THRESHOLD_SQ = 64;
 
     // Async scanning
-    private static final AtomicReference<List<ColoredPos>> pendingResult = new AtomicReference<>(null);
+    private static final AtomicReference<List<HighlightBox>> pendingResult = new AtomicReference<>(null);
     private static CompletableFuture<Void> scanFuture = null;
 
     public static void register() {
@@ -95,11 +107,9 @@ public class BlockHighlightRenderer {
 
     /**
      * Parses a color string into [r, g, b]. Supports named colors and hex codes (#rrggbb).
-     * Returns null if unrecognized.
      */
     public static float[] parseColor(String color) {
         if (color == null || color.isEmpty()) return null;
-        // Hex color
         if (color.startsWith("#") && color.length() == 7) {
             try {
                 int rgb = Integer.parseInt(color.substring(1), 16);
@@ -112,7 +122,6 @@ public class BlockHighlightRenderer {
                 return null;
             }
         }
-        // Named color
         String upper = color.toUpperCase();
         for (int i = 0; i < COLOR_NAMES.length; i++) {
             if (COLOR_NAMES[i].equals(upper)) {
@@ -123,118 +132,308 @@ public class BlockHighlightRenderer {
     }
 
     /**
-     * Parses the blockId config field. Format: space-separated entries, each is BLOCKID or BLOCKID,COLOR.
-     * Returns a map of Block -> color (float[3]).
+     * Parsed scan target: either a set of block IDs or skull texture hashes with per-target settings.
      */
-    private static Map<Block, float[]> parseBlockEntries(String blockIdField, float[] defaultColor) {
-        Map<Block, float[]> result = new HashMap<>();
-        if (blockIdField == null || blockIdField.isBlank()) return result;
+    private static class ScanTarget {
+        final Map<Block, float[]> blockColors = new HashMap<>();
+        final Map<Block, Float> blockAlpha = new HashMap<>();
+        final Map<Block, Boolean> blockThroughWalls = new HashMap<>();
+        final Map<Block, Integer> blockRange = new HashMap<>();
+        final Map<String, float[]> skullHashColors = new HashMap<>();
+        final Map<String, Float> skullHashAlpha = new HashMap<>();
+        final Map<String, Boolean> skullHashThroughWalls = new HashMap<>();
+        final Map<String, Integer> skullHashRange = new HashMap<>();
+        final Map<String, float[]> skyblockIdColors = new HashMap<>();
+        final Map<String, Float> skyblockIdAlpha = new HashMap<>();
+        final Map<String, Boolean> skyblockIdThroughWalls = new HashMap<>();
+        final Map<String, Integer> skyblockIdRange = new HashMap<>();
+    }
 
-        for (String entry : blockIdField.trim().split("\\s+")) {
-            if (entry.isEmpty()) continue;
-            String blockPart;
-            float[] color = defaultColor;
-
-            int commaIdx = entry.indexOf(',');
-            if (commaIdx >= 0) {
-                blockPart = entry.substring(0, commaIdx);
-                String colorPart = entry.substring(commaIdx + 1);
-                float[] parsed = parseColor(colorPart);
-                if (parsed != null) color = parsed;
-            } else {
-                blockPart = entry;
+    /**
+     * Detects the current SkyBlock area from the tab menu.
+     * Looks for a line containing "Area: " or "⏣ " pattern in tab list display names.
+     */
+    static String detectCurrentArea() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.getConnection() == null) return null;
+        for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
+            Component displayName = entry.getTabListDisplayName();
+            if (displayName == null) continue;
+            String text = displayName.getString();
+            if (text == null) continue;
+            // SkyBlock tab menu has "Area: <name>" or " ⏣ <name>" lines
+            int areaIdx = text.indexOf("Area: ");
+            if (areaIdx >= 0) {
+                return text.substring(areaIdx + 6).trim();
             }
-
-            String normalized = blockPart.trim().toLowerCase();
-            if (normalized.isEmpty()) continue;
-            if (!normalized.contains(":")) {
-                normalized = "minecraft:" + normalized;
+            // Also check for the ⏣ symbol used by SkyBlock for area
+            int symbolIdx = text.indexOf("⏣ ");
+            if (symbolIdx >= 0) {
+                return text.substring(symbolIdx + 2).trim();
             }
-            Identifier targetId = Identifier.tryParse(normalized);
-            if (targetId == null) continue;
-            if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
-            result.put(BuiltInRegistries.BLOCK.getValue(targetId), color);
         }
-        return result;
+        return null;
+    }
+
+    /**
+     * Builds scan targets from BlockHighlightManager entries.
+     */
+    private static ScanTarget buildScanTargets(IslandTimeConfig config) {
+        ScanTarget targets = new ScanTarget();
+
+        int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
+        float[] defaultColor = COLORS[colorIdx];
+
+        // Detect current area from tab menu
+        String currentArea = detectCurrentArea();
+
+        // Parse from BlockHighlightManager entries
+        for (BlockHighlightManager.HighlightEntry he : BlockHighlightManager.getEntries()) {
+            if (!he.enabled || he.intensity <= 0) continue;
+
+            // Area filtering: if entry has an area set, only include if it matches current area
+            if (he.area != null && !he.area.isBlank()) {
+                if (currentArea == null || !he.area.equalsIgnoreCase(currentArea)) continue;
+            }
+
+            float[] color = parseColor(he.color);
+            if (color == null) color = defaultColor;
+            float alpha = he.intensity / 125.0f;
+
+            if (he.isSkullTarget()) {
+                String hash = he.getSkullHash();
+                if (hash != null && !hash.isEmpty()) {
+                    targets.skullHashColors.put(hash, color);
+                    targets.skullHashAlpha.put(hash, alpha);
+                    targets.skullHashThroughWalls.put(hash, he.throughWalls);
+                    targets.skullHashRange.put(hash, he.range);
+                }
+            } else if (he.isSkyBlockTarget()) {
+                String sbId = he.getSkyBlockId();
+                if (sbId != null && !sbId.isEmpty()) {
+                    targets.skyblockIdColors.put(sbId, color);
+                    targets.skyblockIdAlpha.put(sbId, alpha);
+                    targets.skyblockIdThroughWalls.put(sbId, he.throughWalls);
+                    targets.skyblockIdRange.put(sbId, he.range);
+                }
+            } else {
+                String blockId = he.getBlockId();
+                if (blockId == null) continue;
+                Identifier targetId = Identifier.tryParse(blockId);
+                if (targetId == null) continue;
+                if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
+                Block block = BuiltInRegistries.BLOCK.getValue(targetId);
+                targets.blockColors.put(block, color);
+                targets.blockAlpha.put(block, alpha);
+                targets.blockThroughWalls.put(block, he.throughWalls);
+                targets.blockRange.put(block, he.range);
+            }
+        }
+
+        return targets;
+    }
+
+    /**
+     * Build a config fingerprint for cache invalidation.
+     */
+    private static String buildFingerprint(IslandTimeConfig config) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(config.blockHighlight.intensity).append("|");
+        sb.append(config.blockHighlight.color).append("|");
+        sb.append(config.blockHighlight.throughWalls).append("|");
+        sb.append(config.blockHighlight.range).append("|");
+        // Include current area
+        String area = detectCurrentArea();
+        sb.append(area != null ? area : "").append("|");
+        // Include manager entries
+        for (BlockHighlightManager.HighlightEntry e : BlockHighlightManager.getEntries()) {
+            sb.append(e.target).append(",").append(e.color).append(",")
+              .append(e.range).append(",").append(e.throughWalls).append(",")
+              .append(e.enabled).append(",").append(e.intensity).append(",")
+              .append(e.area != null ? e.area : "").append(";");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Get the AABB of a block's visual/collision shape, used for hitbox-matched highlighting.
+     */
+    private static AABB getBlockBounds(BlockState state, Level level, BlockPos pos) {
+        try {
+            VoxelShape shape = state.getShape(level, pos);
+            if (!shape.isEmpty()) {
+                AABB bounds = shape.bounds();
+                return bounds;
+            }
+        } catch (Exception ignored) {}
+        // Fallback to full block
+        return new AABB(0, 0, 0, 1, 1, 1);
+    }
+
+    /**
+     * Extract the texture hash from a skull block entity.
+     */
+    private static String getSkullTextureHash(SkullBlockEntity skull) {
+        try {
+            var profile = skull.getOwnerProfile();
+            if (profile != null) {
+                for (Property prop : profile.partialProfile().properties().get("textures")) {
+                    String decoded = new String(Base64.getDecoder().decode(prop.value()));
+                    int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
+                    if (urlIdx >= 0) {
+                        int hashStart = urlIdx + "textures.minecraft.net/texture/".length();
+                        int hashEnd = decoded.indexOf('"', hashStart);
+                        if (hashEnd < 0) hashEnd = decoded.indexOf('}', hashStart);
+                        if (hashEnd > hashStart) {
+                            return decoded.substring(hashStart, hashEnd);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /**
+     * Extract a SkyBlock custom item ID from a block entity's NBT data.
+     * Checks custom_data.id and PublicBukkitValues."hypixel:id".
+     */
+    private static String extractSkyBlockId(BlockEntity be, Level level) {
+        try {
+            CompoundTag nbt = be.saveWithoutMetadata(level.registryAccess());
+            if (nbt.contains("custom_data")) {
+                CompoundTag customData = nbt.getCompound("custom_data").orElse(null);
+                if (customData != null && customData.contains("id")) {
+                    return customData.getString("id").orElse(null);
+                }
+            }
+            if (nbt.contains("PublicBukkitValues")) {
+                CompoundTag bukkit = nbt.getCompound("PublicBukkitValues").orElse(null);
+                if (bukkit != null && bukkit.contains("hypixel:id")) {
+                    return bukkit.getString("hypixel:id").orElse(null);
+                }
+            }
+        } catch (Exception ignored) {}
+        // Check skull profile signature for SkyBlock item ID (e.g. "DITTO_BLOB")
+        if (be instanceof SkullBlockEntity skull) {
+            try {
+                var profile = skull.getOwnerProfile();
+                if (profile != null) {
+                    var gp = profile.partialProfile();
+                    for (com.mojang.authlib.properties.Property prop : gp.properties().get("textures")) {
+                        String sig = prop.signature();
+                        if (sig != null && !sig.isEmpty() && sig.matches("[A-Z0-9_]+")) {
+                            return sig;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
     }
 
     private static void extract(LevelExtractionContext context) {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.level == null) {
-            highlightedPositions = List.of();
+            highlightedBoxes = List.of();
             return;
         }
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        if (config == null || !config.blockHighlight.enabled) {
-            highlightedPositions = List.of();
+        if (config == null) {
+            highlightedBoxes = List.of();
             return;
         }
 
-        int intensity = config.blockHighlight.intensity;
-        if (intensity <= 0) {
-            highlightedPositions = List.of();
+        // Check if anything is configured at all
+        boolean hasManagerEntries = config.blockHighlight.enabled
+                && BlockHighlightManager.getEntries().stream()
+                .anyMatch(e -> e.enabled && e.intensity > 0);
+
+        if (!hasManagerEntries) {
+            highlightedBoxes = List.of();
             return;
         }
-
-        String blockIdField = config.blockHighlight.blockId;
-        if (blockIdField == null || blockIdField.isBlank()) {
-            highlightedPositions = List.of();
-            return;
-        }
-
-        highlightA = intensity / 125.0f;
-        throughWalls = config.blockHighlight.throughWalls;
 
         // Pick up completed async scan results
-        List<ColoredPos> completed = pendingResult.getAndSet(null);
+        List<HighlightBox> completed = pendingResult.getAndSet(null);
         if (completed != null) {
-            highlightedPositions = completed;
+            highlightedBoxes = completed;
         }
 
         // Determine if we need to rescan
         BlockPos playerPos = client.player.blockPosition();
-        int range = config.blockHighlight.range;
         long currentTick = client.level.getGameTime();
+        String fingerprint = buildFingerprint(config);
 
-        boolean configChanged = !blockIdField.equals(lastBlockIdField) || range != lastRange;
+        boolean configChanged = !fingerprint.equals(lastConfigFingerprint);
         boolean moved = lastScanPos == null || playerPos.distSqr(lastScanPos) >= RESCAN_MOVE_THRESHOLD_SQ;
         boolean timedOut = (currentTick - lastScanTick) >= SCAN_INTERVAL_TICKS;
         boolean scanRunning = scanFuture != null && !scanFuture.isDone();
 
         if (!scanRunning && (configChanged || moved || timedOut)) {
             lastScanPos = playerPos.immutable();
-            lastBlockIdField = blockIdField;
-            lastRange = range;
+            lastConfigFingerprint = fingerprint;
             lastScanTick = currentTick;
 
-            // Parse target blocks with per-block colors on main thread (registry access)
-            int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
-            float[] defaultColor = COLORS[colorIdx];
-            Map<Block, float[]> blockColors = parseBlockEntries(blockIdField, defaultColor);
+            ScanTarget targets = buildScanTargets(config);
 
-            if (blockColors.isEmpty()) {
-                highlightedPositions = List.of();
+            if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty() && targets.skyblockIdColors.isEmpty()) {
+                highlightedBoxes = List.of();
                 return;
             }
 
-            Set<Block> targetBlocks = blockColors.keySet();
+            // Determine max range
+            int maxRange = 0;
+            for (int r : targets.blockRange.values()) maxRange = Math.max(maxRange, r);
+            for (int r : targets.skullHashRange.values()) maxRange = Math.max(maxRange, r);
+            for (int r : targets.skyblockIdRange.values()) maxRange = Math.max(maxRange, r);
 
-            // Capture references for async work
+            Set<Block> targetBlocks = targets.blockColors.keySet();
+            boolean hasSkullTargets = !targets.skullHashColors.isEmpty();
+            boolean hasSkyBlockTargets = !targets.skyblockIdColors.isEmpty();
+
+            // If we have skull targets, also scan for player_head/player_wall_head blocks
+            Set<Block> allScanBlocks = new HashSet<>(targetBlocks);
+            if (hasSkullTargets) {
+                Identifier headId = Identifier.tryParse("minecraft:player_head");
+                Identifier wallHeadId = Identifier.tryParse("minecraft:player_wall_head");
+                if (headId != null && BuiltInRegistries.BLOCK.containsKey(headId)) {
+                    allScanBlocks.add(BuiltInRegistries.BLOCK.getValue(headId));
+                }
+                if (wallHeadId != null && BuiltInRegistries.BLOCK.containsKey(wallHeadId)) {
+                    allScanBlocks.add(BuiltInRegistries.BLOCK.getValue(wallHeadId));
+                }
+            }
+
             Level level = client.level;
             BlockPos scanCenter = lastScanPos;
-            int scanRadius = range;
+            int scanRadius = maxRange;
+
+            // Capture skull hashes for async use
+            Map<String, float[]> skullColors = new HashMap<>(targets.skullHashColors);
+            Map<String, Float> skullAlphas = new HashMap<>(targets.skullHashAlpha);
+            Map<String, Boolean> skullWalls = new HashMap<>(targets.skullHashThroughWalls);
+            Map<String, Integer> skullRanges = new HashMap<>(targets.skullHashRange);
+            Map<String, float[]> sbIdColors = new HashMap<>(targets.skyblockIdColors);
+            Map<String, Float> sbIdAlphas = new HashMap<>(targets.skyblockIdAlpha);
+            Map<String, Boolean> sbIdWalls = new HashMap<>(targets.skyblockIdThroughWalls);
+            Map<String, Integer> sbIdRanges = new HashMap<>(targets.skyblockIdRange);
+            Map<Block, float[]> bColors = new HashMap<>(targets.blockColors);
+            Map<Block, Float> bAlphas = new HashMap<>(targets.blockAlpha);
+            Map<Block, Boolean> bWalls = new HashMap<>(targets.blockThroughWalls);
+            Map<Block, Integer> bRanges = new HashMap<>(targets.blockRange);
+
+            final boolean capturedHasSkyBlockTargets = hasSkyBlockTargets;
 
             scanFuture = CompletableFuture.runAsync(() -> {
-                List<ColoredPos> positions = new ArrayList<>();
+                List<HighlightBox> boxes = new ArrayList<>();
 
-                // Convert target blocks to a set of BlockStates for palette checking
                 Set<BlockState> targetStates = new HashSet<>();
-                for (Block block : targetBlocks) {
+                for (Block block : allScanBlocks) {
                     targetStates.addAll(block.getStateDefinition().getPossibleStates());
                 }
 
-                // Determine chunk and section bounds
                 int minX = scanCenter.getX() - scanRadius;
                 int maxX = scanCenter.getX() + scanRadius;
                 int minY = scanCenter.getY() - scanRadius;
@@ -283,11 +482,49 @@ public class BlockHighlightRenderer {
                                 for (int by = startY; by <= endY; by++) {
                                     for (int bz = startZ; bz <= endZ; bz++) {
                                         try {
-                                            BlockState state = level.getBlockState(new BlockPos(bx, by, bz));
+                                            BlockPos bpos = new BlockPos(bx, by, bz);
+                                            BlockState state = level.getBlockState(bpos);
                                             Block block = state.getBlock();
-                                            float[] color = blockColors.get(block);
+
+                                            // Check direct block match
+                                            float[] color = bColors.get(block);
                                             if (color != null) {
-                                                positions.add(new ColoredPos(new BlockPos(bx, by, bz), color[0], color[1], color[2]));
+                                                int range = bRanges.getOrDefault(block, scanRadius);
+                                                if (bpos.distSqr(scanCenter) <= (long) range * range) {
+                                                    float alpha = bAlphas.getOrDefault(block, 0.4f);
+                                                    boolean tw = bWalls.getOrDefault(block, true);
+                                                    AABB bounds = getBlockBounds(state, level, bpos);
+                                                    boxes.add(new HighlightBox(bpos,
+                                                            color[0], color[1], color[2], alpha,
+                                                            (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
+                                                            (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
+                                                            tw));
+                                                }
+                                                continue; // Don't also check skull
+                                            }
+
+                                            // Check skull texture hash match
+                                            if (!skullColors.isEmpty()) {
+                                                BlockEntity be = level.getBlockEntity(bpos);
+                                                if (be instanceof SkullBlockEntity skull) {
+                                                    String hash = getSkullTextureHash(skull);
+                                                    if (hash != null) {
+                                                        float[] skullColor = skullColors.get(hash);
+                                                        if (skullColor != null) {
+                                                            int range = skullRanges.getOrDefault(hash, scanRadius);
+                                                            if (bpos.distSqr(scanCenter) <= (long) range * range) {
+                                                                float alpha = skullAlphas.getOrDefault(hash, 0.4f);
+                                                                boolean tw = skullWalls.getOrDefault(hash, true);
+                                                                AABB bounds = getBlockBounds(state, level, bpos);
+                                                                boxes.add(new HighlightBox(bpos,
+                                                                        skullColor[0], skullColor[1], skullColor[2], alpha,
+                                                                        (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
+                                                                        (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
+                                                                        tw));
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         } catch (Exception ignored) {
                                         }
@@ -297,19 +534,72 @@ public class BlockHighlightRenderer {
                         }
                     }
                 }
-                pendingResult.set(positions);
+
+                // SkyBlock ID matching: iterate chunk block entities directly
+                if (capturedHasSkyBlockTargets) {
+                    for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+                        for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                            LevelChunk chunk;
+                            try {
+                                chunk = level.getChunk(cx, cz);
+                            } catch (Exception e) {
+                                continue;
+                            }
+                            if (chunk == null) continue;
+
+                            for (Map.Entry<BlockPos, BlockEntity> entry : chunk.getBlockEntities().entrySet()) {
+                                try {
+                                    BlockPos bpos = entry.getKey();
+                                    if (bpos.getX() < minX || bpos.getX() > maxX
+                                            || bpos.getY() < minY || bpos.getY() > maxY
+                                            || bpos.getZ() < minZ || bpos.getZ() > maxZ) continue;
+
+                                    BlockEntity be = entry.getValue();
+                                    String sbId = extractSkyBlockId(be, level);
+                                    if (sbId == null) continue;
+
+                                    float[] sbColor = sbIdColors.get(sbId);
+                                    if (sbColor == null) {
+                                        // Try case-insensitive match
+                                        for (Map.Entry<String, float[]> e2 : sbIdColors.entrySet()) {
+                                            if (e2.getKey().equalsIgnoreCase(sbId)) {
+                                                sbColor = e2.getValue();
+                                                sbId = e2.getKey(); // use the key for lookups below
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (sbColor == null) continue;
+
+                                    int range = sbIdRanges.getOrDefault(sbId, scanRadius);
+                                    if (bpos.distSqr(scanCenter) > (long) range * range) continue;
+
+                                    float alpha = sbIdAlphas.getOrDefault(sbId, 0.4f);
+                                    boolean tw = sbIdWalls.getOrDefault(sbId, true);
+                                    BlockState state = level.getBlockState(bpos);
+                                    AABB bounds = getBlockBounds(state, level, bpos);
+                                    boxes.add(new HighlightBox(bpos,
+                                            sbColor[0], sbColor[1], sbColor[2], alpha,
+                                            (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
+                                            (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
+                                            tw));
+                                } catch (Exception ignored) {
+                                }
+                            }
+                        }
+                    }
+                }
+
+                pendingResult.set(boxes);
             });
         }
     }
 
     private static void render(LevelRenderContext context) {
-        if (highlightedPositions.isEmpty()) return;
+        if (highlightedBoxes.isEmpty()) return;
 
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
-        VertexConsumer buffer = bufferSource.getBuffer(
-                throughWalls ? NO_DEPTH_FILLED_BOX : RenderTypes.debugFilledBox()
-        );
 
         var cameraState = context.levelState().cameraRenderState;
         double camX = cameraState.pos.x;
@@ -321,22 +611,33 @@ public class BlockHighlightRenderer {
 
         Matrix4fc pose = poseStack.last().pose();
 
-        if (throughWalls) {
-            for (ColoredPos cp : highlightedPositions) {
-                BlockPos pos = cp.pos;
-                renderFilledBox(pose, buffer,
-                        pos.getX() - 0.001f, pos.getY() - 0.001f, pos.getZ() - 0.001f,
-                        pos.getX() + 1.001f, pos.getY() + 1.001f, pos.getZ() + 1.001f,
-                        cp.r, cp.g, cp.b, highlightA);
-            }
-        } else {
-            Minecraft client = Minecraft.getInstance();
-            Level level = client.level;
-            if (level != null) {
-                for (ColoredPos cp : highlightedPositions) {
-                    renderExposedFaces(pose, buffer, cp.pos, level,
-                            cp.r, cp.g, cp.b, highlightA);
-                }
+        // Render through-walls boxes
+        VertexConsumer noDepthBuffer = bufferSource.getBuffer(NO_DEPTH_FILLED_BOX);
+        VertexConsumer depthBuffer = bufferSource.getBuffer(RenderTypes.debugFilledBox());
+
+        Minecraft client = Minecraft.getInstance();
+        Level level = client.level;
+
+        for (HighlightBox box : highlightedBoxes) {
+            BlockPos pos = box.pos;
+            float pad = 0.001f;
+            float x0 = pos.getX() + box.minX - pad;
+            float y0 = pos.getY() + box.minY - pad;
+            float z0 = pos.getZ() + box.minZ - pad;
+            float x1 = pos.getX() + box.maxX + pad;
+            float y1 = pos.getY() + box.maxY + pad;
+            float z1 = pos.getZ() + box.maxZ + pad;
+
+            VertexConsumer buffer = box.throughWalls ? noDepthBuffer : depthBuffer;
+
+            if (box.throughWalls) {
+                renderFilledBox(pose, buffer, x0, y0, z0, x1, y1, z1,
+                        box.r, box.g, box.b, box.a);
+            } else if (level != null) {
+                // For non-through-walls, only render exposed faces
+                renderExposedFaces(pose, buffer, pos, level,
+                        x0, y0, z0, x1, y1, z1,
+                        box.r, box.g, box.b, box.a);
             }
         }
 
@@ -346,14 +647,9 @@ public class BlockHighlightRenderer {
 
     private static void renderExposedFaces(Matrix4fc pose, VertexConsumer buffer,
                                             BlockPos pos, Level level,
+                                            float x0, float y0, float z0,
+                                            float x1, float y1, float z1,
                                             float r, float g, float b, float a) {
-        float x0 = pos.getX() - 0.001f;
-        float y0 = pos.getY() - 0.001f;
-        float z0 = pos.getZ() - 0.001f;
-        float x1 = pos.getX() + 1.001f;
-        float y1 = pos.getY() + 1.001f;
-        float z1 = pos.getZ() + 1.001f;
-
         if (!level.getBlockState(pos.south()).isSolidRender()) {
             buffer.addVertex(pose, x0, y0, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y0, z1).setColor(r, g, b, a);
@@ -392,7 +688,7 @@ public class BlockHighlightRenderer {
         }
     }
 
-    private static void renderFilledBox(Matrix4fc positionMatrix, VertexConsumer buffer,
+    static void renderFilledBox(Matrix4fc positionMatrix, VertexConsumer buffer,
                                          float minX, float minY, float minZ,
                                          float maxX, float maxY, float maxZ,
                                          float r, float g, float b, float a) {

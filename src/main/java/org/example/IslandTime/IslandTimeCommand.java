@@ -18,6 +18,16 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.awt.image.BufferedImage;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.io.IOException;
+import java.net.URI;
+import java.net.HttpURLConnection;
+import java.io.InputStream;
+import javax.imageio.ImageIO;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
 
@@ -45,32 +55,41 @@ public class IslandTimeCommand {
                             ghostBlock(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("waila")
+                        .executes(ctx -> {
+                            WailaHandler.inspect(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("copyskin")
+                        .then(argument("url", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String url = StringArgumentType.getString(ctx, "url");
+                                    copySkinImage(ctx.getSource().getClient(), url);
+                                    return 1;
+                                })))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
                             return 1;
                         }))
+                .then(literal("highlights")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new BlockHighlightScreen()));
+                            return 1;
+                        }))
                 .then(literal("highlight")
-                        .executes(ctx -> { showHighlightStatus(ctx.getSource().getClient()); return 1; })
-                        .then(literal("clear").executes(ctx -> { return highlightClear(ctx.getSource().getClient()); }))
-                        .then(literal("on").executes(ctx -> { return highlightOn(ctx.getSource().getClient()); }))
-                        .then(literal("enable").executes(ctx -> { return highlightOn(ctx.getSource().getClient()); }))
-                        .then(literal("off").executes(ctx -> { return highlightOff(ctx.getSource().getClient()); }))
-                        .then(literal("disable").executes(ctx -> { return highlightOff(ctx.getSource().getClient()); }))
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new BlockHighlightScreen()));
+                            return 1;
+                        })
                         .then(literal("add")
                                 .then(argument("blockid", StringArgumentType.greedyString())
                                         .executes(ctx -> { return highlightAdd(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
                         .then(literal("remove")
                                 .then(argument("blockid", StringArgumentType.greedyString())
-                                        .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
-                        .then(literal("color")
-                                .then(argument("color", StringArgumentType.word())
-                                        .executes(ctx -> { return highlightDefaultColor(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "color")); })))
-                        .then(literal("walls")
-                                .then(literal("on").executes(ctx -> { return highlightWalls(ctx.getSource().getClient(), true); }))
-                                .then(literal("off").executes(ctx -> { return highlightWalls(ctx.getSource().getClient(), false); })))
-                        .then(argument("blockid", StringArgumentType.greedyString())
-                                .executes(ctx -> { return highlightSet(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
+                                        .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))))
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
@@ -100,32 +119,41 @@ public class IslandTimeCommand {
                             ghostBlock(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("waila")
+                        .executes(ctx -> {
+                            WailaHandler.inspect(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("copyskin")
+                        .then(argument("url", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String url = StringArgumentType.getString(ctx, "url");
+                                    copySkinImage(ctx.getSource().getClient(), url);
+                                    return 1;
+                                })))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
                             return 1;
                         }))
+                .then(literal("highlights")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new BlockHighlightScreen()));
+                            return 1;
+                        }))
                 .then(literal("highlight")
-                        .executes(ctx -> { showHighlightStatus(ctx.getSource().getClient()); return 1; })
-                        .then(literal("clear").executes(ctx -> { return highlightClear(ctx.getSource().getClient()); }))
-                        .then(literal("on").executes(ctx -> { return highlightOn(ctx.getSource().getClient()); }))
-                        .then(literal("enable").executes(ctx -> { return highlightOn(ctx.getSource().getClient()); }))
-                        .then(literal("off").executes(ctx -> { return highlightOff(ctx.getSource().getClient()); }))
-                        .then(literal("disable").executes(ctx -> { return highlightOff(ctx.getSource().getClient()); }))
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new BlockHighlightScreen()));
+                            return 1;
+                        })
                         .then(literal("add")
                                 .then(argument("blockid", StringArgumentType.greedyString())
                                         .executes(ctx -> { return highlightAdd(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
                         .then(literal("remove")
                                 .then(argument("blockid", StringArgumentType.greedyString())
-                                        .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
-                        .then(literal("color")
-                                .then(argument("color", StringArgumentType.word())
-                                        .executes(ctx -> { return highlightDefaultColor(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "color")); })))
-                        .then(literal("walls")
-                                .then(literal("on").executes(ctx -> { return highlightWalls(ctx.getSource().getClient(), true); }))
-                                .then(literal("off").executes(ctx -> { return highlightWalls(ctx.getSource().getClient(), false); })))
-                        .then(argument("blockid", StringArgumentType.greedyString())
-                                .executes(ctx -> { return highlightSet(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
+                                        .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))))
                 .then(literal("players")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
@@ -787,90 +815,99 @@ public class IslandTimeCommand {
                     return 1;
                 }));
 
-        // /highlight — alias, redirects to /it highlight
+        // /highlight — alias, opens highlight GUI
         dispatcher.register(literal("highlight")
                 .executes(ctx -> {
-                    showHighlightStatus(ctx.getSource().getClient());
+                    Minecraft client = ctx.getSource().getClient();
+                    client.execute(() -> client.setScreen(new BlockHighlightScreen()));
                     return 1;
                 })
-                .then(literal("clear").executes(ctx -> { return highlightClear(ctx.getSource().getClient()); }))
-                .then(literal("on").executes(ctx -> { return highlightOn(ctx.getSource().getClient()); }))
-                .then(literal("enable").executes(ctx -> { return highlightOn(ctx.getSource().getClient()); }))
-                .then(literal("off").executes(ctx -> { return highlightOff(ctx.getSource().getClient()); }))
-                .then(literal("disable").executes(ctx -> { return highlightOff(ctx.getSource().getClient()); }))
                 .then(literal("add")
                         .then(argument("blockid", StringArgumentType.greedyString())
                                 .executes(ctx -> { return highlightAdd(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
                 .then(literal("remove")
                         .then(argument("blockid", StringArgumentType.greedyString())
-                                .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
-                .then(literal("color")
-                        .then(argument("color", StringArgumentType.word())
-                                .executes(ctx -> { return highlightDefaultColor(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "color")); })))
-                .then(literal("walls")
-                        .then(literal("on").executes(ctx -> { return highlightWalls(ctx.getSource().getClient(), true); }))
-                        .then(literal("off").executes(ctx -> { return highlightWalls(ctx.getSource().getClient(), false); })))
-                .then(argument("blockid", StringArgumentType.greedyString())
-                        .executes(ctx -> { return highlightSet(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })));
+                                .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))));
+    }
+
+    // -------------------------------------------------------------------------
+    // Copy skin image to clipboard
+    // -------------------------------------------------------------------------
+
+    private static void copySkinImage(Minecraft client, String url) {
+        client.player.sendSystemMessage(
+                Component.literal("Downloading skin texture...").withStyle(ChatFormatting.GRAY));
+        // Run download off the main thread
+        new Thread(() -> {
+            try {
+                // Use HttpURLConnection to properly handle redirects (http -> https)
+                HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
+                conn.connect();
+
+                // Follow manual redirects if needed (http->https redirects sometimes aren't auto-followed)
+                int status = conn.getResponseCode();
+                if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 303) {
+                    String newUrl = conn.getHeaderField("Location");
+                    conn.disconnect();
+                    conn = (HttpURLConnection) URI.create(newUrl).toURL().openConnection();
+                    conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
+                    conn.connect();
+                }
+
+                try (InputStream in = conn.getInputStream()) {
+                    BufferedImage image = ImageIO.read(in);
+                    if (image == null) {
+                        client.execute(() -> client.player.sendSystemMessage(
+                                Component.literal("Failed to decode skin image from server.").withStyle(ChatFormatting.RED)));
+                        return;
+                    }
+                    // Copy image to system clipboard
+                    Transferable transferable = new Transferable() {
+                        @Override
+                        public DataFlavor[] getTransferDataFlavors() {
+                            return new DataFlavor[]{DataFlavor.imageFlavor};
+                        }
+                        @Override
+                        public boolean isDataFlavorSupported(DataFlavor flavor) {
+                            return DataFlavor.imageFlavor.equals(flavor);
+                        }
+                        @Override
+                        public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+                            if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
+                            return image;
+                        }
+                    };
+                    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
+                } finally {
+                    conn.disconnect();
+                }
+            } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                client.execute(() -> client.player.sendSystemMessage(
+                        Component.literal("Failed to copy skin: " + msg).withStyle(ChatFormatting.RED)));
+            }
+        }, "IslandTime-CopySkin").start();
     }
 
     // -------------------------------------------------------------------------
     // Highlight helpers
     // -------------------------------------------------------------------------
 
-    private static void showHighlightStatus(Minecraft client) {
-        IslandTimeConfig cfg = ConfigManager.getConfig();
-        String current = cfg.blockHighlight.blockId;
-        String[] colorNames = {"Yellow", "Red", "Green", "Blue", "Magenta", "Cyan", "White"};
-        String colorName = colorNames[Math.max(0, Math.min(cfg.blockHighlight.color, colorNames.length - 1))];
-        if (current == null || current.isBlank()) {
-            client.player.sendSystemMessage(
-                    Component.literal("No block highlight set. Use /it highlight <block_id> to add one.")
-                            .withStyle(ChatFormatting.YELLOW));
-        } else {
-            client.player.sendSystemMessage(
-                    Component.literal("Highlighting: ").withStyle(ChatFormatting.AQUA)
-                            .append(Component.literal(current).withStyle(ChatFormatting.GREEN)));
-            client.player.sendSystemMessage(
-                    Component.literal("  Intensity: " + cfg.blockHighlight.intensity
-                            + " | Default color: " + colorName
-                            + " | Walls: " + (cfg.blockHighlight.throughWalls ? "through" : "normal")
-                            + " | " + (cfg.blockHighlight.enabled ? "enabled" : "disabled"))
-                            .withStyle(ChatFormatting.GRAY));
-        }
-    }
-
-    private static int highlightClear(Minecraft client) {
-        ConfigManager.getConfig().blockHighlight.blockId = "";
-        ConfigManager.saveToFile();
-        client.player.sendSystemMessage(Component.literal("Block highlight cleared.").withStyle(ChatFormatting.GREEN));
-        return 1;
-    }
-
-    private static int highlightOn(Minecraft client) {
-        ConfigManager.getConfig().blockHighlight.enabled = true;
-        ConfigManager.saveToFile();
-        client.player.sendSystemMessage(Component.literal("Block highlight enabled.").withStyle(ChatFormatting.GREEN));
-        return 1;
-    }
-
-    private static int highlightOff(Minecraft client) {
-        ConfigManager.getConfig().blockHighlight.enabled = false;
-        ConfigManager.saveToFile();
-        client.player.sendSystemMessage(Component.literal("Block highlight disabled.").withStyle(ChatFormatting.YELLOW));
-        return 1;
-    }
-
     private static int highlightAdd(Minecraft client, String input) {
-        // Input format: "blockid" or "blockid color" where color is a named color or hex
+        // Input format: "target" or "target color"
+        // target can be: stone (block), sb:DITTO_SKULL (skyblock id), skull:HASH
         String[] parts = input.trim().split("\\s+", 2);
-        String blockId = parts[0];
-        String entry = blockId;
+        String target = parts[0];
+        String color = "yellow";
         if (parts.length > 1) {
             String colorStr = parts[1].trim();
             float[] parsed = BlockHighlightRenderer.parseColor(colorStr);
             if (parsed != null) {
-                entry = blockId + "," + colorStr;
+                color = colorStr;
             } else {
                 client.player.sendSystemMessage(
                         Component.literal("Unknown color '" + colorStr + "'. Using default. Options: yellow, red, green, blue, magenta, cyan, white, or #rrggbb")
@@ -878,105 +915,45 @@ public class IslandTimeCommand {
             }
         }
 
-        IslandTimeConfig cfg = ConfigManager.getConfig();
-        String current = cfg.blockHighlight.blockId;
-        if (current == null || current.isBlank()) {
-            cfg.blockHighlight.blockId = entry;
-        } else {
-            cfg.blockHighlight.blockId = current + " " + entry;
+        // Check for duplicates
+        int existing = BlockHighlightManager.findByTarget(target);
+        if (existing >= 0) {
+            client.player.sendSystemMessage(
+                    Component.literal("Already highlighting: ").withStyle(ChatFormatting.YELLOW)
+                            .append(Component.literal(target).withStyle(ChatFormatting.AQUA)));
+            return 1;
         }
-        if (cfg.blockHighlight.intensity == 0) cfg.blockHighlight.intensity = 50;
-        ConfigManager.saveToFile();
+
+        BlockHighlightManager.HighlightEntry entry = new BlockHighlightManager.HighlightEntry(target, color);
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (config != null) {
+            entry.range = config.blockHighlight.range;
+            entry.intensity = config.blockHighlight.intensity;
+            entry.throughWalls = config.blockHighlight.throughWalls;
+        }
+        BlockHighlightManager.getEntries().add(entry);
+        BlockHighlightManager.save();
         client.player.sendSystemMessage(
                 Component.literal("Added to highlights: ").withStyle(ChatFormatting.GREEN)
-                        .append(Component.literal(entry).withStyle(ChatFormatting.AQUA)));
+                        .append(Component.literal(target).withStyle(ChatFormatting.AQUA)));
         return 1;
     }
 
     private static int highlightRemove(Minecraft client, String input) {
-        String id = input.trim().toLowerCase();
-        IslandTimeConfig cfg = ConfigManager.getConfig();
-        String current = cfg.blockHighlight.blockId;
-        if (current == null || current.isBlank()) {
-            client.player.sendSystemMessage(Component.literal("No blocks highlighted.").withStyle(ChatFormatting.YELLOW));
+        String target = input.trim();
+
+        int index = BlockHighlightManager.findByTarget(target);
+        if (index < 0) {
+            client.player.sendSystemMessage(
+                    Component.literal("Not found in highlights: ").withStyle(ChatFormatting.YELLOW)
+                            .append(Component.literal(target).withStyle(ChatFormatting.AQUA)));
             return 1;
         }
-        String[] entries = current.trim().split("\\s+");
-        StringBuilder result = new StringBuilder();
-        for (String entry : entries) {
-            String blockPart = entry.contains(",") ? entry.substring(0, entry.indexOf(',')) : entry;
-            String normalized = blockPart.toLowerCase();
-            if (!normalized.contains(":")) normalized = "minecraft:" + normalized;
-            String normalizedId = id.contains(":") ? id : "minecraft:" + id;
-            if (!normalized.equals(normalizedId)) {
-                if (result.length() > 0) result.append(" ");
-                result.append(entry);
-            }
-        }
-        cfg.blockHighlight.blockId = result.toString();
-        ConfigManager.saveToFile();
+
+        BlockHighlightManager.removeEntry(index);
         client.player.sendSystemMessage(
                 Component.literal("Removed from highlights: ").withStyle(ChatFormatting.GREEN)
-                        .append(Component.literal(id).withStyle(ChatFormatting.AQUA)));
-        return 1;
-    }
-
-    private static int highlightDefaultColor(Minecraft client, String colorArg) {
-        // Support both named colors and hex for the default color
-        if (colorArg.startsWith("#")) {
-            float[] parsed = BlockHighlightRenderer.parseColor(colorArg);
-            if (parsed == null) {
-                client.player.sendSystemMessage(
-                        Component.literal("Invalid hex color. Use format #rrggbb (e.g. #ff0000)")
-                                .withStyle(ChatFormatting.RED));
-                return 0;
-            }
-            // For hex defaults, we store as index 0 but user should use per-block colors
-            client.player.sendSystemMessage(
-                    Component.literal("For hex colors, use per-block syntax: /it highlight add <blockid> " + colorArg)
-                            .withStyle(ChatFormatting.YELLOW));
-            return 1;
-        }
-        String upper = colorArg.toUpperCase();
-        String[] colorNames = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"};
-        int idx = -1;
-        for (int i = 0; i < colorNames.length; i++) {
-            if (colorNames[i].equals(upper)) { idx = i; break; }
-        }
-        if (idx == -1) {
-            client.player.sendSystemMessage(
-                    Component.literal("Unknown color. Options: yellow, red, green, blue, magenta, cyan, white")
-                            .withStyle(ChatFormatting.RED));
-            return 0;
-        }
-        ConfigManager.getConfig().blockHighlight.color = idx;
-        ConfigManager.saveToFile();
-        client.player.sendSystemMessage(
-                Component.literal("Default highlight color set to: ").withStyle(ChatFormatting.GREEN)
-                        .append(Component.literal(upper).withStyle(ChatFormatting.AQUA)));
-        return 1;
-    }
-
-    private static int highlightWalls(Minecraft client, boolean through) {
-        ConfigManager.getConfig().blockHighlight.throughWalls = through;
-        ConfigManager.saveToFile();
-        if (through) {
-            client.player.sendSystemMessage(Component.literal("Highlight now visible through walls.").withStyle(ChatFormatting.GREEN));
-        } else {
-            client.player.sendSystemMessage(Component.literal("Highlight no longer visible through walls.").withStyle(ChatFormatting.YELLOW));
-        }
-        return 1;
-    }
-
-    private static int highlightSet(Minecraft client, String input) {
-        ConfigManager.getConfig().blockHighlight.blockId = input.trim();
-        if (ConfigManager.getConfig().blockHighlight.intensity == 0) {
-            ConfigManager.getConfig().blockHighlight.intensity = 50;
-        }
-        ConfigManager.saveToFile();
-        client.player.sendSystemMessage(
-                Component.literal("Now highlighting: ").withStyle(ChatFormatting.GREEN)
-                        .append(Component.literal(input.trim()).withStyle(ChatFormatting.AQUA)));
+                        .append(Component.literal(target).withStyle(ChatFormatting.AQUA)));
         return 1;
     }
 
@@ -1035,10 +1012,13 @@ public class IslandTimeCommand {
                 {"/chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
                 {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
 
-                // Page 8 - Ghost & PPG
+                // Page 8 - Ghost, WAILA & Block Highlights
                 {"/islandtime ghost", "Client-side remove the block you are looking at (alias: /it ghost). Can be disabled in /islandtime under Misc."},
+                {"/it highlight", "Open the Block Highlights GUI (same as /it highlights). Use /it highlight add <id> to add from chat."},
+                {"/it highlight add <id>", "Add to highlights. stone=block, sb:DITTO_SKULL=skyblock ID, skull:HASH=texture hash. Optionally add color: /it highlight add stone red"},
+                {"/it highlight remove <id>", "Remove a highlight entry by target name"},
+                {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
-                {"PPG (Price Per Gabagool)", "Shown in Very Crude Gabagool sell offer setup below the Total line. PPG = Total / 192, rounded up to nearest 0.1. Toggle in /islandtime under Misc."},
                 {"/islandtime help [page]", "Show this help (pages 1-8)"},
         };
 

@@ -349,33 +349,38 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class BlockHighlight {
+        @ConfigOption(name = "Open Block Highlights", desc = "Click to open the block highlights GUI for managing individual entries. You can also use /it highlights")
+        @ConfigEditorButton(buttonText = " Open Block Highlights ")
+        public Runnable openBlockHighlightsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new BlockHighlightScreen()));
+            }
+        };
+
         @Expose
         @ConfigOption(name = "Enabled", desc = "Toggle the block highlight on or off")
         @ConfigEditorBoolean
         public boolean enabled = true;
 
         @Expose
-        @ConfigOption(name = "Block IDs", desc = "Space-separated block entries. Each entry is BLOCKID or BLOCKID,COLOR. Color can be a name (yellow, red, green, blue, magenta, cyan, white) or hex (#ff0000). Example: diamond_ore,cyan gold_ore,#ffaa00 iron_ore")
-        @ConfigEditorText
-        public String blockId = "";
-
-        @Expose
-        @ConfigOption(name = "Highlight Intensity", desc = "How visible the highlight is (0 = off, 100 = maximum brightness)")
+        @ConfigOption(name = "Default Intensity", desc = "Default highlight intensity for new entries (0 = off, 100 = maximum brightness)")
         @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
-        public int intensity = 0;
+        public int intensity = 50;
 
         @Expose
-        @ConfigOption(name = "Color", desc = "Highlight color")
+        @ConfigOption(name = "Default Color", desc = "Default highlight color for new entries")
         @ConfigEditorDropdown(values = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"})
         public int color = 0;
 
         @Expose
-        @ConfigOption(name = "Through Walls", desc = "Show highlights through blocks (disable obstruction)")
+        @ConfigOption(name = "Default Through Walls", desc = "Default through-walls setting for new entries")
         @ConfigEditorBoolean
         public boolean throughWalls = true;
 
         @Expose
-        @ConfigOption(name = "Range", desc = "How far away to scan for blocks (in blocks)")
+        @ConfigOption(name = "Default Range", desc = "Default scan range for new entries (in blocks)")
         @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
     }
