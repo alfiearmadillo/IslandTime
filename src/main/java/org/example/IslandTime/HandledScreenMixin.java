@@ -12,6 +12,7 @@ import org.example.islandtime.ConfigManager;
 import org.example.islandtime.IslandTimeCommand;
 import org.example.islandtime.IslandTimeConfig;
 import org.example.islandtime.BackpackNbtParser;
+import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.FakeSlot;
 import org.example.islandtime.FavouriteGuiViewer;
 import org.jetbrains.annotations.Nullable;
