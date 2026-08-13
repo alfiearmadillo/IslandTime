@@ -76,9 +76,10 @@ public class WailaHandler {
                                                 Component.literal("Click to copy position").withStyle(ChatFormatting.GRAY))))));
 
         // Block state properties
-        if (!state.getValues().isEmpty()) {
+        var values = state.getValues().toList();
+        if (!values.isEmpty()) {
             StringBuilder props = new StringBuilder();
-            for (Map.Entry<net.minecraft.world.level.block.state.properties.Property<?>, Comparable<?>> entry : state.getValues().entrySet()) {
+            for (var entry : values) {
                 if (props.length() > 0) props.append(", ");
                 props.append(entry.getKey().getName()).append("=").append(entry.getValue());
             }
@@ -162,18 +163,18 @@ public class WailaHandler {
         // Check custom_data compound for "id" key
         if (nbt.contains("custom_data")) {
             try {
-                CompoundTag customData = nbt.getCompound("custom_data");
-                if (customData.contains("id")) {
-                    return customData.getString("id");
+                CompoundTag customData = nbt.getCompound("custom_data").orElse(null);
+                if (customData != null && customData.contains("id")) {
+                    return customData.getString("id").orElse(null);
                 }
             } catch (Exception ignored) {}
         }
         // Check PublicBukkitValues for hypixel:id
         if (nbt.contains("PublicBukkitValues")) {
             try {
-                CompoundTag bukkit = nbt.getCompound("PublicBukkitValues");
-                if (bukkit.contains("hypixel:id")) {
-                    return bukkit.getString("hypixel:id");
+                CompoundTag bukkit = nbt.getCompound("PublicBukkitValues").orElse(null);
+                if (bukkit != null && bukkit.contains("hypixel:id")) {
+                    return bukkit.getString("hypixel:id").orElse(null);
                 }
             } catch (Exception ignored) {}
         }
@@ -185,8 +186,8 @@ public class WailaHandler {
         // In modern MC, SkullBlockEntity has getOwnerProfile()
         try {
             var profile = skull.getOwnerProfile();
-            if (profile != null && profile.isPresent()) {
-                GameProfile gameProfile = profile.get();
+            if (profile != null) {
+                GameProfile gameProfile = profile.gameProfile();
 
                 // Display owner name
                 if (gameProfile.getName() != null && !gameProfile.getName().isEmpty()) {

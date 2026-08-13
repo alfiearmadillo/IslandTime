@@ -299,8 +299,8 @@ public class BlockHighlightRenderer {
     private static String getSkullTextureHash(SkullBlockEntity skull) {
         try {
             var profile = skull.getOwnerProfile();
-            if (profile != null && profile.isPresent()) {
-                GameProfile gp = profile.get();
+            if (profile != null) {
+                GameProfile gp = profile.gameProfile();
                 for (Property prop : gp.getProperties().get("textures")) {
                     String decoded = new String(Base64.getDecoder().decode(prop.value()));
                     int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
@@ -326,15 +326,15 @@ public class BlockHighlightRenderer {
         try {
             CompoundTag nbt = be.saveWithoutMetadata(level.registryAccess());
             if (nbt.contains("custom_data")) {
-                CompoundTag customData = nbt.getCompound("custom_data");
-                if (customData.contains("id")) {
-                    return customData.getString("id");
+                CompoundTag customData = nbt.getCompound("custom_data").orElse(null);
+                if (customData != null && customData.contains("id")) {
+                    return customData.getString("id").orElse(null);
                 }
             }
             if (nbt.contains("PublicBukkitValues")) {
-                CompoundTag bukkit = nbt.getCompound("PublicBukkitValues");
-                if (bukkit.contains("hypixel:id")) {
-                    return bukkit.getString("hypixel:id");
+                CompoundTag bukkit = nbt.getCompound("PublicBukkitValues").orElse(null);
+                if (bukkit != null && bukkit.contains("hypixel:id")) {
+                    return bukkit.getString("hypixel:id").orElse(null);
                 }
             }
         } catch (Exception ignored) {}
