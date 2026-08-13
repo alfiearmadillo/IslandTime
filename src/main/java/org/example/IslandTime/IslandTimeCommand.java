@@ -928,10 +928,10 @@ public class IslandTimeCommand {
                     String absPath = tempFile.getAbsolutePath().replace("'", "''");
                     String psScript =
                             "Add-Type -AssemblyName System.Windows.Forms; " +
-                            "Add-Type -AssemblyName System.Drawing; " +
-                            "$img = [System.Drawing.Image]::FromFile('" + absPath + "'); " +
-                            "[System.Windows.Forms.Clipboard]::SetImage($img); " +
-                            "$img.Dispose()";
+                            "$ms = New-Object System.IO.MemoryStream(,[System.IO.File]::ReadAllBytes('" + absPath + "')); " +
+                            "$dataObj = New-Object System.Windows.Forms.DataObject; " +
+                            "$dataObj.SetData('PNG',$ms); " +
+                            "[System.Windows.Forms.Clipboard]::SetDataObject($dataObj,$true);";
                     copyError = runClipboardCommand(
                             new String[]{"powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-Command", psScript},
                             null);
