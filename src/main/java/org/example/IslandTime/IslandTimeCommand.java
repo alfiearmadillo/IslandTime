@@ -59,9 +59,14 @@ public class IslandTimeCommand {
                         }))
                 .then(literal("copyskin")
                         .executes(ctx -> {
-                            copySkinImage(ctx.getSource().getClient());
+                            copySkinImage(ctx.getSource().getClient(), null);
                             return 1;
-                        }))
+                        })
+                        .then(argument("hash", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    copySkinImage(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "hash"));
+                                    return 1;
+                                })))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -121,9 +126,14 @@ public class IslandTimeCommand {
                         }))
                 .then(literal("copyskin")
                         .executes(ctx -> {
-                            copySkinImage(ctx.getSource().getClient());
+                            copySkinImage(ctx.getSource().getClient(), null);
                             return 1;
-                        }))
+                        })
+                        .then(argument("hash", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    copySkinImage(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "hash"));
+                                    return 1;
+                                })))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -827,45 +837,56 @@ public class IslandTimeCommand {
     // Copy skin image to clipboard
     // -------------------------------------------------------------------------
 
-    private static void copySkinImage(Minecraft client) {
+    private static void copySkinImage(Minecraft client, String textureHash) {
         if (client.level == null || client.player == null) {
             return;
         }
-        if (client.hitResult == null || client.hitResult.getType() != HitResult.Type.BLOCK) {
-            client.player.sendSystemMessage(
-                    Component.literal("Look at a player head/skull block and try again.").withStyle(ChatFormatting.RED));
-            return;
-        }
 
-        BlockHitResult hit = (BlockHitResult) client.hitResult;
-        BlockPos pos = hit.getBlockPos();
-        net.minecraft.world.level.block.entity.BlockEntity blockEntity = client.level.getBlockEntity(pos);
+        net.minecraft.resources.Identifier textureId;
 
-        if (!(blockEntity instanceof net.minecraft.world.level.block.entity.SkullBlockEntity skull)) {
-            client.player.sendSystemMessage(
-                    Component.literal("Not a player head/skull block.").withStyle(ChatFormatting.RED));
-            return;
-        }
-
-        // Get the skull's owner profile and look up the locally cached skin texture
-        var profile = skull.getOwnerProfile();
-        if (profile == null) {
-            client.player.sendSystemMessage(
-                    Component.literal("This skull has no owner profile.").withStyle(ChatFormatting.RED));
-            return;
+        if (textureHash != null && !textureHash.isBlank()) {
+            // Build a GameProfile with the texture hash to look up the cached skin
+            String textureUrl = "http://textures.minecraft.net/texture/" + textureHash.trim();
+            String textureJson = "{\"textures\":{\"SKIN\":{\"url\":\"" + textureUrl + "\"}}}";
+            String textureValue = Base64.getEncoder().encodeToString(textureJson.getBytes());
+            com.mojang.authlib.GameProfile fakeProfile = new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "");
+            fakeProfile.getProperties().put("textures", new com.mojang.authlib.properties.Property("textures", textureValue));
+            var playerSkin = client.getSkinManager().getInsecureSkin(fakeProfile);
+            textureId = playerSkin.texture();
+        } else {
+            // Fall back to looking at the targeted block
+            if (client.hitResult == null || client.hitResult.getType() != HitResult.Type.BLOCK) {
+                client.player.sendSystemMessage(
+                        Component.literal("Look at a player head/skull block and try again.").withStyle(ChatFormatting.RED));
+                return;
+            }
+            BlockHitResult hit = (BlockHitResult) client.hitResult;
+            BlockPos pos = hit.getBlockPos();
+            net.minecraft.world.level.block.entity.BlockEntity blockEntity = client.level.getBlockEntity(pos);
+            if (!(blockEntity instanceof net.minecraft.world.level.block.entity.SkullBlockEntity skull)) {
+                client.player.sendSystemMessage(
+                        Component.literal("Not a player head/skull block.").withStyle(ChatFormatting.RED));
+                return;
+            }
+            var profile = skull.getOwnerProfile();
+            if (profile == null) {
+                client.player.sendSystemMessage(
+                        Component.literal("This skull has no owner profile.").withStyle(ChatFormatting.RED));
+                return;
+            }
+            var playerSkin = client.getSkinManager().getInsecureSkin(profile.partialProfile());
+            textureId = playerSkin.texture();
         }
 
         client.player.sendSystemMessage(
                 Component.literal("Reading skin texture...").withStyle(ChatFormatting.GRAY));
 
-        // Get the skin from Minecraft's local skin manager (already cached from rendering the skull)
-        var playerSkin = client.getSkinManager().getInsecureSkin(profile.partialProfile());
-        net.minecraft.resources.Identifier textureId = playerSkin.texture();
+        final net.minecraft.resources.Identifier finalTextureId = textureId;
 
         // Read the texture from the texture manager — must be done on the render thread
         client.execute(() -> {
             try {
-                var texture = client.getTextureManager().getTexture(textureId);
+                var texture = client.getTextureManager().getTexture(finalTextureId);
                 if (texture == null) {
                     client.player.sendSystemMessage(
                             Component.literal("Skin texture not found in texture manager.").withStyle(ChatFormatting.RED));

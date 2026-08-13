@@ -280,11 +280,12 @@ public class WailaHandler {
 
                         // Copy Skin button — reads locally cached texture and copies to clipboard
                         if (extractedHash != null) {
+                            String skinHash = extractedHash;
                             client.player.sendSystemMessage(
                                     Component.literal("  ").withStyle(ChatFormatting.GRAY)
                                             .append(Component.literal("[Copy Skin Image]").withStyle(ChatFormatting.DARK_AQUA)
                                                     .withStyle(style -> style
-                                                            .withClickEvent(new ClickEvent.RunCommand("/it copyskin"))
+                                                            .withClickEvent(new ClickEvent.RunCommand("/it copyskin " + skinHash))
                                                             .withHoverEvent(new HoverEvent.ShowText(
                                                                     Component.literal("Click to copy skin texture image to clipboard (from local cache)")
                                                                             .withStyle(ChatFormatting.GRAY))))));
