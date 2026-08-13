@@ -126,6 +126,12 @@ public class IslandTimeCommand {
                                 .then(literal("off").executes(ctx -> { return highlightWalls(ctx.getSource().getClient(), false); })))
                         .then(argument("blockid", StringArgumentType.greedyString())
                                 .executes(ctx -> { return highlightSet(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
+                .then(literal("players")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new PlayerListScreen()));
+                            return 1;
+                        }))
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);

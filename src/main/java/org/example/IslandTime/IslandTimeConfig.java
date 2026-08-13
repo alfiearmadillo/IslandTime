@@ -56,6 +56,10 @@ public class IslandTimeConfig extends Config {
     public BlockHighlight blockHighlight = new BlockHighlight();
 
     @Expose
+    @Category(name = "Player List", desc = "Manage a list of players for quick party/invite actions")
+    public PlayerList playerList = new PlayerList();
+
+    @Expose
     @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
     public Misc misc = new Misc();
 
@@ -386,5 +390,17 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Island Leave Messages", desc = "Show a local chat message when a visitor leaves your island (e.g. '[IslandTime] [VIP] Steve left Your Island.'). Toggle with /islandleavemessages")
         @ConfigEditorBoolean
         public boolean islandLeaveMessages = true;
+    }
+
+    public static class PlayerList {
+        @ConfigOption(name = "Open Player List", desc = "Click to open the player list GUI. You can also use /it players")
+        @ConfigEditorButton(buttonText = " Open Player List ")
+        public Runnable openPlayerListButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new PlayerListScreen()));
+            }
+        };
     }
 }
