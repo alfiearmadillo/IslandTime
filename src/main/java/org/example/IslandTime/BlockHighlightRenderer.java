@@ -1,6 +1,7 @@
 package org.example.islandtime;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -10,6 +11,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -28,22 +31,28 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 
 /**
- * Renders a colored overlay on all blocks matching the configured block IDs
- * within the player's vicinity. Fully client-side.
+ * Renders colored overlays on blocks matching configured targets.
+ * Supports regular block IDs and skull texture hashes (skull:HASH).
+ * Highlights use the block's actual collision/visual shape for accurate sizing.
  */
 public class BlockHighlightRenderer {
 
-    private static final String[] COLOR_NAMES = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"};
-    private static final float[][] COLORS = {
+    public static final String[] COLOR_NAMES = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"};
+    public static final float[][] COLORS = {
             {1.0f, 1.0f, 0.2f},  // YELLOW
             {1.0f, 0.2f, 0.2f},  // RED
             {0.2f, 1.0f, 0.2f},  // GREEN
@@ -69,23 +78,23 @@ public class BlockHighlightRenderer {
                     .createRenderSetup()
     );
 
-    // Each highlighted position stores its color
-    private record ColoredPos(BlockPos pos, float r, float g, float b) {}
+    // Each highlighted position stores its color, alpha, bounds, and through-walls flag
+    record HighlightBox(BlockPos pos, float r, float g, float b, float a,
+                               float minX, float minY, float minZ,
+                               float maxX, float maxY, float maxZ,
+                               boolean throughWalls) {}
 
-    private static List<ColoredPos> highlightedPositions = List.of();
-    private static float highlightA;
-    private static boolean throughWalls;
+    private static List<HighlightBox> highlightedBoxes = List.of();
 
-    // Caching: avoid rescanning every frame
+    // Caching
     private static BlockPos lastScanPos = null;
-    private static String lastBlockIdField = "";
-    private static int lastRange = 0;
+    private static String lastConfigFingerprint = "";
     private static long lastScanTick = -1;
     private static final int SCAN_INTERVAL_TICKS = 20;
     private static final int RESCAN_MOVE_THRESHOLD_SQ = 64;
 
     // Async scanning
-    private static final AtomicReference<List<ColoredPos>> pendingResult = new AtomicReference<>(null);
+    private static final AtomicReference<List<HighlightBox>> pendingResult = new AtomicReference<>(null);
     private static CompletableFuture<Void> scanFuture = null;
 
     public static void register() {
@@ -95,11 +104,9 @@ public class BlockHighlightRenderer {
 
     /**
      * Parses a color string into [r, g, b]. Supports named colors and hex codes (#rrggbb).
-     * Returns null if unrecognized.
      */
     public static float[] parseColor(String color) {
         if (color == null || color.isEmpty()) return null;
-        // Hex color
         if (color.startsWith("#") && color.length() == 7) {
             try {
                 int rgb = Integer.parseInt(color.substring(1), 16);
@@ -112,7 +119,6 @@ public class BlockHighlightRenderer {
                 return null;
             }
         }
-        // Named color
         String upper = color.toUpperCase();
         for (int i = 0; i < COLOR_NAMES.length; i++) {
             if (COLOR_NAMES[i].equals(upper)) {
@@ -123,118 +129,266 @@ public class BlockHighlightRenderer {
     }
 
     /**
-     * Parses the blockId config field. Format: space-separated entries, each is BLOCKID or BLOCKID,COLOR.
-     * Returns a map of Block -> color (float[3]).
+     * Parsed scan target: either a set of block IDs or skull texture hashes with per-target settings.
      */
-    private static Map<Block, float[]> parseBlockEntries(String blockIdField, float[] defaultColor) {
-        Map<Block, float[]> result = new HashMap<>();
-        if (blockIdField == null || blockIdField.isBlank()) return result;
+    private static class ScanTarget {
+        final Map<Block, float[]> blockColors = new HashMap<>();
+        final Map<Block, Float> blockAlpha = new HashMap<>();
+        final Map<Block, Boolean> blockThroughWalls = new HashMap<>();
+        final Map<Block, Integer> blockRange = new HashMap<>();
+        final Map<String, float[]> skullHashColors = new HashMap<>();
+        final Map<String, Float> skullHashAlpha = new HashMap<>();
+        final Map<String, Boolean> skullHashThroughWalls = new HashMap<>();
+        final Map<String, Integer> skullHashRange = new HashMap<>();
+    }
 
-        for (String entry : blockIdField.trim().split("\\s+")) {
-            if (entry.isEmpty()) continue;
-            String blockPart;
-            float[] color = defaultColor;
+    /**
+     * Builds scan targets from both the config text field and BlockHighlightManager entries.
+     */
+    private static ScanTarget buildScanTargets(IslandTimeConfig config) {
+        ScanTarget targets = new ScanTarget();
 
-            int commaIdx = entry.indexOf(',');
-            if (commaIdx >= 0) {
-                blockPart = entry.substring(0, commaIdx);
-                String colorPart = entry.substring(commaIdx + 1);
-                float[] parsed = parseColor(colorPart);
-                if (parsed != null) color = parsed;
-            } else {
-                blockPart = entry;
+        // 1) Parse from config text field (legacy format)
+        int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
+        float[] defaultColor = COLORS[colorIdx];
+        float defaultAlpha = config.blockHighlight.intensity / 125.0f;
+        boolean defaultThroughWalls = config.blockHighlight.throughWalls;
+        int defaultRange = config.blockHighlight.range;
+
+        String blockIdField = config.blockHighlight.blockId;
+        if (blockIdField != null && !blockIdField.isBlank()) {
+            for (String entry : blockIdField.trim().split("\\s+")) {
+                if (entry.isEmpty()) continue;
+                String blockPart;
+                float[] color = defaultColor;
+
+                int commaIdx = entry.indexOf(',');
+                if (commaIdx >= 0) {
+                    blockPart = entry.substring(0, commaIdx);
+                    String colorPart = entry.substring(commaIdx + 1);
+                    float[] parsed = parseColor(colorPart);
+                    if (parsed != null) color = parsed;
+                } else {
+                    blockPart = entry;
+                }
+
+                // Check if it's a skull target
+                if (blockPart.startsWith("skull:")) {
+                    String hash = blockPart.substring(6);
+                    if (!hash.isEmpty()) {
+                        targets.skullHashColors.put(hash, color);
+                        targets.skullHashAlpha.put(hash, defaultAlpha);
+                        targets.skullHashThroughWalls.put(hash, defaultThroughWalls);
+                        targets.skullHashRange.put(hash, defaultRange);
+                    }
+                    continue;
+                }
+
+                String normalized = blockPart.trim().toLowerCase();
+                if (normalized.isEmpty()) continue;
+                if (!normalized.contains(":")) {
+                    normalized = "minecraft:" + normalized;
+                }
+                Identifier targetId = Identifier.tryParse(normalized);
+                if (targetId == null) continue;
+                if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
+                Block block = BuiltInRegistries.BLOCK.getValue(targetId);
+                targets.blockColors.put(block, color);
+                targets.blockAlpha.put(block, defaultAlpha);
+                targets.blockThroughWalls.put(block, defaultThroughWalls);
+                targets.blockRange.put(block, defaultRange);
             }
-
-            String normalized = blockPart.trim().toLowerCase();
-            if (normalized.isEmpty()) continue;
-            if (!normalized.contains(":")) {
-                normalized = "minecraft:" + normalized;
-            }
-            Identifier targetId = Identifier.tryParse(normalized);
-            if (targetId == null) continue;
-            if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
-            result.put(BuiltInRegistries.BLOCK.getValue(targetId), color);
         }
-        return result;
+
+        // 2) Parse from BlockHighlightManager entries
+        for (BlockHighlightManager.HighlightEntry he : BlockHighlightManager.getEntries()) {
+            if (!he.enabled || he.intensity <= 0) continue;
+
+            float[] color = parseColor(he.color);
+            if (color == null) color = defaultColor;
+            float alpha = he.intensity / 125.0f;
+
+            if (he.isSkullTarget()) {
+                String hash = he.getSkullHash();
+                if (hash != null && !hash.isEmpty()) {
+                    targets.skullHashColors.put(hash, color);
+                    targets.skullHashAlpha.put(hash, alpha);
+                    targets.skullHashThroughWalls.put(hash, he.throughWalls);
+                    targets.skullHashRange.put(hash, he.range);
+                }
+            } else {
+                String blockId = he.getBlockId();
+                if (blockId == null) continue;
+                Identifier targetId = Identifier.tryParse(blockId);
+                if (targetId == null) continue;
+                if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
+                Block block = BuiltInRegistries.BLOCK.getValue(targetId);
+                targets.blockColors.put(block, color);
+                targets.blockAlpha.put(block, alpha);
+                targets.blockThroughWalls.put(block, he.throughWalls);
+                targets.blockRange.put(block, he.range);
+            }
+        }
+
+        return targets;
+    }
+
+    /**
+     * Build a config fingerprint for cache invalidation.
+     */
+    private static String buildFingerprint(IslandTimeConfig config) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(config.blockHighlight.blockId).append("|");
+        sb.append(config.blockHighlight.intensity).append("|");
+        sb.append(config.blockHighlight.color).append("|");
+        sb.append(config.blockHighlight.throughWalls).append("|");
+        sb.append(config.blockHighlight.range).append("|");
+        // Include manager entries
+        for (BlockHighlightManager.HighlightEntry e : BlockHighlightManager.getEntries()) {
+            sb.append(e.target).append(",").append(e.color).append(",")
+              .append(e.range).append(",").append(e.throughWalls).append(",")
+              .append(e.enabled).append(",").append(e.intensity).append(";");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Get the AABB of a block's visual/collision shape, used for hitbox-matched highlighting.
+     */
+    private static AABB getBlockBounds(BlockState state, Level level, BlockPos pos) {
+        try {
+            VoxelShape shape = state.getShape(level, pos);
+            if (!shape.isEmpty()) {
+                AABB bounds = shape.bounds();
+                return bounds;
+            }
+        } catch (Exception ignored) {}
+        // Fallback to full block
+        return new AABB(0, 0, 0, 1, 1, 1);
+    }
+
+    /**
+     * Extract the texture hash from a skull block entity.
+     */
+    private static String getSkullTextureHash(SkullBlockEntity skull) {
+        try {
+            var profile = skull.getOwnerProfile();
+            if (profile != null && profile.isPresent()) {
+                GameProfile gp = profile.get();
+                for (Property prop : gp.getProperties().get("textures")) {
+                    String decoded = new String(Base64.getDecoder().decode(prop.value()));
+                    int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
+                    if (urlIdx >= 0) {
+                        int hashStart = urlIdx + "textures.minecraft.net/texture/".length();
+                        int hashEnd = decoded.indexOf('"', hashStart);
+                        if (hashEnd < 0) hashEnd = decoded.indexOf('}', hashStart);
+                        if (hashEnd > hashStart) {
+                            return decoded.substring(hashStart, hashEnd);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private static void extract(LevelExtractionContext context) {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.level == null) {
-            highlightedPositions = List.of();
+            highlightedBoxes = List.of();
             return;
         }
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        if (config == null || !config.blockHighlight.enabled) {
-            highlightedPositions = List.of();
+        if (config == null) {
+            highlightedBoxes = List.of();
             return;
         }
 
-        int intensity = config.blockHighlight.intensity;
-        if (intensity <= 0) {
-            highlightedPositions = List.of();
+        // Check if anything is configured at all
+        boolean hasConfigEntries = config.blockHighlight.enabled
+                && config.blockHighlight.intensity > 0
+                && config.blockHighlight.blockId != null
+                && !config.blockHighlight.blockId.isBlank();
+        boolean hasManagerEntries = BlockHighlightManager.getEntries().stream()
+                .anyMatch(e -> e.enabled && e.intensity > 0);
+
+        if (!hasConfigEntries && !hasManagerEntries) {
+            highlightedBoxes = List.of();
             return;
         }
-
-        String blockIdField = config.blockHighlight.blockId;
-        if (blockIdField == null || blockIdField.isBlank()) {
-            highlightedPositions = List.of();
-            return;
-        }
-
-        highlightA = intensity / 125.0f;
-        throughWalls = config.blockHighlight.throughWalls;
 
         // Pick up completed async scan results
-        List<ColoredPos> completed = pendingResult.getAndSet(null);
+        List<HighlightBox> completed = pendingResult.getAndSet(null);
         if (completed != null) {
-            highlightedPositions = completed;
+            highlightedBoxes = completed;
         }
 
         // Determine if we need to rescan
         BlockPos playerPos = client.player.blockPosition();
-        int range = config.blockHighlight.range;
         long currentTick = client.level.getGameTime();
+        String fingerprint = buildFingerprint(config);
 
-        boolean configChanged = !blockIdField.equals(lastBlockIdField) || range != lastRange;
+        boolean configChanged = !fingerprint.equals(lastConfigFingerprint);
         boolean moved = lastScanPos == null || playerPos.distSqr(lastScanPos) >= RESCAN_MOVE_THRESHOLD_SQ;
         boolean timedOut = (currentTick - lastScanTick) >= SCAN_INTERVAL_TICKS;
         boolean scanRunning = scanFuture != null && !scanFuture.isDone();
 
         if (!scanRunning && (configChanged || moved || timedOut)) {
             lastScanPos = playerPos.immutable();
-            lastBlockIdField = blockIdField;
-            lastRange = range;
+            lastConfigFingerprint = fingerprint;
             lastScanTick = currentTick;
 
-            // Parse target blocks with per-block colors on main thread (registry access)
-            int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
-            float[] defaultColor = COLORS[colorIdx];
-            Map<Block, float[]> blockColors = parseBlockEntries(blockIdField, defaultColor);
+            ScanTarget targets = buildScanTargets(config);
 
-            if (blockColors.isEmpty()) {
-                highlightedPositions = List.of();
+            if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty()) {
+                highlightedBoxes = List.of();
                 return;
             }
 
-            Set<Block> targetBlocks = blockColors.keySet();
+            // Determine max range
+            int maxRange = 0;
+            for (int r : targets.blockRange.values()) maxRange = Math.max(maxRange, r);
+            for (int r : targets.skullHashRange.values()) maxRange = Math.max(maxRange, r);
 
-            // Capture references for async work
+            Set<Block> targetBlocks = targets.blockColors.keySet();
+            boolean hasSkullTargets = !targets.skullHashColors.isEmpty();
+
+            // If we have skull targets, also scan for player_head/player_wall_head blocks
+            Set<Block> allScanBlocks = new HashSet<>(targetBlocks);
+            if (hasSkullTargets) {
+                Identifier headId = Identifier.tryParse("minecraft:player_head");
+                Identifier wallHeadId = Identifier.tryParse("minecraft:player_wall_head");
+                if (headId != null && BuiltInRegistries.BLOCK.containsKey(headId)) {
+                    allScanBlocks.add(BuiltInRegistries.BLOCK.getValue(headId));
+                }
+                if (wallHeadId != null && BuiltInRegistries.BLOCK.containsKey(wallHeadId)) {
+                    allScanBlocks.add(BuiltInRegistries.BLOCK.getValue(wallHeadId));
+                }
+            }
+
             Level level = client.level;
             BlockPos scanCenter = lastScanPos;
-            int scanRadius = range;
+            int scanRadius = maxRange;
+
+            // Capture skull hashes for async use
+            Map<String, float[]> skullColors = new HashMap<>(targets.skullHashColors);
+            Map<String, Float> skullAlphas = new HashMap<>(targets.skullHashAlpha);
+            Map<String, Boolean> skullWalls = new HashMap<>(targets.skullHashThroughWalls);
+            Map<String, Integer> skullRanges = new HashMap<>(targets.skullHashRange);
+            Map<Block, float[]> bColors = new HashMap<>(targets.blockColors);
+            Map<Block, Float> bAlphas = new HashMap<>(targets.blockAlpha);
+            Map<Block, Boolean> bWalls = new HashMap<>(targets.blockThroughWalls);
+            Map<Block, Integer> bRanges = new HashMap<>(targets.blockRange);
 
             scanFuture = CompletableFuture.runAsync(() -> {
-                List<ColoredPos> positions = new ArrayList<>();
+                List<HighlightBox> boxes = new ArrayList<>();
 
-                // Convert target blocks to a set of BlockStates for palette checking
                 Set<BlockState> targetStates = new HashSet<>();
-                for (Block block : targetBlocks) {
+                for (Block block : allScanBlocks) {
                     targetStates.addAll(block.getStateDefinition().getPossibleStates());
                 }
 
-                // Determine chunk and section bounds
                 int minX = scanCenter.getX() - scanRadius;
                 int maxX = scanCenter.getX() + scanRadius;
                 int minY = scanCenter.getY() - scanRadius;
@@ -283,11 +437,49 @@ public class BlockHighlightRenderer {
                                 for (int by = startY; by <= endY; by++) {
                                     for (int bz = startZ; bz <= endZ; bz++) {
                                         try {
-                                            BlockState state = level.getBlockState(new BlockPos(bx, by, bz));
+                                            BlockPos bpos = new BlockPos(bx, by, bz);
+                                            BlockState state = level.getBlockState(bpos);
                                             Block block = state.getBlock();
-                                            float[] color = blockColors.get(block);
+
+                                            // Check direct block match
+                                            float[] color = bColors.get(block);
                                             if (color != null) {
-                                                positions.add(new ColoredPos(new BlockPos(bx, by, bz), color[0], color[1], color[2]));
+                                                int range = bRanges.getOrDefault(block, scanRadius);
+                                                if (bpos.distSqr(scanCenter) <= (long) range * range) {
+                                                    float alpha = bAlphas.getOrDefault(block, 0.4f);
+                                                    boolean tw = bWalls.getOrDefault(block, true);
+                                                    AABB bounds = getBlockBounds(state, level, bpos);
+                                                    boxes.add(new HighlightBox(bpos,
+                                                            color[0], color[1], color[2], alpha,
+                                                            (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
+                                                            (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
+                                                            tw));
+                                                }
+                                                continue; // Don't also check skull
+                                            }
+
+                                            // Check skull texture hash match
+                                            if (!skullColors.isEmpty()) {
+                                                BlockEntity be = level.getBlockEntity(bpos);
+                                                if (be instanceof SkullBlockEntity skull) {
+                                                    String hash = getSkullTextureHash(skull);
+                                                    if (hash != null) {
+                                                        float[] skullColor = skullColors.get(hash);
+                                                        if (skullColor != null) {
+                                                            int range = skullRanges.getOrDefault(hash, scanRadius);
+                                                            if (bpos.distSqr(scanCenter) <= (long) range * range) {
+                                                                float alpha = skullAlphas.getOrDefault(hash, 0.4f);
+                                                                boolean tw = skullWalls.getOrDefault(hash, true);
+                                                                AABB bounds = getBlockBounds(state, level, bpos);
+                                                                boxes.add(new HighlightBox(bpos,
+                                                                        skullColor[0], skullColor[1], skullColor[2], alpha,
+                                                                        (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
+                                                                        (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
+                                                                        tw));
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         } catch (Exception ignored) {
                                         }
@@ -297,19 +489,16 @@ public class BlockHighlightRenderer {
                         }
                     }
                 }
-                pendingResult.set(positions);
+                pendingResult.set(boxes);
             });
         }
     }
 
     private static void render(LevelRenderContext context) {
-        if (highlightedPositions.isEmpty()) return;
+        if (highlightedBoxes.isEmpty()) return;
 
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
-        VertexConsumer buffer = bufferSource.getBuffer(
-                throughWalls ? NO_DEPTH_FILLED_BOX : RenderTypes.debugFilledBox()
-        );
 
         var cameraState = context.levelState().cameraRenderState;
         double camX = cameraState.pos.x;
@@ -321,22 +510,33 @@ public class BlockHighlightRenderer {
 
         Matrix4fc pose = poseStack.last().pose();
 
-        if (throughWalls) {
-            for (ColoredPos cp : highlightedPositions) {
-                BlockPos pos = cp.pos;
-                renderFilledBox(pose, buffer,
-                        pos.getX() - 0.001f, pos.getY() - 0.001f, pos.getZ() - 0.001f,
-                        pos.getX() + 1.001f, pos.getY() + 1.001f, pos.getZ() + 1.001f,
-                        cp.r, cp.g, cp.b, highlightA);
-            }
-        } else {
-            Minecraft client = Minecraft.getInstance();
-            Level level = client.level;
-            if (level != null) {
-                for (ColoredPos cp : highlightedPositions) {
-                    renderExposedFaces(pose, buffer, cp.pos, level,
-                            cp.r, cp.g, cp.b, highlightA);
-                }
+        // Render through-walls boxes
+        VertexConsumer noDepthBuffer = bufferSource.getBuffer(NO_DEPTH_FILLED_BOX);
+        VertexConsumer depthBuffer = bufferSource.getBuffer(RenderTypes.debugFilledBox());
+
+        Minecraft client = Minecraft.getInstance();
+        Level level = client.level;
+
+        for (HighlightBox box : highlightedBoxes) {
+            BlockPos pos = box.pos;
+            float pad = 0.001f;
+            float x0 = pos.getX() + box.minX - pad;
+            float y0 = pos.getY() + box.minY - pad;
+            float z0 = pos.getZ() + box.minZ - pad;
+            float x1 = pos.getX() + box.maxX + pad;
+            float y1 = pos.getY() + box.maxY + pad;
+            float z1 = pos.getZ() + box.maxZ + pad;
+
+            VertexConsumer buffer = box.throughWalls ? noDepthBuffer : depthBuffer;
+
+            if (box.throughWalls) {
+                renderFilledBox(pose, buffer, x0, y0, z0, x1, y1, z1,
+                        box.r, box.g, box.b, box.a);
+            } else if (level != null) {
+                // For non-through-walls, only render exposed faces
+                renderExposedFaces(pose, buffer, pos, level,
+                        x0, y0, z0, x1, y1, z1,
+                        box.r, box.g, box.b, box.a);
             }
         }
 
@@ -346,14 +546,9 @@ public class BlockHighlightRenderer {
 
     private static void renderExposedFaces(Matrix4fc pose, VertexConsumer buffer,
                                             BlockPos pos, Level level,
+                                            float x0, float y0, float z0,
+                                            float x1, float y1, float z1,
                                             float r, float g, float b, float a) {
-        float x0 = pos.getX() - 0.001f;
-        float y0 = pos.getY() - 0.001f;
-        float z0 = pos.getZ() - 0.001f;
-        float x1 = pos.getX() + 1.001f;
-        float y1 = pos.getY() + 1.001f;
-        float z1 = pos.getZ() + 1.001f;
-
         if (!level.getBlockState(pos.south()).isSolidRender()) {
             buffer.addVertex(pose, x0, y0, z1).setColor(r, g, b, a);
             buffer.addVertex(pose, x1, y0, z1).setColor(r, g, b, a);
@@ -392,7 +587,7 @@ public class BlockHighlightRenderer {
         }
     }
 
-    private static void renderFilledBox(Matrix4fc positionMatrix, VertexConsumer buffer,
+    static void renderFilledBox(Matrix4fc positionMatrix, VertexConsumer buffer,
                                          float minX, float minY, float minZ,
                                          float maxX, float maxY, float maxZ,
                                          float r, float g, float b, float a) {

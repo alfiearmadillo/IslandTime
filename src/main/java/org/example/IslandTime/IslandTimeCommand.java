@@ -45,6 +45,11 @@ public class IslandTimeCommand {
                             ghostBlock(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("waila")
+                        .executes(ctx -> {
+                            WailaHandler.inspect(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -98,6 +103,11 @@ public class IslandTimeCommand {
                 .then(literal("ghost")
                         .executes(ctx -> {
                             ghostBlock(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("waila")
+                        .executes(ctx -> {
+                            WailaHandler.inspect(ctx.getSource().getClient());
                             return 1;
                         }))
                 .then(literal("recent")
