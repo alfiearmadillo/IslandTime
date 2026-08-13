@@ -333,10 +333,10 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
             name = "Copy Skin Keybind",
-            desc = "Key name for copying skin from hovered item (e.g. key.keyboard.v, key.keyboard.b). Requires Copy Skin from Hovered Item to be enabled"
+            desc = "Keybind for copying skin from hovered item. Requires Copy Skin from Hovered Item to be enabled"
         )
-        @ConfigEditorText
-        public String copySkinKeybind = "key.keyboard.v";
+        @ConfigEditorKeybind(defaultKey = 86) // GLFW_KEY_V
+        public int copySkinKeybind = 86;
 
         // ── Other ────────────────────────────────────────────────────────────
 
