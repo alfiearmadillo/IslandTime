@@ -55,6 +55,12 @@ public class IslandTimeCommand {
                             showRecent();
                             return 1;
                         }))
+                .then(literal("highlights")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new BlockHighlightScreen()));
+                            return 1;
+                        }))
                 .then(literal("highlight")
                         .executes(ctx -> { showHighlightStatus(ctx.getSource().getClient()); return 1; })
                         .then(literal("clear").executes(ctx -> { return highlightClear(ctx.getSource().getClient()); }))
@@ -113,6 +119,12 @@ public class IslandTimeCommand {
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
+                            return 1;
+                        }))
+                .then(literal("highlights")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new BlockHighlightScreen()));
                             return 1;
                         }))
                 .then(literal("highlight")
@@ -1045,10 +1057,11 @@ public class IslandTimeCommand {
                 {"/chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
                 {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
 
-                // Page 8 - Ghost & PPG
+                // Page 8 - Ghost, WAILA & Block Highlights
                 {"/islandtime ghost", "Client-side remove the block you are looking at (alias: /it ghost). Can be disabled in /islandtime under Misc."},
+                {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock data"},
+                {"/it highlights", "Open the Block Highlights GUI to manage individual highlight entries with per-entry color, range, and intensity"},
                 {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
-                {"PPG (Price Per Gabagool)", "Shown in Very Crude Gabagool sell offer setup below the Total line. PPG = Total / 192, rounded up to nearest 0.1. Toggle in /islandtime under Misc."},
                 {"/islandtime help [page]", "Show this help (pages 1-8)"},
         };
 

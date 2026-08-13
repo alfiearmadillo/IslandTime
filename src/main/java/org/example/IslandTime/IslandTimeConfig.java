@@ -349,6 +349,16 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class BlockHighlight {
+        @ConfigOption(name = "Open Block Highlights", desc = "Click to open the block highlights GUI for managing individual entries. You can also use /it highlights")
+        @ConfigEditorButton(buttonText = " Open Block Highlights ")
+        public Runnable openBlockHighlightsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new BlockHighlightScreen()));
+            }
+        };
+
         @Expose
         @ConfigOption(name = "Enabled", desc = "Toggle the block highlight on or off")
         @ConfigEditorBoolean
