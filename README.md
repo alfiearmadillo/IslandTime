@@ -55,7 +55,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/chatrelay` | View/configure chat relay settings |
 | `/showtooltips` | Toggle hidden tooltip visibility |
 | `/it waila` | Inspect the targeted block (ID, position, state, NBT, skull textures, SkyBlock ID) |
-| `/it copyskin <url>` | Download a skin texture and save a rendered player image to `config/IslandTime/skin.png` |
+| `/it copyskin <url>` | Download a skin texture and copy it to clipboard (valid Minecraft skin format) |
 | `/it highlight` or `/it highlights` | Open the Block Highlights GUI |
 | `/it highlight add <target> [color]` | Add a highlight entry (target: block ID, `sb:ID`, or `skull:HASH`) |
 | `/it highlight remove <target>` | Remove a highlight entry by target |

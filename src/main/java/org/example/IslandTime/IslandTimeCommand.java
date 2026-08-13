@@ -19,15 +19,14 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.awt.image.BufferedImage;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.HttpURLConnection;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import javax.imageio.ImageIO;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
@@ -858,71 +857,43 @@ public class IslandTimeCommand {
                 }
 
                 try (InputStream in = conn.getInputStream()) {
-                    BufferedImage skin = ImageIO.read(in);
-                    if (skin == null) {
+                    BufferedImage image = ImageIO.read(in);
+                    if (image == null) {
                         client.execute(() -> client.player.sendSystemMessage(
                                 Component.literal("Failed to decode skin image from server.").withStyle(ChatFormatting.RED)));
                         return;
                     }
-
-                    // Generate a front-facing player render from the skin texture.
-                    // Standard Minecraft skin layout (64x64):
-                    //   Head front:       (8,8)   8x8
-                    //   Head overlay:     (40,8)  8x8
-                    //   Body front:       (20,20) 8x12
-                    //   Right arm front:  (44,20) 4x12  (classic) or 3x12 (slim)
-                    //   Left arm front:   (36,52) 4x12  (classic) or 3x12 (slim)
-                    //   Right leg front:  (4,20)  4x12
-                    //   Left leg front:   (20,52) 4x12
-                    // Output: 16x32 pixel image (head 8x8 scaled to body proportion)
-
-                    boolean slim = isSlimSkin(skin);
-                    int armWidth = slim ? 3 : 4;
-
-                    // Canvas: full body width = armWidth + 8 + armWidth, height = 8 (head) + 12 (body) + 12 (legs) = 32
-                    int bodyWidth = armWidth + 8 + armWidth;
-                    int canvasHeight = 32;
-                    BufferedImage output = new BufferedImage(bodyWidth, canvasHeight, BufferedImage.TYPE_INT_ARGB);
-                    Graphics2D g = output.createGraphics();
-
-                    // Head (8x8) — centered on body
-                    int headX = (bodyWidth - 8) / 2;
-                    drawRegion(g, skin, headX, 0, 8, 8, 8, 8);       // head base
-                    drawRegion(g, skin, headX, 0, 40, 8, 8, 8);      // head overlay
-
-                    // Body (8x12)
-                    int bodyX = armWidth;
-                    drawRegion(g, skin, bodyX, 8, 20, 20, 8, 12);
-
-                    // Right arm (armWidth x 12)
-                    drawRegion(g, skin, 0, 8, 44, 20, armWidth, 12);
-
-                    // Left arm (armWidth x 12)
-                    drawRegion(g, skin, armWidth + 8, 8, 36, 52, armWidth, 12);
-
-                    // Right leg (4x12)
-                    drawRegion(g, skin, armWidth, 20, 4, 20, 4, 12);
-
-                    // Left leg (4x12)
-                    drawRegion(g, skin, armWidth + 4, 20, 20, 52, 4, 12);
-
-                    g.dispose();
-
-                    // Scale up 8x for visibility
-                    int scale = 8;
-                    BufferedImage scaled = new BufferedImage(bodyWidth * scale, canvasHeight * scale, BufferedImage.TYPE_INT_ARGB);
-                    Graphics2D gs = scaled.createGraphics();
-                    gs.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-                    gs.drawImage(output, 0, 0, bodyWidth * scale, canvasHeight * scale, null);
-                    gs.dispose();
-
-                    // Save to file
-                    Path outPath = Paths.get("config/IslandTime/skin.png");
-                    Files.createDirectories(outPath.getParent());
-                    ImageIO.write(scaled, "PNG", outPath.toFile());
-
-                    client.execute(() -> client.player.sendSystemMessage(
-                            Component.literal("Skin image saved to config/IslandTime/skin.png").withStyle(ChatFormatting.GREEN)));
+                    // Copy image to system clipboard.
+                    // Minecraft sets java.awt.headless=true which prevents AWT clipboard access,
+                    // so temporarily disable it.
+                    String prevHeadless = System.getProperty("java.awt.headless");
+                    try {
+                        System.setProperty("java.awt.headless", "false");
+                        Transferable transferable = new Transferable() {
+                            @Override
+                            public DataFlavor[] getTransferDataFlavors() {
+                                return new DataFlavor[]{DataFlavor.imageFlavor};
+                            }
+                            @Override
+                            public boolean isDataFlavorSupported(DataFlavor flavor) {
+                                return DataFlavor.imageFlavor.equals(flavor);
+                            }
+                            @Override
+                            public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+                                if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
+                                return image;
+                            }
+                        };
+                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
+                        client.execute(() -> client.player.sendSystemMessage(
+                                Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
+                    } finally {
+                        if (prevHeadless != null) {
+                            System.setProperty("java.awt.headless", prevHeadless);
+                        } else {
+                            System.clearProperty("java.awt.headless");
+                        }
+                    }
                 } finally {
                     conn.disconnect();
                 }
@@ -932,27 +903,6 @@ public class IslandTimeCommand {
                         Component.literal("Failed to copy skin: " + msg).withStyle(ChatFormatting.RED)));
             }
         }, "IslandTime-CopySkin").start();
-    }
-
-    /**
-     * Draws a region from the skin texture onto the output image.
-     */
-    private static void drawRegion(Graphics2D g, BufferedImage skin, int destX, int destY,
-                                   int srcX, int srcY, int w, int h) {
-        if (srcX + w > skin.getWidth() || srcY + h > skin.getHeight()) return;
-        g.drawImage(skin, destX, destY, destX + w, destY + h, srcX, srcY, srcX + w, srcY + h, null);
-    }
-
-    /**
-     * Detects slim (3-pixel arm) skins by checking if the rightmost column of the
-     * right arm area (pixel column 47, rows 20-31) is fully transparent.
-     */
-    private static boolean isSlimSkin(BufferedImage skin) {
-        if (skin.getWidth() < 48 || skin.getHeight() < 32) return false;
-        for (int y = 20; y < 32; y++) {
-            if ((skin.getRGB(47, y) >>> 24) > 0) return false;
-        }
-        return true;
     }
 
     // -------------------------------------------------------------------------
