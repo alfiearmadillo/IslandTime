@@ -923,35 +923,42 @@ public class IslandTimeCommand {
                 ImageIO.write(image, "png", tempFile);
 
                 String os = System.getProperty("os.name", "").toLowerCase();
-                boolean copied = false;
+                String copyError = null;
                 if (os.contains("win")) {
-                    // PowerShell: copy image file to clipboard
-                    Process proc = new ProcessBuilder("powershell", "-NoProfile", "-Command",
+                    String absPath = tempFile.getAbsolutePath().replace("'", "''");
+                    String psScript =
                             "Add-Type -AssemblyName System.Windows.Forms; " +
-                            "[System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('" +
-                            tempFile.getAbsolutePath().replace("'", "''") + "'))")
-                            .redirectErrorStream(true).start();
-                    copied = proc.waitFor() == 0;
-                } else if (os.contains("mac")) {
-                    Process proc = new ProcessBuilder("osascript", "-e",
-                            "set the clipboard to (read (POSIX file \"" + tempFile.getAbsolutePath() + "\") as «class PNGf»)")
-                            .redirectErrorStream(true).start();
-                    copied = proc.waitFor() == 0;
+                            "Add-Type -AssemblyName System.Drawing; " +
+                            "$img = [System.Drawing.Image]::FromFile('" + absPath + "'); " +
+                            "[System.Windows.Forms.Clipboard]::SetImage($img); " +
+                            "$img.Dispose()";
+                    copyError = runClipboardCommand(
+                            new String[]{"powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-Command", psScript},
+                            null);
+                } else if (os.contains("mac") || os.contains("darwin")) {
+                    String absPath = tempFile.getAbsolutePath().replace("\"", "\\\"");
+                    String appleScript = "set the clipboard to (read POSIX file \"" + absPath + "\" as \u00ABclass PNGf\u00BB)";
+                    copyError = runClipboardCommand(new String[]{"osascript", "-e", appleScript}, null);
                 } else {
-                    // Linux: try xclip
-                    Process proc = new ProcessBuilder("xclip", "-selection", "clipboard", "-t", "image/png", "-i",
-                            tempFile.getAbsolutePath())
-                            .redirectErrorStream(true).start();
-                    copied = proc.waitFor() == 0;
+                    // Linux: try wl-copy (Wayland) then xclip (X11)
+                    byte[] pngBytes = java.nio.file.Files.readAllBytes(tempFile.toPath());
+                    if (isCommandAvailable("wl-copy")) {
+                        copyError = runClipboardCommand(new String[]{"wl-copy", "--type", "image/png"}, pngBytes);
+                    } else if (isCommandAvailable("xclip")) {
+                        copyError = runClipboardCommand(new String[]{"xclip", "-selection", "clipboard", "-t", "image/png", "-i"}, pngBytes);
+                    } else {
+                        copyError = "No clipboard tool found. Install wl-copy (Wayland) or xclip (X11).";
+                    }
                 }
 
-                if (copied) {
+                if (copyError == null || copyError.isEmpty()) {
                     client.execute(() -> client.player.sendSystemMessage(
                             Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
                 } else {
                     String path = tempFile.getAbsolutePath();
+                    final String errMsg = copyError;
                     client.execute(() -> client.player.sendSystemMessage(
-                            Component.literal("Clipboard copy failed. Skin saved to: " + path).withStyle(ChatFormatting.YELLOW)));
+                            Component.literal("Clipboard failed: " + errMsg + ". Skin saved to: " + path).withStyle(ChatFormatting.YELLOW)));
                 }
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
@@ -959,6 +966,37 @@ public class IslandTimeCommand {
                         Component.literal("Failed to read skin texture: " + msg).withStyle(ChatFormatting.RED)));
             }
         }, "IslandTime-SkinRead").start();
+    }
+
+    /** Run a clipboard command with optional stdin bytes. Returns null on success, error message on failure. */
+    private static String runClipboardCommand(String[] cmd, byte[] stdin) {
+        try {
+            Process p = new ProcessBuilder(cmd).redirectErrorStream(false).start();
+            if (stdin != null) {
+                p.getOutputStream().write(stdin);
+                p.getOutputStream().close();
+            }
+            boolean exited = p.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
+            if (!exited) {
+                p.destroyForcibly();
+                return "Command timed out";
+            }
+            if (p.exitValue() == 0) return null;
+            String err = new String(p.getErrorStream().readAllBytes()).trim();
+            return err.isEmpty() ? "Exit code " + p.exitValue() : err;
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+    }
+
+    /** Check if a command-line tool is available on the system. */
+    private static boolean isCommandAvailable(String command) {
+        try {
+            Process p = new ProcessBuilder("which", command).redirectErrorStream(true).start();
+            return p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // -------------------------------------------------------------------------
