@@ -18,6 +18,14 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.awt.image.BufferedImage;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
+import java.io.IOException;
+import java.net.URI;
+import javax.imageio.ImageIO;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
 
@@ -50,6 +58,13 @@ public class IslandTimeCommand {
                             WailaHandler.inspect(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("copyskin")
+                        .then(argument("url", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String url = StringArgumentType.getString(ctx, "url");
+                                    copySkinImage(ctx.getSource().getClient(), url);
+                                    return 1;
+                                })))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -107,6 +122,13 @@ public class IslandTimeCommand {
                             WailaHandler.inspect(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("copyskin")
+                        .then(argument("url", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String url = StringArgumentType.getString(ctx, "url");
+                                    copySkinImage(ctx.getSource().getClient(), url);
+                                    return 1;
+                                })))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -804,6 +826,48 @@ public class IslandTimeCommand {
                 .then(literal("remove")
                         .then(argument("blockid", StringArgumentType.greedyString())
                                 .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))));
+    }
+
+    // -------------------------------------------------------------------------
+    // Copy skin image to clipboard
+    // -------------------------------------------------------------------------
+
+    private static void copySkinImage(Minecraft client, String url) {
+        client.player.sendSystemMessage(
+                Component.literal("Downloading skin texture...").withStyle(ChatFormatting.GRAY));
+        // Run download off the main thread
+        new Thread(() -> {
+            try {
+                BufferedImage image = ImageIO.read(URI.create(url).toURL());
+                if (image == null) {
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Failed to download skin image.").withStyle(ChatFormatting.RED)));
+                    return;
+                }
+                // Copy image to system clipboard
+                Transferable transferable = new Transferable() {
+                    @Override
+                    public DataFlavor[] getTransferDataFlavors() {
+                        return new DataFlavor[]{DataFlavor.imageFlavor};
+                    }
+                    @Override
+                    public boolean isDataFlavorSupported(DataFlavor flavor) {
+                        return DataFlavor.imageFlavor.equals(flavor);
+                    }
+                    @Override
+                    public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+                        if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
+                        return image;
+                    }
+                };
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
+                client.execute(() -> client.player.sendSystemMessage(
+                        Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
+            } catch (Exception e) {
+                client.execute(() -> client.player.sendSystemMessage(
+                        Component.literal("Failed to copy skin: " + e.getMessage()).withStyle(ChatFormatting.RED)));
+            }
+        }, "IslandTime-CopySkin").start();
     }
 
     // -------------------------------------------------------------------------

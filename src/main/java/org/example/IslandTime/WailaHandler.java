@@ -150,6 +150,7 @@ public class WailaHandler {
 
         // Highlight command buttons
         boolean isSkull = (skullTextureHash != null);
+        String shortId = blockIdStr.startsWith("minecraft:") ? blockIdStr.substring(10) : blockIdStr;
 
         // Always show block ID highlighter button
         client.player.sendSystemMessage(
@@ -258,16 +259,16 @@ public class WailaHandler {
                                                                             .withStyle(ChatFormatting.GRAY))))));
                         }
 
-                        // Copy as Skin button — constructs a skin URL for clipboard
+                        // Copy Skin button — runs command to download and copy image to clipboard
                         String skinUrl = extractSkinUrl(decoded);
                         if (skinUrl != null) {
                             client.player.sendSystemMessage(
                                     Component.literal("  ").withStyle(ChatFormatting.GRAY)
-                                            .append(Component.literal("[Copy Skin URL]").withStyle(ChatFormatting.DARK_AQUA)
+                                            .append(Component.literal("[Copy Skin Image]").withStyle(ChatFormatting.DARK_AQUA)
                                                     .withStyle(style -> style
-                                                            .withClickEvent(new ClickEvent.CopyToClipboard(skinUrl))
+                                                            .withClickEvent(new ClickEvent.RunCommand("/it copyskin " + skinUrl))
                                                             .withHoverEvent(new HoverEvent.ShowText(
-                                                                    Component.literal("Click to copy skin texture URL to clipboard")
+                                                                    Component.literal("Click to download and copy skin texture image to clipboard")
                                                                             .withStyle(ChatFormatting.GRAY))))));
                         }
                     } catch (Exception ignored) {
