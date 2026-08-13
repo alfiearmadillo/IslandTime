@@ -6,9 +6,13 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.inventory.Slot;
-import org.example.islandtime.BackpackHoverHandler;
+import org.example.islandtime.ConfigManager;
+import org.example.islandtime.IslandTimeCommand;
+import org.example.islandtime.IslandTimeConfig;
 import org.example.islandtime.BackpackNbtParser;
+import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.FakeSlot;
 import org.example.islandtime.FavouriteGuiViewer;
 import org.jetbrains.annotations.Nullable;
@@ -155,6 +159,21 @@ public class HandledScreenMixin {
                                              CallbackInfoReturnable<Boolean> cir) {
         long window = Minecraft.getInstance().getWindow().handle();
 
+        // ── Copy Skin from hovered item keybind ──────────────────────────────
+        IslandTimeConfig cfg = ConfigManager.getConfig();
+        if (cfg != null && cfg.misc.copySkinKeybindEnabled) {
+            int copySkinKey = cfg.misc.copySkinKeybind;
+            if (copySkinKey != 0 && event.key() == copySkinKey) {
+                Slot slot = this.hoveredSlot;
+                if (slot != null && !slot.getItem().isEmpty()) {
+                    IslandTimeCommand.copySkinFromItem(Minecraft.getInstance(), slot.getItem());
+                    cir.setReturnValue(true);
+                    cir.cancel();
+                    return;
+                }
+            }
+        }
+
         // ── FavouriteGuiViewer active ──────────────────────────────────────
         if (FavouriteGuiViewer.isActive()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
@@ -252,4 +271,5 @@ public class HandledScreenMixin {
             islandtime$savedSlot = null;
         }
     }
+
 }

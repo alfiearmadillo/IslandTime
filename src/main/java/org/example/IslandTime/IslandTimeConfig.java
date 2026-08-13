@@ -272,6 +272,13 @@ public class IslandTimeConfig extends Config {
             }
         };
 
+        // ── Tooltips & Display ───────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 1)
+        @ConfigOption(name = "Tooltips & Display", desc = "Settings for tooltip visibility and item display overlays")
+        public boolean tooltipsAccordion = false;
+
+        @ConfigAccordionId(id = 1)
         @Expose
         @ConfigOption(
             name = "Show Hidden Tooltips",
@@ -280,6 +287,7 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorBoolean
         public boolean showHiddenTooltips = false;
 
+        @ConfigAccordionId(id = 1)
         @Expose
         @ConfigOption(
             name = "Show PPG (Price Per Gabagool)",
@@ -288,22 +296,7 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorBoolean
         public boolean showPpg = true;
 
-        @Expose
-        @ConfigOption(
-            name = "Enable Ghost Command",
-            desc = "When enabled, /it ghost and /islandtime ghost commands are available for client-side block removal"
-        )
-        @ConfigEditorBoolean
-        public boolean ghostEnabled = true;
-
-        @Expose
-        @ConfigOption(
-            name = "Keep Resource Pack",
-            desc = "When enabled, caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel). Hides the pack download prompt and only re-downloads if the pack changes."
-        )
-        @ConfigEditorBoolean
-        public boolean keepResourcePack = false;
-
+        @ConfigAccordionId(id = 1)
         @Expose
         @ConfigOption(
             name = "Show Component Display",
@@ -312,6 +305,7 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorBoolean
         public boolean componentDisplayEnabled = false;
 
+        @ConfigAccordionId(id = 1)
         @Expose
         @ConfigOption(
             name = "Component Names",
@@ -319,6 +313,54 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorText
         public String componentNames = "";
+
+        // ── Copy Skin ────────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 2)
+        @ConfigOption(name = "Copy Skin", desc = "Copy skin textures from player heads to clipboard")
+        public boolean copySkinAccordion = false;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(
+            name = "Copy Skin from Hovered Item",
+            desc = "When enabled, pressing the configured key while hovering over a player head in any inventory/GUI will copy the skin image to your clipboard"
+        )
+        @ConfigEditorBoolean
+        public boolean copySkinKeybindEnabled = true;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(
+            name = "Copy Skin Keybind",
+            desc = "Keybind for copying skin from hovered item. Requires Copy Skin from Hovered Item to be enabled"
+        )
+        @ConfigEditorKeybind(defaultKey = 86) // GLFW_KEY_V
+        public int copySkinKeybind = 86;
+
+        // ── Other ────────────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 3)
+        @ConfigOption(name = "Other", desc = "Ghost command, resource pack caching, and other settings")
+        public boolean otherAccordion = false;
+
+        @ConfigAccordionId(id = 3)
+        @Expose
+        @ConfigOption(
+            name = "Enable Ghost Command",
+            desc = "When enabled, /it ghost and /islandtime ghost commands are available for client-side block removal"
+        )
+        @ConfigEditorBoolean
+        public boolean ghostEnabled = true;
+
+        @ConfigAccordionId(id = 3)
+        @Expose
+        @ConfigOption(
+            name = "Keep Resource Pack",
+            desc = "When enabled, caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel). Hides the pack download prompt and only re-downloads if the pack changes."
+        )
+        @ConfigEditorBoolean
+        public boolean keepResourcePack = false;
     }
 
     public static class Signs {
