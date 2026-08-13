@@ -194,9 +194,9 @@ public class WailaHandler {
                 }
 
                 // Display UUID
-                var profileId = profile.id().orElse(null);
-                if (profileId != null) {
-                    String uuid = profileId.toString();
+                var gp = profile.partialProfile();
+                if (gp.id() != null) {
+                    String uuid = gp.id().toString();
                     client.player.sendSystemMessage(
                             Component.literal("  UUID: ").withStyle(ChatFormatting.GRAY)
                                     .append(Component.literal(uuid).withStyle(ChatFormatting.DARK_GRAY)
@@ -207,8 +207,7 @@ public class WailaHandler {
                 }
 
                 // Extract and display texture URL from properties
-                for (Property prop : profile.properties()) {
-                    if (!"textures".equals(prop.name())) continue;
+                for (Property prop : gp.properties().get("textures")) {
                     String textureValue = prop.value();
                     client.player.sendSystemMessage(
                             Component.literal("  Texture: ").withStyle(ChatFormatting.GRAY)

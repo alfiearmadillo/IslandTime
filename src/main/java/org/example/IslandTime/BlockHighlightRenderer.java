@@ -299,8 +299,7 @@ public class BlockHighlightRenderer {
         try {
             var profile = skull.getOwnerProfile();
             if (profile != null) {
-                for (Property prop : profile.properties()) {
-                    if (!"textures".equals(prop.name())) continue;
+                for (Property prop : profile.partialProfile().properties().get("textures")) {
                     String decoded = new String(Base64.getDecoder().decode(prop.value()));
                     int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
                     if (urlIdx >= 0) {
