@@ -24,9 +24,6 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
 import java.io.IOException;
-import java.net.URI;
-import java.net.HttpURLConnection;
-import java.io.InputStream;
 import javax.imageio.ImageIO;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.*;
@@ -61,12 +58,10 @@ public class IslandTimeCommand {
                             return 1;
                         }))
                 .then(literal("copyskin")
-                        .then(argument("url", StringArgumentType.greedyString())
-                                .executes(ctx -> {
-                                    String url = StringArgumentType.getString(ctx, "url");
-                                    copySkinImage(ctx.getSource().getClient(), url);
-                                    return 1;
-                                })))
+                        .executes(ctx -> {
+                            copySkinImage(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -125,12 +120,10 @@ public class IslandTimeCommand {
                             return 1;
                         }))
                 .then(literal("copyskin")
-                        .then(argument("url", StringArgumentType.greedyString())
-                                .executes(ctx -> {
-                                    String url = StringArgumentType.getString(ctx, "url");
-                                    copySkinImage(ctx.getSource().getClient(), url);
-                                    return 1;
-                                })))
+                        .executes(ctx -> {
+                            copySkinImage(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("recent")
                         .executes(ctx -> {
                             showRecent();
@@ -834,75 +827,114 @@ public class IslandTimeCommand {
     // Copy skin image to clipboard
     // -------------------------------------------------------------------------
 
-    private static void copySkinImage(Minecraft client, String url) {
+    private static void copySkinImage(Minecraft client) {
+        if (client.level == null || client.player == null) {
+            return;
+        }
+        if (client.hitResult == null || client.hitResult.getType() != HitResult.Type.BLOCK) {
+            client.player.sendSystemMessage(
+                    Component.literal("Look at a player head/skull block and try again.").withStyle(ChatFormatting.RED));
+            return;
+        }
+
+        BlockHitResult hit = (BlockHitResult) client.hitResult;
+        BlockPos pos = hit.getBlockPos();
+        net.minecraft.world.level.block.entity.BlockEntity blockEntity = client.level.getBlockEntity(pos);
+
+        if (!(blockEntity instanceof net.minecraft.world.level.block.entity.SkullBlockEntity skull)) {
+            client.player.sendSystemMessage(
+                    Component.literal("Not a player head/skull block.").withStyle(ChatFormatting.RED));
+            return;
+        }
+
+        // Get the skull's owner profile and look up the locally cached skin texture
+        var profile = skull.getOwnerProfile();
+        if (profile == null) {
+            client.player.sendSystemMessage(
+                    Component.literal("This skull has no owner profile.").withStyle(ChatFormatting.RED));
+            return;
+        }
+
         client.player.sendSystemMessage(
-                Component.literal("Downloading skin texture...").withStyle(ChatFormatting.GRAY));
-        // Run download off the main thread
-        new Thread(() -> {
+                Component.literal("Reading skin texture...").withStyle(ChatFormatting.GRAY));
+
+        // Get the skin from Minecraft's local skin manager (already cached from rendering the skull)
+        var playerSkin = client.getSkinManager().getInsecureSkin(profile.partialProfile());
+        net.minecraft.resources.Identifier textureId = playerSkin.texture();
+
+        // Read the texture from the texture manager — must be done on the render thread
+        client.execute(() -> {
             try {
-                // Use HttpURLConnection to properly handle redirects (http -> https)
-                HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-                conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
-                conn.connect();
-
-                // Follow manual redirects if needed (http->https redirects sometimes aren't auto-followed)
-                int status = conn.getResponseCode();
-                if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 303) {
-                    String newUrl = conn.getHeaderField("Location");
-                    conn.disconnect();
-                    conn = (HttpURLConnection) URI.create(newUrl).toURL().openConnection();
-                    conn.setRequestProperty("User-Agent", "IslandTime Minecraft Mod");
-                    conn.connect();
+                var texture = client.getTextureManager().getTexture(textureId);
+                if (texture == null) {
+                    client.player.sendSystemMessage(
+                            Component.literal("Skin texture not found in texture manager.").withStyle(ChatFormatting.RED));
+                    return;
                 }
 
-                try (InputStream in = conn.getInputStream()) {
-                    BufferedImage image = ImageIO.read(in);
-                    if (image == null) {
-                        client.execute(() -> client.player.sendSystemMessage(
-                                Component.literal("Failed to decode skin image from server.").withStyle(ChatFormatting.RED)));
-                        return;
+                // Read the texture pixels into a NativeImage via the texture's GL ID
+                int glId = texture.getId();
+                com.mojang.blaze3d.platform.NativeImage nativeImage = new com.mojang.blaze3d.platform.NativeImage(64, 64, false);
+                nativeImage.downloadTexture(glId, 0, false);
+
+                // Convert NativeImage to BufferedImage
+                BufferedImage image = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
+                for (int y = 0; y < 64; y++) {
+                    for (int x = 0; x < 64; x++) {
+                        // NativeImage uses ABGR format, convert to ARGB
+                        int abgr = nativeImage.getPixel(x, y);
+                        int a = (abgr >>> 24) & 0xFF;
+                        int b = (abgr >>> 16) & 0xFF;
+                        int g = (abgr >>> 8) & 0xFF;
+                        int r = abgr & 0xFF;
+                        image.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b);
                     }
-                    // Copy image to system clipboard.
-                    // Minecraft sets java.awt.headless=true which prevents AWT clipboard access,
-                    // so temporarily disable it.
-                    String prevHeadless = System.getProperty("java.awt.headless");
+                }
+                nativeImage.close();
+
+                // Copy to clipboard on a separate thread (AWT operations can block)
+                new Thread(() -> {
                     try {
-                        System.setProperty("java.awt.headless", "false");
-                        Transferable transferable = new Transferable() {
-                            @Override
-                            public DataFlavor[] getTransferDataFlavors() {
-                                return new DataFlavor[]{DataFlavor.imageFlavor};
+                        String prevHeadless = System.getProperty("java.awt.headless");
+                        try {
+                            System.setProperty("java.awt.headless", "false");
+                            Transferable transferable = new Transferable() {
+                                @Override
+                                public DataFlavor[] getTransferDataFlavors() {
+                                    return new DataFlavor[]{DataFlavor.imageFlavor};
+                                }
+                                @Override
+                                public boolean isDataFlavorSupported(DataFlavor flavor) {
+                                    return DataFlavor.imageFlavor.equals(flavor);
+                                }
+                                @Override
+                                public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
+                                    if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
+                                    return image;
+                                }
+                            };
+                            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
+                            client.execute(() -> client.player.sendSystemMessage(
+                                    Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
+                        } finally {
+                            if (prevHeadless != null) {
+                                System.setProperty("java.awt.headless", prevHeadless);
+                            } else {
+                                System.clearProperty("java.awt.headless");
                             }
-                            @Override
-                            public boolean isDataFlavorSupported(DataFlavor flavor) {
-                                return DataFlavor.imageFlavor.equals(flavor);
-                            }
-                            @Override
-                            public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
-                                if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
-                                return image;
-                            }
-                        };
-                        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
-                        client.execute(() -> client.player.sendSystemMessage(
-                                Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
-                    } finally {
-                        if (prevHeadless != null) {
-                            System.setProperty("java.awt.headless", prevHeadless);
-                        } else {
-                            System.clearProperty("java.awt.headless");
                         }
+                    } catch (Exception e) {
+                        String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                        client.execute(() -> client.player.sendSystemMessage(
+                                Component.literal("Failed to copy skin: " + msg).withStyle(ChatFormatting.RED)));
                     }
-                } finally {
-                    conn.disconnect();
-                }
+                }, "IslandTime-CopySkin").start();
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                client.execute(() -> client.player.sendSystemMessage(
-                        Component.literal("Failed to copy skin: " + msg).withStyle(ChatFormatting.RED)));
+                client.player.sendSystemMessage(
+                        Component.literal("Failed to read skin texture: " + msg).withStyle(ChatFormatting.RED));
             }
-        }, "IslandTime-CopySkin").start();
+        });
     }
 
     // -------------------------------------------------------------------------

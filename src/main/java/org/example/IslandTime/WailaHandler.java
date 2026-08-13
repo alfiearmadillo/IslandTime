@@ -278,16 +278,15 @@ public class WailaHandler {
                                                                             .withStyle(ChatFormatting.GRAY))))));
                         }
 
-                        // Copy Skin button — runs command to download and copy image to clipboard
-                        String skinUrl = extractSkinUrl(decoded);
-                        if (skinUrl != null) {
+                        // Copy Skin button — reads locally cached texture and copies to clipboard
+                        if (extractedHash != null) {
                             client.player.sendSystemMessage(
                                     Component.literal("  ").withStyle(ChatFormatting.GRAY)
                                             .append(Component.literal("[Copy Skin Image]").withStyle(ChatFormatting.DARK_AQUA)
                                                     .withStyle(style -> style
-                                                            .withClickEvent(new ClickEvent.RunCommand("/it copyskin " + skinUrl))
+                                                            .withClickEvent(new ClickEvent.RunCommand("/it copyskin"))
                                                             .withHoverEvent(new HoverEvent.ShowText(
-                                                                    Component.literal("Click to download and copy skin texture image to clipboard")
+                                                                    Component.literal("Click to copy skin texture image to clipboard (from local cache)")
                                                                             .withStyle(ChatFormatting.GRAY))))));
                         }
                     } catch (Exception ignored) {
@@ -313,17 +312,4 @@ public class WailaHandler {
         return decodedJson.substring(hashStart, hashEnd);
     }
 
-    /**
-     * Extract the full skin texture URL from decoded texture JSON.
-     */
-    private static String extractSkinUrl(String decodedJson) {
-        int urlIdx = decodedJson.indexOf("http://textures.minecraft.net/texture/");
-        if (urlIdx < 0) {
-            urlIdx = decodedJson.indexOf("https://textures.minecraft.net/texture/");
-        }
-        if (urlIdx < 0) return null;
-        int urlEnd = decodedJson.indexOf('"', urlIdx);
-        if (urlEnd < 0) return null;
-        return decodedJson.substring(urlIdx, urlEnd);
-    }
 }
