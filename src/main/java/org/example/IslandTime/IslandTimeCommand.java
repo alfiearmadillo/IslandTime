@@ -19,10 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.awt.image.BufferedImage;
-import java.awt.Toolkit;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.Transferable;
-import java.awt.datatransfer.UnsupportedFlavorException;
+
 import java.io.IOException;
 import javax.imageio.ImageIO;
 
@@ -920,44 +917,42 @@ public class IslandTimeCommand {
                     return;
                 }
 
-                // Copy to clipboard on AWT thread
-                final BufferedImage finalImage = image;
-                new Thread(() -> {
-                    try {
-                        String prevHeadless = System.getProperty("java.awt.headless");
-                        try {
-                            System.setProperty("java.awt.headless", "false");
-                            Transferable transferable = new Transferable() {
-                                @Override
-                                public DataFlavor[] getTransferDataFlavors() {
-                                    return new DataFlavor[]{DataFlavor.imageFlavor};
-                                }
-                                @Override
-                                public boolean isDataFlavorSupported(DataFlavor flavor) {
-                                    return DataFlavor.imageFlavor.equals(flavor);
-                                }
-                                @Override
-                                public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
-                                    if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
-                                    return finalImage;
-                                }
-                            };
-                            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(transferable, null);
-                            client.execute(() -> client.player.sendSystemMessage(
-                                    Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
-                        } finally {
-                            if (prevHeadless != null) {
-                                System.setProperty("java.awt.headless", prevHeadless);
-                            } else {
-                                System.clearProperty("java.awt.headless");
-                            }
-                        }
-                    } catch (Exception e) {
-                        String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                        client.execute(() -> client.player.sendSystemMessage(
-                                Component.literal("Failed to copy skin: " + msg).withStyle(ChatFormatting.RED)));
-                    }
-                }, "IslandTime-CopySkin").start();
+                // Save to temp file and copy to clipboard via platform command
+                java.io.File tempFile = java.io.File.createTempFile("islandtime_skin_", ".png");
+                tempFile.deleteOnExit();
+                ImageIO.write(image, "png", tempFile);
+
+                String os = System.getProperty("os.name", "").toLowerCase();
+                boolean copied = false;
+                if (os.contains("win")) {
+                    // PowerShell: copy image file to clipboard
+                    Process proc = new ProcessBuilder("powershell", "-NoProfile", "-Command",
+                            "Add-Type -AssemblyName System.Windows.Forms; " +
+                            "[System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('" +
+                            tempFile.getAbsolutePath().replace("'", "''") + "'))")
+                            .redirectErrorStream(true).start();
+                    copied = proc.waitFor() == 0;
+                } else if (os.contains("mac")) {
+                    Process proc = new ProcessBuilder("osascript", "-e",
+                            "set the clipboard to (read (POSIX file \"" + tempFile.getAbsolutePath() + "\") as «class PNGf»)")
+                            .redirectErrorStream(true).start();
+                    copied = proc.waitFor() == 0;
+                } else {
+                    // Linux: try xclip
+                    Process proc = new ProcessBuilder("xclip", "-selection", "clipboard", "-t", "image/png", "-i",
+                            tempFile.getAbsolutePath())
+                            .redirectErrorStream(true).start();
+                    copied = proc.waitFor() == 0;
+                }
+
+                if (copied) {
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Skin image copied to clipboard!").withStyle(ChatFormatting.GREEN)));
+                } else {
+                    String path = tempFile.getAbsolutePath();
+                    client.execute(() -> client.player.sendSystemMessage(
+                            Component.literal("Clipboard copy failed. Skin saved to: " + path).withStyle(ChatFormatting.YELLOW)));
+                }
             } catch (Exception e) {
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 client.execute(() -> client.player.sendSystemMessage(
