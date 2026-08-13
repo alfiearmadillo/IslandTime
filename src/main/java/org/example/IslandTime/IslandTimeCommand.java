@@ -973,6 +973,62 @@ public class IslandTimeCommand {
         }, "IslandTime-SkinRead").start();
     }
 
+    // -------------------------------------------------------------------------
+    // Copy skin image from an ItemStack (for keybind in inventory screens)
+    // -------------------------------------------------------------------------
+
+    public static void copySkinFromItem(Minecraft client, net.minecraft.world.item.ItemStack stack) {
+        if (client.player == null) return;
+
+        if (stack == null || stack.isEmpty()) {
+            client.player.sendSystemMessage(
+                    Component.literal("No item under cursor.").withStyle(ChatFormatting.RED));
+            return;
+        }
+
+        // Check if it's a player head
+        if (!stack.is(net.minecraft.world.item.Items.PLAYER_HEAD)) {
+            client.player.sendSystemMessage(
+                    Component.literal("Not a player head item.").withStyle(ChatFormatting.RED));
+            return;
+        }
+
+        // Extract profile from item component
+        var profile = stack.get(net.minecraft.core.component.DataComponents.PROFILE);
+        if (profile == null) {
+            client.player.sendSystemMessage(
+                    Component.literal("This head has no profile data.").withStyle(ChatFormatting.RED));
+            return;
+        }
+
+        // Extract texture hash from profile properties
+        String hash = null;
+        var gp = profile.partialProfile();
+        for (com.mojang.authlib.properties.Property prop : gp.properties().get("textures")) {
+            try {
+                String decoded = new String(Base64.getDecoder().decode(prop.value()));
+                int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
+                if (urlIdx >= 0) {
+                    int hashStart = urlIdx + "textures.minecraft.net/texture/".length();
+                    int hashEnd = decoded.indexOf('"', hashStart);
+                    if (hashEnd < 0) hashEnd = decoded.indexOf('}', hashStart);
+                    if (hashEnd >= 0) {
+                        hash = decoded.substring(hashStart, hashEnd);
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (hash == null || hash.isBlank()) {
+            client.player.sendSystemMessage(
+                    Component.literal("Could not extract texture hash from this head.").withStyle(ChatFormatting.RED));
+            return;
+        }
+
+        copySkinImage(client, hash);
+    }
+
     /** Run a clipboard command with optional stdin bytes. Returns null on success, error message on failure. */
     private static String runClipboardCommand(String[] cmd, byte[] stdin) {
         try {

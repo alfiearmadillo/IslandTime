@@ -319,6 +319,22 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorText
         public String componentNames = "";
+
+        @Expose
+        @ConfigOption(
+            name = "Copy Skin from Hovered Item",
+            desc = "When enabled, pressing the configured key while hovering over a player head in any inventory/GUI will copy the skin image to your clipboard"
+        )
+        @ConfigEditorBoolean
+        public boolean copySkinKeybindEnabled = true;
+
+        @Expose
+        @ConfigOption(
+            name = "Copy Skin Keybind",
+            desc = "Key name for copying skin from hovered item (e.g. key.keyboard.v, key.keyboard.b). Requires Copy Skin from Hovered Item to be enabled"
+        )
+        @ConfigEditorText
+        public String copySkinKeybind = "key.keyboard.v";
     }
 
     public static class Signs {

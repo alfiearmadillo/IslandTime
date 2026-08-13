@@ -6,8 +6,11 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.inventory.Slot;
-import org.example.islandtime.BackpackHoverHandler;
+import org.example.islandtime.ConfigManager;
+import org.example.islandtime.IslandTimeCommand;
+import org.example.islandtime.IslandTimeConfig;
 import org.example.islandtime.BackpackNbtParser;
 import org.example.islandtime.FakeSlot;
 import org.example.islandtime.FavouriteGuiViewer;
@@ -155,6 +158,21 @@ public class HandledScreenMixin {
                                              CallbackInfoReturnable<Boolean> cir) {
         long window = Minecraft.getInstance().getWindow().handle();
 
+        // ── Copy Skin from hovered item keybind ──────────────────────────────
+        IslandTimeConfig cfg = ConfigManager.getConfig();
+        if (cfg != null && cfg.misc.copySkinKeybindEnabled) {
+            int copySkinKey = islandtime$parseKeyName(cfg.misc.copySkinKeybind);
+            if (copySkinKey != GLFW.GLFW_KEY_UNKNOWN && event.key() == copySkinKey) {
+                Slot slot = this.hoveredSlot;
+                if (slot != null && !slot.getItem().isEmpty()) {
+                    IslandTimeCommand.copySkinFromItem(Minecraft.getInstance(), slot.getItem());
+                    cir.setReturnValue(true);
+                    cir.cancel();
+                    return;
+                }
+            }
+        }
+
         // ── FavouriteGuiViewer active ──────────────────────────────────────
         if (FavouriteGuiViewer.isActive()) {
             boolean ePressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_E) == GLFW.GLFW_PRESS;
@@ -251,5 +269,65 @@ public class HandledScreenMixin {
             hoveredSlot = islandtime$savedSlot;
             islandtime$savedSlot = null;
         }
+    }
+
+    @Unique
+    private static int islandtime$parseKeyName(String keyName) {
+        if (keyName == null || keyName.isBlank()) return GLFW.GLFW_KEY_UNKNOWN;
+        // Expect format like "key.keyboard.v" — extract the last part
+        String name = keyName.trim();
+        String prefix = "key.keyboard.";
+        if (name.startsWith(prefix)) {
+            name = name.substring(prefix.length());
+        }
+        // Single letter/digit
+        if (name.length() == 1) {
+            char c = Character.toUpperCase(name.charAt(0));
+            if (c >= 'A' && c <= 'Z') return GLFW.GLFW_KEY_A + (c - 'A');
+            if (c >= '0' && c <= '9') return GLFW.GLFW_KEY_0 + (c - '0');
+        }
+        // Named keys
+        return switch (name.toLowerCase()) {
+            case "space" -> GLFW.GLFW_KEY_SPACE;
+            case "left.shift", "left_shift" -> GLFW.GLFW_KEY_LEFT_SHIFT;
+            case "right.shift", "right_shift" -> GLFW.GLFW_KEY_RIGHT_SHIFT;
+            case "left.control", "left_control" -> GLFW.GLFW_KEY_LEFT_CONTROL;
+            case "right.control", "right_control" -> GLFW.GLFW_KEY_RIGHT_CONTROL;
+            case "left.alt", "left_alt" -> GLFW.GLFW_KEY_LEFT_ALT;
+            case "right.alt", "right_alt" -> GLFW.GLFW_KEY_RIGHT_ALT;
+            case "tab" -> GLFW.GLFW_KEY_TAB;
+            case "enter" -> GLFW.GLFW_KEY_ENTER;
+            case "backspace" -> GLFW.GLFW_KEY_BACKSPACE;
+            case "insert" -> GLFW.GLFW_KEY_INSERT;
+            case "delete" -> GLFW.GLFW_KEY_DELETE;
+            case "home" -> GLFW.GLFW_KEY_HOME;
+            case "end" -> GLFW.GLFW_KEY_END;
+            case "page.up", "page_up" -> GLFW.GLFW_KEY_PAGE_UP;
+            case "page.down", "page_down" -> GLFW.GLFW_KEY_PAGE_DOWN;
+            case "f1" -> GLFW.GLFW_KEY_F1;
+            case "f2" -> GLFW.GLFW_KEY_F2;
+            case "f3" -> GLFW.GLFW_KEY_F3;
+            case "f4" -> GLFW.GLFW_KEY_F4;
+            case "f5" -> GLFW.GLFW_KEY_F5;
+            case "f6" -> GLFW.GLFW_KEY_F6;
+            case "f7" -> GLFW.GLFW_KEY_F7;
+            case "f8" -> GLFW.GLFW_KEY_F8;
+            case "f9" -> GLFW.GLFW_KEY_F9;
+            case "f10" -> GLFW.GLFW_KEY_F10;
+            case "f11" -> GLFW.GLFW_KEY_F11;
+            case "f12" -> GLFW.GLFW_KEY_F12;
+            case "comma", "," -> GLFW.GLFW_KEY_COMMA;
+            case "period", "." -> GLFW.GLFW_KEY_PERIOD;
+            case "slash", "/" -> GLFW.GLFW_KEY_SLASH;
+            case "semicolon", ";" -> GLFW.GLFW_KEY_SEMICOLON;
+            case "apostrophe", "'" -> GLFW.GLFW_KEY_APOSTROPHE;
+            case "left.bracket", "left_bracket", "[" -> GLFW.GLFW_KEY_LEFT_BRACKET;
+            case "right.bracket", "right_bracket", "]" -> GLFW.GLFW_KEY_RIGHT_BRACKET;
+            case "backslash", "\\" -> GLFW.GLFW_KEY_BACKSLASH;
+            case "grave.accent", "grave_accent", "`" -> GLFW.GLFW_KEY_GRAVE_ACCENT;
+            case "minus", "-" -> GLFW.GLFW_KEY_MINUS;
+            case "equal", "=" -> GLFW.GLFW_KEY_EQUAL;
+            default -> GLFW.GLFW_KEY_UNKNOWN;
+        };
     }
 }
