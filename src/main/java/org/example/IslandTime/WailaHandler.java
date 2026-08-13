@@ -126,7 +126,7 @@ public class WailaHandler {
                                                 .withStyle(style -> style
                                                         .withClickEvent(new ClickEvent.CopyToClipboard(finalSkyblockId))
                                                         .withHoverEvent(new HoverEvent.ShowText(
-                                                                Component.literal("Click to copy SkyBlock ID\nUse with /it highlight add skyblock:" + finalSkyblockId)
+                                                                Component.literal("Click to copy SkyBlock ID")
                                                                         .withStyle(ChatFormatting.GRAY))))));
                     }
                 }
@@ -137,7 +137,6 @@ public class WailaHandler {
 
         // Top-level SkyBlock ID from skull texture hash (when no NBT-based ID)
         if (skyblockId == null && skullTextureHash != null) {
-            skyblockId = skullTextureHash;
             String hash = skullTextureHash;
             client.player.sendSystemMessage(
                     Component.literal("SkyBlock ID (extracted): ").withStyle(ChatFormatting.GRAY)
@@ -145,27 +144,42 @@ public class WailaHandler {
                                     .withStyle(style -> style
                                             .withClickEvent(new ClickEvent.CopyToClipboard(hash))
                                             .withHoverEvent(new HoverEvent.ShowText(
-                                                    Component.literal("Texture hash extracted from skull profile\nClick to copy\nUse with /it highlight add skyblock:" + hash)
+                                                    Component.literal("Texture hash extracted from skull profile\nClick to copy")
                                                             .withStyle(ChatFormatting.GRAY))))));
         }
 
-        // Highlight command suggestion — prefer SkyBlock ID if available
-        String shortId = blockIdStr.startsWith("minecraft:") ? blockIdStr.substring(10) : blockIdStr;
-        if (skyblockId != null) {
-            String skyblockTarget = "skyblock:" + skyblockId;
-            client.player.sendSystemMessage(
-                    Component.literal("[+ Add to Highlighter (SkyBlock)]").withStyle(ChatFormatting.GREEN)
-                            .withStyle(style -> style
-                                    .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + skyblockTarget))
-                                    .withHoverEvent(new HoverEvent.ShowText(
-                                            Component.literal("Click to highlight all " + skyblockTarget + " blocks").withStyle(ChatFormatting.GRAY)))));
-        }
+        // Highlight command buttons
+        boolean isSkull = (skullTextureHash != null);
+
+        // Always show block ID highlighter button
         client.player.sendSystemMessage(
                 Component.literal("[+ Add to Highlighter]").withStyle(ChatFormatting.GREEN)
                         .withStyle(style -> style
                                 .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + shortId))
                                 .withHoverEvent(new HoverEvent.ShowText(
                                         Component.literal("Click to highlight all " + shortId + " blocks").withStyle(ChatFormatting.GRAY)))));
+
+        // For heads, show head texture highlighter button
+        if (isSkull) {
+            String skullTarget = "skull:" + skullTextureHash;
+            client.player.sendSystemMessage(
+                    Component.literal("[+ Add Head Texture to Highlighter]").withStyle(ChatFormatting.GREEN)
+                            .withStyle(style -> style
+                                    .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + skullTarget))
+                                    .withHoverEvent(new HoverEvent.ShowText(
+                                            Component.literal("Click to highlight skulls with this texture").withStyle(ChatFormatting.GRAY)))));
+        }
+
+        // If there's a skyblock ID, show skyblock ID highlighter button
+        if (skyblockId != null) {
+            String sbTarget = "sb:" + skyblockId;
+            client.player.sendSystemMessage(
+                    Component.literal("[+ Add SkyBlock ID to Highlighter]").withStyle(ChatFormatting.GREEN)
+                            .withStyle(style -> style
+                                    .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + sbTarget))
+                                    .withHoverEvent(new HoverEvent.ShowText(
+                                            Component.literal("Click to highlight all blocks with SkyBlock ID " + skyblockId).withStyle(ChatFormatting.GRAY)))));
+        }
     }
 
     /**
@@ -195,8 +209,6 @@ public class WailaHandler {
     }
 
     private static String handleSkull(Minecraft client, SkullBlockEntity skull) {
-        // Try to get the skull profile
-        // In modern MC, SkullBlockEntity has getOwnerProfile()
         String extractedHash = null;
         try {
             var profile = skull.getOwnerProfile();
@@ -222,32 +234,42 @@ public class WailaHandler {
                                                             Component.literal("Click to copy UUID").withStyle(ChatFormatting.GRAY))))));
                 }
 
-                // Extract and display texture URL from properties
+                // Extract texture and provide Copy as Skin button
                 for (Property prop : gp.properties().get("textures")) {
                     String textureValue = prop.value();
-                    client.player.sendSystemMessage(
-                            Component.literal("  Texture: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal("[Copy Base64]").withStyle(ChatFormatting.DARK_AQUA)
-                                            .withStyle(style -> style
-                                                    .withClickEvent(new ClickEvent.CopyToClipboard(textureValue))
-                                                    .withHoverEvent(new HoverEvent.ShowText(
-                                                            Component.literal("Click to copy texture base64").withStyle(ChatFormatting.GRAY))))));
 
-                    // Decode base64 to get texture URL
+                    // Decode base64 to get texture URL and extract hash
                     try {
                         String decoded = new String(Base64.getDecoder().decode(textureValue));
-                        client.player.sendSystemMessage(
-                                Component.literal("  Decoded: ").withStyle(ChatFormatting.GRAY)
-                                        .append(Component.literal(decoded.length() > 100 ? decoded.substring(0, 100) + "..." : decoded)
-                                                .withStyle(ChatFormatting.DARK_GRAY)
-                                                .withStyle(style -> style
-                                                        .withClickEvent(new ClickEvent.CopyToClipboard(decoded))
-                                                        .withHoverEvent(new HoverEvent.ShowText(
-                                                                Component.literal("Click to copy decoded texture JSON").withStyle(ChatFormatting.GRAY))))));
 
-                        // Try to extract SkyBlock ID from texture URL
-                        String hash = extractSkyBlockId(client, decoded);
-                        if (hash != null) extractedHash = hash;
+                        // Extract texture hash
+                        String hash = extractTextureHash(decoded);
+                        if (hash != null) {
+                            extractedHash = hash;
+
+                            // Show texture hash (clickable to copy)
+                            client.player.sendSystemMessage(
+                                    Component.literal("  Texture Hash: ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal(hash).withStyle(ChatFormatting.LIGHT_PURPLE)
+                                                    .withStyle(style -> style
+                                                            .withClickEvent(new ClickEvent.CopyToClipboard(hash))
+                                                            .withHoverEvent(new HoverEvent.ShowText(
+                                                                    Component.literal("Click to copy texture hash")
+                                                                            .withStyle(ChatFormatting.GRAY))))));
+                        }
+
+                        // Copy as Skin button — constructs a skin URL for clipboard
+                        String skinUrl = extractSkinUrl(decoded);
+                        if (skinUrl != null) {
+                            client.player.sendSystemMessage(
+                                    Component.literal("  ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal("[Copy Skin URL]").withStyle(ChatFormatting.DARK_AQUA)
+                                                    .withStyle(style -> style
+                                                            .withClickEvent(new ClickEvent.CopyToClipboard(skinUrl))
+                                                            .withHoverEvent(new HoverEvent.ShowText(
+                                                                    Component.literal("Click to copy skin texture URL to clipboard")
+                                                                            .withStyle(ChatFormatting.GRAY))))));
+                        }
                     } catch (Exception ignored) {
                     }
                 }
@@ -259,29 +281,29 @@ public class WailaHandler {
     }
 
     /**
-     * Attempt to identify a SkyBlock custom item by its texture hash.
-     * The decoded JSON typically looks like:
-     * {"textures":{"SKIN":{"url":"http://textures.minecraft.net/texture/HASH"}}}
-     * We extract the hash and display it as a potential SkyBlock identifier.
+     * Extract the texture hash from decoded texture JSON.
      */
-    private static String extractSkyBlockId(Minecraft client, String decodedJson) {
-        // Extract texture hash from URL
+    private static String extractTextureHash(String decodedJson) {
         int urlIdx = decodedJson.indexOf("textures.minecraft.net/texture/");
         if (urlIdx < 0) return null;
         int hashStart = urlIdx + "textures.minecraft.net/texture/".length();
         int hashEnd = decodedJson.indexOf('"', hashStart);
         if (hashEnd < 0) hashEnd = decodedJson.indexOf('}', hashStart);
         if (hashEnd < 0) return null;
+        return decodedJson.substring(hashStart, hashEnd);
+    }
 
-        String textureHash = decodedJson.substring(hashStart, hashEnd);
-        client.player.sendSystemMessage(
-                Component.literal("  Texture Hash: ").withStyle(ChatFormatting.GRAY)
-                        .append(Component.literal(textureHash).withStyle(ChatFormatting.LIGHT_PURPLE)
-                                .withStyle(style -> style
-                                        .withClickEvent(new ClickEvent.CopyToClipboard(textureHash))
-                                        .withHoverEvent(new HoverEvent.ShowText(
-                                                Component.literal("Click to copy texture hash\nUse this with /it highlight add for SkyBlock skull matching")
-                                                        .withStyle(ChatFormatting.GRAY))))));
-        return textureHash;
+    /**
+     * Extract the full skin texture URL from decoded texture JSON.
+     */
+    private static String extractSkinUrl(String decodedJson) {
+        int urlIdx = decodedJson.indexOf("http://textures.minecraft.net/texture/");
+        if (urlIdx < 0) {
+            urlIdx = decodedJson.indexOf("https://textures.minecraft.net/texture/");
+        }
+        if (urlIdx < 0) return null;
+        int urlEnd = decodedJson.indexOf('"', urlIdx);
+        if (urlEnd < 0) return null;
+        return decodedJson.substring(urlIdx, urlEnd);
     }
 }

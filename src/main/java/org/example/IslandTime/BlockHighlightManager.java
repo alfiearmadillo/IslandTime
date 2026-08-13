@@ -28,9 +28,10 @@ public class BlockHighlightManager {
      * A single highlight entry. The target can be:
      * - A block ID like "diamond_ore" or "minecraft:diamond_ore"
      * - A skull texture hash prefixed with "skull:" like "skull:abc123..."
+     * - A SkyBlock item ID prefixed with "sb:" like "sb:DITTO_SKULL"
      */
     public static class HighlightEntry {
-        public String target;       // block ID or "skull:TEXTURE_HASH"
+        public String target;       // block ID, "skull:TEXTURE_HASH", or "sb:SKYBLOCK_ID"
         public String color;        // hex "#rrggbb" or named color
         public int range = 48;      // scan range in blocks
         public boolean throughWalls = true;
@@ -55,7 +56,7 @@ public class BlockHighlightManager {
          * Returns true if this entry targets a SkyBlock custom item ID.
          */
         public boolean isSkyBlockTarget() {
-            return target != null && target.startsWith("skyblock:");
+            return target != null && target.startsWith("sb:");
         }
 
         /**
@@ -67,11 +68,11 @@ public class BlockHighlightManager {
         }
 
         /**
-         * Returns the SkyBlock item ID (without the "skyblock:" prefix).
+         * Returns the SkyBlock item ID (without the "sb:" prefix).
          */
         public String getSkyBlockId() {
             if (!isSkyBlockTarget()) return null;
-            return target.substring(9);
+            return target.substring(3);
         }
 
         /**

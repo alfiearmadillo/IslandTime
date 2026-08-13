@@ -35,6 +35,9 @@ public class BlockHighlightScreen extends Screen {
     private boolean addDialogOpen = false;
     private EditBox addTargetField;
     private EditBox addColorField;
+    private EditBox addRangeField;
+    private EditBox addIntensityField;
+    private boolean addThroughWalls = true;
 
     // Edit dialog
     private boolean editDialogOpen = false;
@@ -83,33 +86,64 @@ public class BlockHighlightScreen extends Screen {
 
     private void openAddDialog() {
         addDialogOpen = true;
+        addThroughWalls = true;
         clearWidgets();
 
         int dialogX = width / 2 - 120;
-        int dialogY = height / 2 - 50;
+        int dialogY = height / 2 - 70;
 
-        addTargetField = new EditBox(font, dialogX, dialogY, 240, 20, Component.literal("Target"));
+        addTargetField = new EditBox(font, dialogX, dialogY + 14, 240, 20, Component.literal("Target"));
         addTargetField.setMaxLength(256);
-        addTargetField.setHint(Component.literal("Block ID or skull:HASH").withStyle(ChatFormatting.GRAY));
+        addTargetField.setHint(Component.literal("Block ID, sb:ID, or skull:HASH").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(addTargetField);
 
-        addColorField = new EditBox(font, dialogX, dialogY + 28, 240, 20, Component.literal("Color"));
+        addColorField = new EditBox(font, dialogX, dialogY + 48, 240, 20, Component.literal("Color"));
         addColorField.setMaxLength(32);
         addColorField.setHint(Component.literal("Color: yellow, #ff0000, etc.").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(addColorField);
+
+        addRangeField = new EditBox(font, dialogX, dialogY + 82, 115, 20, Component.literal("Range"));
+        addRangeField.setMaxLength(5);
+        addRangeField.setValue("48");
+        addRangeField.setHint(Component.literal("Range (1-320)").withStyle(ChatFormatting.GRAY));
+        addRenderableWidget(addRangeField);
+
+        addIntensityField = new EditBox(font, dialogX + 125, dialogY + 82, 115, 20, Component.literal("Intensity"));
+        addIntensityField.setMaxLength(3);
+        addIntensityField.setValue("50");
+        addIntensityField.setHint(Component.literal("Intensity (0-100)").withStyle(ChatFormatting.GRAY));
+        addRenderableWidget(addIntensityField);
+
+        // Through Walls toggle
+        addRenderableWidget(Button.builder(
+                Component.literal("Walls: ON"),
+                btn -> {
+                    addThroughWalls = !addThroughWalls;
+                    btn.setMessage(Component.literal("Walls: " + (addThroughWalls ? "ON" : "OFF")));
+                }
+        ).bounds(dialogX, dialogY + 110, 115, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Add"), btn -> {
             String target = addTargetField.getValue().trim();
             String color = addColorField.getValue().trim();
             if (!target.isEmpty()) {
                 if (color.isEmpty()) color = "yellow";
-                BlockHighlightManager.addEntry(target, color);
+                BlockHighlightManager.HighlightEntry entry = new BlockHighlightManager.HighlightEntry(target, color);
+                try {
+                    entry.range = Math.max(1, Math.min(320, Integer.parseInt(addRangeField.getValue().trim())));
+                } catch (NumberFormatException ignored) {}
+                try {
+                    entry.intensity = Math.max(0, Math.min(100, Integer.parseInt(addIntensityField.getValue().trim())));
+                } catch (NumberFormatException ignored) {}
+                entry.throughWalls = addThroughWalls;
+                BlockHighlightManager.getEntries().add(entry);
+                BlockHighlightManager.save();
                 closeDialog();
             }
-        }).bounds(dialogX, dialogY + 58, 115, 20).build());
+        }).bounds(dialogX + 125, dialogY + 110, 55, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 125, dialogY + 58, 115, 20).build());
+                .bounds(dialogX + 185, dialogY + 110, 55, 20).build());
 
         setFocused(addTargetField);
     }
@@ -200,26 +234,24 @@ public class BlockHighlightScreen extends Screen {
 
         if (addDialogOpen || editDialogOpen) {
             int dialogX = width / 2 - 130;
-            int dialogY = editDialogOpen ? height / 2 - 82 : height / 2 - 65;
-            int dialogH = editDialogOpen ? 148 : 140;
+            int dialogY = height / 2 - 82;
+            int dialogH = 148;
             context.fill(dialogX, dialogY, dialogX + 260, dialogY + dialogH, 0xEE000000);
             String title = addDialogOpen ? "Add Highlight" : "Edit Highlight";
             Component titleC = Component.literal(title);
             int tw = font.width(titleC);
             context.text(font, titleC, width / 2 - tw / 2, dialogY + 4, -1, true);
 
-            // Labels
-            if (editDialogOpen) {
-                int baseY = height / 2 - 70;
-                context.text(font, Component.literal("Target:").withStyle(ChatFormatting.GRAY),
-                        width / 2 - 120, baseY + 4, 0xFFAAAAAA, true);
-                context.text(font, Component.literal("Color:").withStyle(ChatFormatting.GRAY),
-                        width / 2 - 120, baseY + 38, 0xFFAAAAAA, true);
-                context.text(font, Component.literal("Range:").withStyle(ChatFormatting.GRAY),
-                        width / 2 - 120, baseY + 72, 0xFFAAAAAA, true);
-                context.text(font, Component.literal("Intensity:").withStyle(ChatFormatting.GRAY),
-                        width / 2 - 120 + 125, baseY + 72, 0xFFAAAAAA, true);
-            }
+            // Labels (same layout for both add and edit)
+            int baseY = height / 2 - 70;
+            context.text(font, Component.literal("Target:").withStyle(ChatFormatting.GRAY),
+                    width / 2 - 120, baseY + 4, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Color:").withStyle(ChatFormatting.GRAY),
+                    width / 2 - 120, baseY + 38, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Range:").withStyle(ChatFormatting.GRAY),
+                    width / 2 - 120, baseY + 72, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Intensity:").withStyle(ChatFormatting.GRAY),
+                    width / 2 - 120 + 125, baseY + 72, 0xFFAAAAAA, true);
         }
 
         if (colorPickerOpen) {

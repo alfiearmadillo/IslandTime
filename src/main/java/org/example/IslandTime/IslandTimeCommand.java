@@ -812,7 +812,7 @@ public class IslandTimeCommand {
 
     private static int highlightAdd(Minecraft client, String input) {
         // Input format: "target" or "target color"
-        // target can be: STONE (block), DITTO_SKULL (skyblock:DITTO_SKULL), skull:HASH
+        // target can be: stone (block), sb:DITTO_SKULL (skyblock id), skull:HASH
         String[] parts = input.trim().split("\\s+", 2);
         String target = parts[0];
         String color = "yellow";
@@ -826,19 +826,6 @@ public class IslandTimeCommand {
                         Component.literal("Unknown color '" + colorStr + "'. Using default. Options: yellow, red, green, blue, magenta, cyan, white, or #rrggbb")
                                 .withStyle(ChatFormatting.YELLOW));
             }
-        }
-
-        // Determine the target type:
-        // - skull:HASH stays as-is
-        // - skyblock:ID stays as-is
-        // - If it looks like a SkyBlock ID (all uppercase with underscores, no colons), prefix with skyblock:
-        // - Otherwise treat as a block ID
-        if (!target.startsWith("skull:") && !target.startsWith("skyblock:")) {
-            if (target.matches("[A-Z0-9_]+") && !target.contains(":")) {
-                // Looks like a SkyBlock item ID (e.g. DITTO_SKULL)
-                target = "skyblock:" + target;
-            }
-            // Otherwise it's a block ID like "stone" or "minecraft:stone"
         }
 
         // Check for duplicates
@@ -859,13 +846,6 @@ public class IslandTimeCommand {
 
     private static int highlightRemove(Minecraft client, String input) {
         String target = input.trim();
-
-        // Apply same target normalization as add
-        if (!target.startsWith("skull:") && !target.startsWith("skyblock:")) {
-            if (target.matches("[A-Z0-9_]+") && !target.contains(":")) {
-                target = "skyblock:" + target;
-            }
-        }
 
         int index = BlockHighlightManager.findByTarget(target);
         if (index < 0) {
@@ -940,7 +920,7 @@ public class IslandTimeCommand {
                 // Page 8 - Ghost, WAILA & Block Highlights
                 {"/islandtime ghost", "Client-side remove the block you are looking at (alias: /it ghost). Can be disabled in /islandtime under Misc."},
                 {"/it highlight", "Open the Block Highlights GUI (same as /it highlights). Use /it highlight add <id> to add from chat."},
-                {"/it highlight add <id>", "Add to highlights. STONE=block, DITTO_SKULL=skyblock ID, skull:HASH=texture hash. Optionally add color: /it highlight add STONE red"},
+                {"/it highlight add <id>", "Add to highlights. stone=block, sb:DITTO_SKULL=skyblock ID, skull:HASH=texture hash. Optionally add color: /it highlight add stone red"},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},

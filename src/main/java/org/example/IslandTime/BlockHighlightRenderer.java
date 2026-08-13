@@ -190,8 +190,8 @@ public class BlockHighlightRenderer {
                 }
 
                 // Check if it's a SkyBlock custom ID target
-                if (blockPart.startsWith("skyblock:")) {
-                    String sbId = blockPart.substring(9);
+                if (blockPart.startsWith("sb:")) {
+                    String sbId = blockPart.substring(3);
                     if (!sbId.isEmpty()) {
                         targets.skyblockIdColors.put(sbId, color);
                         targets.skyblockIdAlpha.put(sbId, defaultAlpha);
