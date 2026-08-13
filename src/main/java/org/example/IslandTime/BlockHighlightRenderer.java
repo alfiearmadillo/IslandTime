@@ -11,7 +11,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -300,8 +299,8 @@ public class BlockHighlightRenderer {
         try {
             var profile = skull.getOwnerProfile();
             if (profile != null) {
-                GameProfile gp = profile.gameProfile();
-                for (Property prop : gp.getProperties().get("textures")) {
+                for (Property prop : profile.properties()) {
+                    if (!"textures".equals(prop.name())) continue;
                     String decoded = new String(Base64.getDecoder().decode(prop.value()));
                     int urlIdx = decoded.indexOf("textures.minecraft.net/texture/");
                     if (urlIdx >= 0) {

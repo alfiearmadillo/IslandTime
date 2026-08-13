@@ -1,6 +1,5 @@
 package org.example.islandtime;
 
-import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -20,7 +19,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
 import java.util.Base64;
-import java.util.Map;
 
 /**
  * Handles the /it waila command — "What Am I Looking At".
@@ -81,7 +79,7 @@ public class WailaHandler {
             StringBuilder props = new StringBuilder();
             for (var entry : values) {
                 if (props.length() > 0) props.append(", ");
-                props.append(entry.getKey().getName()).append("=").append(entry.getValue());
+                props.append(entry.property().getName()).append("=").append(entry.value());
             }
             client.player.sendSystemMessage(
                     Component.literal("State: ").withStyle(ChatFormatting.GRAY)
@@ -187,18 +185,18 @@ public class WailaHandler {
         try {
             var profile = skull.getOwnerProfile();
             if (profile != null) {
-                GameProfile gameProfile = profile.gameProfile();
-
                 // Display owner name
-                if (gameProfile.getName() != null && !gameProfile.getName().isEmpty()) {
+                String profileName = profile.name().orElse(null);
+                if (profileName != null && !profileName.isEmpty()) {
                     client.player.sendSystemMessage(
                             Component.literal("  Owner: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(gameProfile.getName()).withStyle(ChatFormatting.WHITE)));
+                                    .append(Component.literal(profileName).withStyle(ChatFormatting.WHITE)));
                 }
 
                 // Display UUID
-                if (gameProfile.getId() != null) {
-                    String uuid = gameProfile.getId().toString();
+                var profileId = profile.id().orElse(null);
+                if (profileId != null) {
+                    String uuid = profileId.toString();
                     client.player.sendSystemMessage(
                             Component.literal("  UUID: ").withStyle(ChatFormatting.GRAY)
                                     .append(Component.literal(uuid).withStyle(ChatFormatting.DARK_GRAY)
@@ -209,7 +207,8 @@ public class WailaHandler {
                 }
 
                 // Extract and display texture URL from properties
-                for (Property prop : gameProfile.getProperties().get("textures")) {
+                for (Property prop : profile.properties()) {
+                    if (!"textures".equals(prop.name())) continue;
                     String textureValue = prop.value();
                     client.player.sendSystemMessage(
                             Component.literal("  Texture: ").withStyle(ChatFormatting.GRAY)
