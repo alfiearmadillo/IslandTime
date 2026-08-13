@@ -94,8 +94,8 @@ public class BlockHighlightManager {
         public String getDisplayName() {
             if (isSkullTarget()) {
                 String hash = getSkullHash();
-                if (hash.length() > 12) {
-                    return "skull:" + hash.substring(0, 12) + "...";
+                if (hash.length() > 24) {
+                    return "skull:" + hash.substring(0, 24) + "...";
                 }
                 return target;
             }

@@ -85,14 +85,14 @@ public class PlayerListScreen extends Screen {
         clearWidgets();
 
         int dialogX = width / 2 - 100;
-        int dialogY = height / 2 - 50;
+        int dialogY = height / 2 - 60;
 
-        nameField = new EditBox(font, dialogX, dialogY, 200, 20, Component.literal("Name or UUID"));
+        nameField = new EditBox(font, dialogX, dialogY + 14, 200, 20, Component.literal("Name or UUID"));
         nameField.setMaxLength(64);
         nameField.setHint(Component.literal("Player name or UUID").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(nameField);
 
-        noteField = new EditBox(font, dialogX, dialogY + 28, 200, 20, Component.literal("Note"));
+        noteField = new EditBox(font, dialogX, dialogY + 48, 200, 20, Component.literal("Note"));
         noteField.setMaxLength(2048);
         noteField.setHint(Component.literal("Note (paste Discord message)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(noteField);
@@ -114,10 +114,10 @@ public class PlayerListScreen extends Screen {
                 PlayerListManager.addPlayer(uuid, name, noteText);
                 closeDialog();
             }
-        }).bounds(dialogX, dialogY + 58, 95, 20).build());
+        }).bounds(dialogX, dialogY + 78, 95, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 105, dialogY + 58, 95, 20).build());
+                .bounds(dialogX + 105, dialogY + 78, 95, 20).build());
 
         setFocused(nameField);
     }
@@ -129,14 +129,14 @@ public class PlayerListScreen extends Screen {
         clearWidgets();
 
         int dialogX = width / 2 - 100;
-        int dialogY = height / 2 - 50;
+        int dialogY = height / 2 - 60;
 
-        editNameField = new EditBox(font, dialogX, dialogY, 200, 20, Component.literal("Name"));
+        editNameField = new EditBox(font, dialogX, dialogY + 14, 200, 20, Component.literal("Name"));
         editNameField.setMaxLength(64);
         editNameField.setValue(entry.name);
         addRenderableWidget(editNameField);
 
-        editNoteField = new EditBox(font, dialogX, dialogY + 28, 200, 20, Component.literal("Note"));
+        editNoteField = new EditBox(font, dialogX, dialogY + 48, 200, 20, Component.literal("Note"));
         editNoteField.setMaxLength(2048);
         editNoteField.setValue(encodeNewlines(entry.note));
         addRenderableWidget(editNoteField);
@@ -144,10 +144,10 @@ public class PlayerListScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
             PlayerListManager.updatePlayer(editIndex, editNameField.getValue().trim(), decodeNewlines(editNoteField.getValue().trim()));
             closeDialog();
-        }).bounds(dialogX, dialogY + 58, 95, 20).build());
+        }).bounds(dialogX, dialogY + 78, 95, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 105, dialogY + 58, 95, 20).build());
+                .bounds(dialogX + 105, dialogY + 78, 95, 20).build());
 
         setFocused(editNameField);
     }
@@ -183,12 +183,19 @@ public class PlayerListScreen extends Screen {
         // Draw dialog background
         if (addDialogOpen || editDialogOpen) {
             int dialogX = width / 2 - 110;
-            int dialogY = height / 2 - 65;
-            context.fill(dialogX, dialogY, dialogX + 220, dialogY + 140, 0xEE000000);
+            int dialogY = height / 2 - 72;
+            context.fill(dialogX, dialogY, dialogX + 220, dialogY + 160, 0xEE000000);
             String title = addDialogOpen ? "Add Player" : "Edit Player";
             Component titleC = Component.literal(title);
             int tw = font.width(titleC);
-            context.text(font, titleC, width / 2 - tw / 2, dialogY + 8, -1, true);
+            context.text(font, titleC, width / 2 - tw / 2, dialogY + 4, -1, true);
+
+            // Labels
+            int baseY = height / 2 - 60;
+            context.text(font, Component.literal("Name:").withStyle(ChatFormatting.GRAY),
+                    width / 2 - 100, baseY + 4, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Note:").withStyle(ChatFormatting.GRAY),
+                    width / 2 - 100, baseY + 38, 0xFFAAAAAA, true);
         }
 
         // Draw color picker

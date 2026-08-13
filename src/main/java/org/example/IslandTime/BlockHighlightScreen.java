@@ -121,25 +121,25 @@ public class BlockHighlightScreen extends Screen {
         clearWidgets();
 
         int dialogX = width / 2 - 120;
-        int dialogY = height / 2 - 75;
+        int dialogY = height / 2 - 70;
 
-        editTargetField = new EditBox(font, dialogX, dialogY, 240, 20, Component.literal("Target"));
+        editTargetField = new EditBox(font, dialogX, dialogY + 14, 240, 20, Component.literal("Target"));
         editTargetField.setMaxLength(256);
         editTargetField.setValue(entry.target != null ? entry.target : "");
         addRenderableWidget(editTargetField);
 
-        editColorField = new EditBox(font, dialogX, dialogY + 28, 240, 20, Component.literal("Color"));
+        editColorField = new EditBox(font, dialogX, dialogY + 48, 240, 20, Component.literal("Color"));
         editColorField.setMaxLength(32);
         editColorField.setValue(entry.color != null ? entry.color : "");
         addRenderableWidget(editColorField);
 
-        editRangeField = new EditBox(font, dialogX, dialogY + 56, 115, 20, Component.literal("Range"));
+        editRangeField = new EditBox(font, dialogX, dialogY + 82, 115, 20, Component.literal("Range"));
         editRangeField.setMaxLength(5);
         editRangeField.setValue(String.valueOf(entry.range));
         editRangeField.setHint(Component.literal("Range (1-320)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editRangeField);
 
-        editIntensityField = new EditBox(font, dialogX + 125, dialogY + 56, 115, 20, Component.literal("Intensity"));
+        editIntensityField = new EditBox(font, dialogX + 125, dialogY + 82, 115, 20, Component.literal("Intensity"));
         editIntensityField.setMaxLength(3);
         editIntensityField.setValue(String.valueOf(entry.intensity));
         editIntensityField.setHint(Component.literal("Intensity (0-100)").withStyle(ChatFormatting.GRAY));
@@ -153,7 +153,7 @@ public class BlockHighlightScreen extends Screen {
                     e.throughWalls = !e.throughWalls;
                     btn.setMessage(Component.literal("Walls: " + (e.throughWalls ? "ON" : "OFF")));
                 }
-        ).bounds(dialogX, dialogY + 84, 115, 20).build());
+        ).bounds(dialogX, dialogY + 110, 115, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
             BlockHighlightManager.HighlightEntry e = BlockHighlightManager.getEntries().get(editIndex);
@@ -167,10 +167,10 @@ public class BlockHighlightScreen extends Screen {
             } catch (NumberFormatException ignored) {}
             BlockHighlightManager.save();
             closeDialog();
-        }).bounds(dialogX + 125, dialogY + 84, 55, 20).build());
+        }).bounds(dialogX + 125, dialogY + 110, 55, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 185, dialogY + 84, 55, 20).build());
+                .bounds(dialogX + 185, dialogY + 110, 55, 20).build());
 
         setFocused(editTargetField);
     }
@@ -200,22 +200,25 @@ public class BlockHighlightScreen extends Screen {
 
         if (addDialogOpen || editDialogOpen) {
             int dialogX = width / 2 - 130;
-            int dialogY = editDialogOpen ? height / 2 - 90 : height / 2 - 65;
-            int dialogH = editDialogOpen ? 180 : 140;
+            int dialogY = editDialogOpen ? height / 2 - 82 : height / 2 - 65;
+            int dialogH = editDialogOpen ? 148 : 140;
             context.fill(dialogX, dialogY, dialogX + 260, dialogY + dialogH, 0xEE000000);
             String title = addDialogOpen ? "Add Highlight" : "Edit Highlight";
             Component titleC = Component.literal(title);
             int tw = font.width(titleC);
-            context.text(font, titleC, width / 2 - tw / 2, dialogY + 8, -1, true);
+            context.text(font, titleC, width / 2 - tw / 2, dialogY + 4, -1, true);
 
             // Labels
             if (editDialogOpen) {
+                int baseY = height / 2 - 70;
                 context.text(font, Component.literal("Target:").withStyle(ChatFormatting.GRAY),
-                        width / 2 - 120, height / 2 - 75 - 10, 0xFFAAAAAA, true);
+                        width / 2 - 120, baseY + 4, 0xFFAAAAAA, true);
                 context.text(font, Component.literal("Color:").withStyle(ChatFormatting.GRAY),
-                        width / 2 - 120, height / 2 - 75 + 18, 0xFFAAAAAA, true);
-                context.text(font, Component.literal("Range / Intensity:").withStyle(ChatFormatting.GRAY),
-                        width / 2 - 120, height / 2 - 75 + 46, 0xFFAAAAAA, true);
+                        width / 2 - 120, baseY + 38, 0xFFAAAAAA, true);
+                context.text(font, Component.literal("Range:").withStyle(ChatFormatting.GRAY),
+                        width / 2 - 120, baseY + 72, 0xFFAAAAAA, true);
+                context.text(font, Component.literal("Intensity:").withStyle(ChatFormatting.GRAY),
+                        width / 2 - 120 + 125, baseY + 72, 0xFFAAAAAA, true);
             }
         }
 
@@ -275,22 +278,21 @@ public class BlockHighlightScreen extends Screen {
                 context.fill(listLeft + PADDING, rowY + 4, listLeft + PADDING + 14, rowY + 18, 0xFF000000 | rgb);
             }
 
-            // Target name
-            String displayName = entry.getDisplayName();
+            // Target name (truncate to fit before buttons)
+            String displayName = entry.target != null ? entry.target : "(empty)";
+            int nameStartX = listLeft + PADDING + 18;
+            int nameMaxWidth = (listLeft + listWidth - (BUTTON_SIZE + 2) * 4 - 4) - nameStartX;
+            if (font.width(displayName) > nameMaxWidth) {
+                displayName = font.plainSubstrByWidth(displayName, nameMaxWidth - font.width("...")) + "...";
+            }
             ChatFormatting nameStyle = entry.enabled ? ChatFormatting.WHITE : ChatFormatting.DARK_GRAY;
             context.text(font, Component.literal(displayName).withStyle(ChatFormatting.BOLD, nameStyle),
                     listLeft + PADDING + 18, rowY + 4, entry.enabled ? 0xFFFFFFFF : 0xFF666666, true);
 
             // Details line: range, intensity, walls
-            String details = "Range:" + entry.range + " Int:" + entry.intensity + " Walls:" + (entry.throughWalls ? "Y" : "N");
+            String details = "Range:" + entry.range + " Intensity:" + entry.intensity + " Walls:" + (entry.throughWalls ? "Y" : "N");
             context.text(font, Component.literal(details).withStyle(ChatFormatting.GRAY),
                     listLeft + PADDING + 18, rowY + 16, 0xFF888888, true);
-
-            // Skull indicator
-            if (entry.isSkullTarget()) {
-                context.text(font, Component.literal("\u2620").withStyle(ChatFormatting.LIGHT_PURPLE),
-                        listLeft + PADDING + 18 + font.width(displayName) + 4, rowY + 4, 0xFFFF55FF, true);
-            }
 
             // Action buttons on the right
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 4;
