@@ -365,27 +365,22 @@ public class IslandTimeConfig extends Config {
         public boolean enabled = true;
 
         @Expose
-        @ConfigOption(name = "Block IDs", desc = "Space-separated block entries. Each entry is BLOCKID or BLOCKID,COLOR. Supports sb:ID for SkyBlock custom items (e.g. sb:DITTO_SKULL). Color can be a name (yellow, red, green, blue, magenta, cyan, white) or hex (#ff0000). Example: diamond_ore,cyan sb:DITTO_SKULL,yellow iron_ore")
-        @ConfigEditorText
-        public String blockId = "";
-
-        @Expose
-        @ConfigOption(name = "Highlight Intensity", desc = "How visible the highlight is (0 = off, 100 = maximum brightness)")
+        @ConfigOption(name = "Default Intensity", desc = "Default highlight intensity for new entries (0 = off, 100 = maximum brightness)")
         @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
-        public int intensity = 0;
+        public int intensity = 50;
 
         @Expose
-        @ConfigOption(name = "Color", desc = "Highlight color")
+        @ConfigOption(name = "Default Color", desc = "Default highlight color for new entries")
         @ConfigEditorDropdown(values = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"})
         public int color = 0;
 
         @Expose
-        @ConfigOption(name = "Through Walls", desc = "Show highlights through blocks (disable obstruction)")
+        @ConfigOption(name = "Default Through Walls", desc = "Default through-walls setting for new entries")
         @ConfigEditorBoolean
         public boolean throughWalls = true;
 
         @Expose
-        @ConfigOption(name = "Range", desc = "How far away to scan for blocks (in blocks)")
+        @ConfigOption(name = "Default Range", desc = "Default scan range for new entries (in blocks)")
         @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
     }

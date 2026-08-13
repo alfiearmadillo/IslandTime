@@ -19,6 +19,8 @@ import org.joml.Matrix4fc;
 
 import net.minecraft.nbt.CompoundTag;
 
+import net.minecraft.network.chat.Component;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -148,78 +150,51 @@ public class BlockHighlightRenderer {
     }
 
     /**
-     * Builds scan targets from both the config text field and BlockHighlightManager entries.
+     * Detects the current SkyBlock area from the tab menu.
+     * Looks for a line containing "Area: " or "⏣ " pattern in tab list display names.
+     */
+    static String detectCurrentArea() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.getConnection() == null) return null;
+        for (PlayerInfo entry : client.getConnection().getOnlinePlayers()) {
+            Component displayName = entry.getTabListDisplayName();
+            if (displayName == null) continue;
+            String text = displayName.getString();
+            if (text == null) continue;
+            // SkyBlock tab menu has "Area: <name>" or " ⏣ <name>" lines
+            int areaIdx = text.indexOf("Area: ");
+            if (areaIdx >= 0) {
+                return text.substring(areaIdx + 6).trim();
+            }
+            // Also check for the ⏣ symbol used by SkyBlock for area
+            int symbolIdx = text.indexOf("⏣ ");
+            if (symbolIdx >= 0) {
+                return text.substring(symbolIdx + 2).trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Builds scan targets from BlockHighlightManager entries.
      */
     private static ScanTarget buildScanTargets(IslandTimeConfig config) {
         ScanTarget targets = new ScanTarget();
 
-        // 1) Parse from config text field (legacy format)
         int colorIdx = Math.max(0, Math.min(config.blockHighlight.color, COLORS.length - 1));
         float[] defaultColor = COLORS[colorIdx];
-        float defaultAlpha = config.blockHighlight.intensity / 125.0f;
-        boolean defaultThroughWalls = config.blockHighlight.throughWalls;
-        int defaultRange = config.blockHighlight.range;
 
-        String blockIdField = config.blockHighlight.blockId;
-        if (blockIdField != null && !blockIdField.isBlank()) {
-            for (String entry : blockIdField.trim().split("\\s+")) {
-                if (entry.isEmpty()) continue;
-                String blockPart;
-                float[] color = defaultColor;
+        // Detect current area from tab menu
+        String currentArea = detectCurrentArea();
 
-                int commaIdx = entry.indexOf(',');
-                if (commaIdx >= 0) {
-                    blockPart = entry.substring(0, commaIdx);
-                    String colorPart = entry.substring(commaIdx + 1);
-                    float[] parsed = parseColor(colorPart);
-                    if (parsed != null) color = parsed;
-                } else {
-                    blockPart = entry;
-                }
-
-                // Check if it's a skull target
-                if (blockPart.startsWith("skull:")) {
-                    String hash = blockPart.substring(6);
-                    if (!hash.isEmpty()) {
-                        targets.skullHashColors.put(hash, color);
-                        targets.skullHashAlpha.put(hash, defaultAlpha);
-                        targets.skullHashThroughWalls.put(hash, defaultThroughWalls);
-                        targets.skullHashRange.put(hash, defaultRange);
-                    }
-                    continue;
-                }
-
-                // Check if it's a SkyBlock custom ID target
-                if (blockPart.startsWith("sb:")) {
-                    String sbId = blockPart.substring(3);
-                    if (!sbId.isEmpty()) {
-                        targets.skyblockIdColors.put(sbId, color);
-                        targets.skyblockIdAlpha.put(sbId, defaultAlpha);
-                        targets.skyblockIdThroughWalls.put(sbId, defaultThroughWalls);
-                        targets.skyblockIdRange.put(sbId, defaultRange);
-                    }
-                    continue;
-                }
-
-                String normalized = blockPart.trim().toLowerCase();
-                if (normalized.isEmpty()) continue;
-                if (!normalized.contains(":")) {
-                    normalized = "minecraft:" + normalized;
-                }
-                Identifier targetId = Identifier.tryParse(normalized);
-                if (targetId == null) continue;
-                if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
-                Block block = BuiltInRegistries.BLOCK.getValue(targetId);
-                targets.blockColors.put(block, color);
-                targets.blockAlpha.put(block, defaultAlpha);
-                targets.blockThroughWalls.put(block, defaultThroughWalls);
-                targets.blockRange.put(block, defaultRange);
-            }
-        }
-
-        // 2) Parse from BlockHighlightManager entries
+        // Parse from BlockHighlightManager entries
         for (BlockHighlightManager.HighlightEntry he : BlockHighlightManager.getEntries()) {
             if (!he.enabled || he.intensity <= 0) continue;
+
+            // Area filtering: if entry has an area set, only include if it matches current area
+            if (he.area != null && !he.area.isBlank()) {
+                if (currentArea == null || !he.area.equalsIgnoreCase(currentArea)) continue;
+            }
 
             float[] color = parseColor(he.color);
             if (color == null) color = defaultColor;
@@ -263,16 +238,19 @@ public class BlockHighlightRenderer {
      */
     private static String buildFingerprint(IslandTimeConfig config) {
         StringBuilder sb = new StringBuilder();
-        sb.append(config.blockHighlight.blockId).append("|");
         sb.append(config.blockHighlight.intensity).append("|");
         sb.append(config.blockHighlight.color).append("|");
         sb.append(config.blockHighlight.throughWalls).append("|");
         sb.append(config.blockHighlight.range).append("|");
+        // Include current area
+        String area = detectCurrentArea();
+        sb.append(area != null ? area : "").append("|");
         // Include manager entries
         for (BlockHighlightManager.HighlightEntry e : BlockHighlightManager.getEntries()) {
             sb.append(e.target).append(",").append(e.color).append(",")
               .append(e.range).append(",").append(e.throughWalls).append(",")
-              .append(e.enabled).append(",").append(e.intensity).append(";");
+              .append(e.enabled).append(",").append(e.intensity).append(",")
+              .append(e.area != null ? e.area : "").append(";");
         }
         return sb.toString();
     }
@@ -368,14 +346,11 @@ public class BlockHighlightRenderer {
         }
 
         // Check if anything is configured at all
-        boolean hasConfigEntries = config.blockHighlight.enabled
-                && config.blockHighlight.intensity > 0
-                && config.blockHighlight.blockId != null
-                && !config.blockHighlight.blockId.isBlank();
-        boolean hasManagerEntries = BlockHighlightManager.getEntries().stream()
+        boolean hasManagerEntries = config.blockHighlight.enabled
+                && BlockHighlightManager.getEntries().stream()
                 .anyMatch(e -> e.enabled && e.intensity > 0);
 
-        if (!hasConfigEntries && !hasManagerEntries) {
+        if (!hasManagerEntries) {
             highlightedBoxes = List.of();
             return;
         }

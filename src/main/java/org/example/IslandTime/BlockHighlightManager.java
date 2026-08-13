@@ -37,6 +37,7 @@ public class BlockHighlightManager {
         public boolean throughWalls = true;
         public boolean enabled = true;
         public int intensity = 50;  // 0-100
+        public String area = "";    // SkyBlock area name (empty = show everywhere)
 
         public HighlightEntry() {}
 

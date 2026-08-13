@@ -924,7 +924,15 @@ public class IslandTimeCommand {
             return 1;
         }
 
-        BlockHighlightManager.addEntry(target, color);
+        BlockHighlightManager.HighlightEntry entry = new BlockHighlightManager.HighlightEntry(target, color);
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (config != null) {
+            entry.range = config.blockHighlight.range;
+            entry.intensity = config.blockHighlight.intensity;
+            entry.throughWalls = config.blockHighlight.throughWalls;
+        }
+        BlockHighlightManager.getEntries().add(entry);
+        BlockHighlightManager.save();
         client.player.sendSystemMessage(
                 Component.literal("Added to highlights: ").withStyle(ChatFormatting.GREEN)
                         .append(Component.literal(target).withStyle(ChatFormatting.AQUA)));
