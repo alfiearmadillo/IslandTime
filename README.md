@@ -22,6 +22,7 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, fuel cycles
 - **WAILA (What Am I Looking At)** — Inspect any targeted block with `/it waila` to see block ID, position, state properties, tile entity data, skull textures, and SkyBlock custom IDs
 - **Block Highlight** — Multi-entry block highlight system with a dedicated GUI (`/it highlights`). Each entry has its own target (block ID, `sb:` SkyBlock ID, or `skull:` texture hash), color, range, intensity, through-walls toggle, and optional area filter. Quickly add highlights from WAILA results or via `/it highlight add`
 - **Copy Skin** — Copy the skin texture of a targeted player head block to clipboard with `/it copyskin`, or copy from a skull item in any inventory/GUI by pressing a configurable keybind (default: `V`). Preserves transparency. The keybind and toggle are configurable in the MoulConfig GUI under Misc
+- **Aging Items** — Compare profit per hour for all levelling items (Bottle of Jyrre, Dark Cacao Truffle, Discrite, Moby-Duck, Not Very Moldy Bread, Rosewater Flask) using live Bazaar prices. Configure time-bag and inventory slot counts for estimated hourly income. Add or remove custom item pairs with `/it agingItems add/remove`
 - **MoulConfig GUI** — All settings accessible from a single GUI opened with `/islandtime`
 
 ## Installation
@@ -61,6 +62,10 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it highlight remove <target>` | Remove a highlight entry by target |
 | `/it players` | Open the player list GUI (add/edit/delete/party/invite) |
 | `/it ghost` | Client-side block removal tool |
+| `/it agingItems` | Compare profit/hour for all configured aging items using Bazaar prices |
+| `/it agingItems add <agingId> <agedId>` | Add a custom aging item pair by SkyBlock IDs |
+| `/it agingItems remove <agingId>` | Remove an aging item pair |
+| `/it agingItems list` | List all configured aging item pairs |
 | `/islandtime help [page]` | View help pages |
 
 `/it` is an alias for `/islandtime`.

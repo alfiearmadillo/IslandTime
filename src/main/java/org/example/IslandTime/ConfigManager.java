@@ -147,6 +147,8 @@ public class ConfigManager {
         // Misc
         config.misc.showHiddenTooltips = TooltipOverrideConfig.isShowHiddenTooltips();
         config.misc.keepResourcePack = ResourcePackConfig.isEnabled();
+        config.misc.agingTimeBagSlots = AgingItemsConfig.getTimeBagSlots();
+        config.misc.agingInventorySlots = AgingItemsConfig.getInventorySlots();
 
         saveToFile();
     }
@@ -239,6 +241,14 @@ public class ConfigManager {
             if (!config.misc.keepResourcePack) {
                 ResourcePackManager.reset();
             }
+        }
+
+        // Misc — aging items slots
+        if (AgingItemsConfig.getTimeBagSlots() != config.misc.agingTimeBagSlots) {
+            AgingItemsConfig.setTimeBagSlots(config.misc.agingTimeBagSlots);
+        }
+        if (AgingItemsConfig.getInventorySlots() != config.misc.agingInventorySlots) {
+            AgingItemsConfig.setInventorySlots(config.misc.agingInventorySlots);
         }
 
         saveToFile();

@@ -154,6 +154,66 @@ public class IslandTimeCommand {
                         .then(literal("remove")
                                 .then(argument("blockid", StringArgumentType.greedyString())
                                         .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))))
+                .then(literal("agingItems")
+                        .executes(ctx -> {
+                            AgingItemsCommand.execute(ctx.getSource().getClient());
+                            return 1;
+                        })
+                        .then(literal("add")
+                                .then(argument("agingId", StringArgumentType.word())
+                                        .then(argument("agedId", StringArgumentType.word())
+                                                .executes(ctx -> {
+                                                    String agingId = StringArgumentType.getString(ctx, "agingId");
+                                                    String agedId = StringArgumentType.getString(ctx, "agedId");
+                                                    Minecraft client = ctx.getSource().getClient();
+                                                    if (AgingItemsConfig.addPair(agingId, agedId)) {
+                                                        client.player.sendSystemMessage(
+                                                                Component.literal("Added aging pair: ").withStyle(ChatFormatting.GREEN)
+                                                                        .append(Component.literal(agingId.toUpperCase()).withStyle(ChatFormatting.YELLOW))
+                                                                        .append(Component.literal(" → ").withStyle(ChatFormatting.GRAY))
+                                                                        .append(Component.literal(agedId.toUpperCase()).withStyle(ChatFormatting.YELLOW)));
+                                                    } else {
+                                                        client.player.sendSystemMessage(
+                                                                Component.literal("That pair already exists.").withStyle(ChatFormatting.RED));
+                                                    }
+                                                    return 1;
+                                                }))))
+                        .then(literal("remove")
+                                .then(argument("agingId", StringArgumentType.word())
+                                        .executes(ctx -> {
+                                            String agingId = StringArgumentType.getString(ctx, "agingId");
+                                            Minecraft client = ctx.getSource().getClient();
+                                            if (AgingItemsConfig.removePair(agingId)) {
+                                                client.player.sendSystemMessage(
+                                                        Component.literal("Removed aging pair for: ").withStyle(ChatFormatting.GREEN)
+                                                                .append(Component.literal(agingId.toUpperCase()).withStyle(ChatFormatting.YELLOW)));
+                                            } else {
+                                                client.player.sendSystemMessage(
+                                                        Component.literal("No pair found with aging ID: ").withStyle(ChatFormatting.RED)
+                                                                .append(Component.literal(agingId.toUpperCase()).withStyle(ChatFormatting.YELLOW)));
+                                            }
+                                            return 1;
+                                        })))
+                        .then(literal("list")
+                                .executes(ctx -> {
+                                    Minecraft client = ctx.getSource().getClient();
+                                    List<String[]> pairs = AgingItemsConfig.getItemPairs();
+                                    if (pairs.isEmpty()) {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("No aging item pairs configured.").withStyle(ChatFormatting.YELLOW));
+                                    } else {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Aging item pairs (" + pairs.size() + "):").withStyle(ChatFormatting.GOLD));
+                                        for (String[] p : pairs) {
+                                            client.player.sendSystemMessage(
+                                                    Component.literal("  ").withStyle(ChatFormatting.GRAY)
+                                                            .append(Component.literal(p[0]).withStyle(ChatFormatting.YELLOW))
+                                                            .append(Component.literal(" → ").withStyle(ChatFormatting.GRAY))
+                                                            .append(Component.literal(p[1]).withStyle(ChatFormatting.AQUA)));
+                                        }
+                                    }
+                                    return 1;
+                                })))
                 .then(literal("players")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
@@ -1186,7 +1246,14 @@ public class IslandTimeCommand {
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
-                {"/islandtime help [page]", "Show this help (pages 1-8)"},
+                {"/islandtime help [page]", "Show this help (pages 1-9)"},
+
+                // Page 9 - Aging Items
+                {"/it agingItems", "Compare profit/hour for all configured aging items using live Bazaar prices"},
+                {"/it agingItems add <agingId> <agedId>", "Add a custom aging item pair by SkyBlock IDs (e.g. BOTTLE_OF_JYRRE REFINED_BOTTLE_OF_JYRRE)"},
+                {"/it agingItems remove <agingId>", "Remove an aging item pair by its aging SkyBlock ID"},
+                {"/it agingItems list", "List all configured aging item pairs"},
+                {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /islandtime GUI"},
         };
 
         int commandsPerPage = 5;

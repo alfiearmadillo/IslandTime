@@ -338,6 +338,37 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorKeybind(defaultKey = 86) // GLFW_KEY_V
         public int copySkinKeybind = 86;
 
+        // ── Aging Items ──────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 4)
+        @ConfigOption(name = "Aging Items", desc = "Compare profit per hour for levelling items (Bottle of Jyrre, Dark Cacao Truffle, etc.)")
+        public boolean agingItemsAccordion = false;
+
+        @ConfigAccordionId(id = 4)
+        @ConfigOption(name = "Compare Aging Items", desc = "Fetch Bazaar prices and compare profit/hour for all configured aging items")
+        @ConfigEditorButton(buttonText = " Compare Now ")
+        public Runnable agingItemsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it agingItems");
+                }
+            }
+        };
+
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Time Bag Slots", desc = "Number of Time Pocket (time-bag) slots available for aging items (items age at 2× speed)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 10, minStep = 1)
+        public int agingTimeBagSlots = 3;
+
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Inventory Slots", desc = "Number of inventory slots dedicated to levelling items (items age at 1× speed)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 28, minStep = 1)
+        public int agingInventorySlots = 0;
+
         // ── Other ────────────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 3)
