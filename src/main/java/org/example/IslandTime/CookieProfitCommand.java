@@ -39,7 +39,8 @@ public class CookieProfitCommand {
     // Cookie duration in hours (4 real days)
     private static final double COOKIE_HOURS = 96.0;
 
-    // Bits Talisman multiplier (10% chance to double = 1.1x effective)
+    // Passive bits earning: 5.2083% of total bits per 30 min = bitsPerCookie / 9.6 per hour
+    // With Bits Talisman: 10% chance to double each claim → 1.1x effective rate
     private static final double BITS_TALISMAN_MULTIPLIER = 1.1;
 
     public static void execute(Minecraft client) {
@@ -53,6 +54,10 @@ public class CookieProfitCommand {
         if (includeBitsTalisman) {
             effectiveBitsPerCookie *= BITS_TALISMAN_MULTIPLIER;
         }
+
+        // Bits earned per hour: you earn total bits over 96 hours of cookie duration
+        // Base rate = bitsPerCookie / 96 per hour; with talisman = that × 1.1
+        final double bitsPerHour = effectiveBitsPerCookie / COOKIE_HOURS;
 
         if (baseBitsPerCookie <= 0) {
             client.player.sendSystemMessage(
@@ -134,6 +139,8 @@ public class CookieProfitCommand {
                             Component.literal("Bits/cookie: ").withStyle(ChatFormatting.GRAY)
                                     .append(Component.literal(String.format("%.0f", bitsPerCookie)).withStyle(ChatFormatting.AQUA))
                                     .append(Component.literal(includeBitsTalisman ? " (incl. Bits Talisman)" : "").withStyle(ChatFormatting.DARK_AQUA))
+                                    .append(Component.literal("  Bits/hr: ").withStyle(ChatFormatting.GRAY))
+                                    .append(Component.literal(String.format("%.0f", bitsPerHour)).withStyle(ChatFormatting.AQUA))
                                     .append(Component.literal("  Cookie cost: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(cookieCost > 0 ? formatCoins(cookieCost) : "N/A").withStyle(ChatFormatting.WHITE)));
                     client.player.sendSystemMessage(Component.literal(""));
@@ -147,10 +154,11 @@ public class CookieProfitCommand {
                         }
 
                         double profitPerCookie = item.profitPerBit * bitsPerCookie;
-                        double netPerCookie = (cookieCost > 0) ? profitPerCookie - cookieCost : profitPerCookie;
-                        double profitPerHour = netPerCookie / COOKIE_HOURS;
+                        double profitPerHour = item.profitPerBit * bitsPerHour;
+                        double cookieCostPerHour = (cookieCost > 0) ? cookieCost / COOKIE_HOURS : 0;
+                        double netPerHour = profitPerHour - cookieCostPerHour;
                         ChatFormatting profitColor = (item.profitPerBit > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
-                        ChatFormatting netColor = (netPerCookie > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
+                        ChatFormatting netColor = (netPerHour > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
 
                         client.player.sendSystemMessage(
                                 Component.literal(item.name).withStyle(ChatFormatting.YELLOW)
@@ -163,26 +171,26 @@ public class CookieProfitCommand {
                         client.player.sendSystemMessage(
                                 Component.literal("  Per cookie: ").withStyle(ChatFormatting.GRAY)
                                         .append(Component.literal(formatCoins(profitPerCookie)).withStyle(profitColor))
-                                        .append(Component.literal("  Net: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(cookieCost > 0 ? formatCoins(netPerCookie) : "N/A").withStyle(netColor))
-                                        .append(Component.literal("  ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(cookieCost > 0 ? formatCoins(profitPerHour) + "/hr" : "").withStyle(netColor)));
+                                        .append(Component.literal("  Profit/hr: ").withStyle(ChatFormatting.GRAY))
+                                        .append(Component.literal(formatCoins(profitPerHour) + "/hr").withStyle(profitColor))
+                                        .append(Component.literal("  Net/hr: ").withStyle(ChatFormatting.GRAY))
+                                        .append(Component.literal(cookieCost > 0 ? formatCoins(netPerHour) + "/hr" : "N/A").withStyle(netColor)));
                         client.player.sendSystemMessage(Component.literal(""));
                     }
 
                     // Best option summary
                     if (!items.isEmpty() && items.get(0).error == null) {
                         CookieItem best = items.get(0);
-                        double bestPerCookie = best.profitPerBit * bitsPerCookie;
-                        double bestNet = (cookieCost > 0) ? bestPerCookie - cookieCost : bestPerCookie;
-                        double bestPerHour = (cookieCost > 0) ? bestNet / COOKIE_HOURS : 0;
-                        ChatFormatting bestColor = bestNet > 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
+                        double bestProfitPerHour = best.profitPerBit * bitsPerHour;
+                        double bestCookieCostPerHour = (cookieCost > 0) ? cookieCost / COOKIE_HOURS : 0;
+                        double bestNetPerHour = bestProfitPerHour - bestCookieCostPerHour;
+                        ChatFormatting bestColor = bestNetPerHour > 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
                         client.player.sendSystemMessage(
                                 Component.literal("Best: ").withStyle(ChatFormatting.GOLD)
                                         .append(Component.literal(best.name).withStyle(ChatFormatting.YELLOW))
                                         .append(Component.literal(" at ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(formatCoins(best.profitPerBit) + "/bit").withStyle(bestColor))
-                                        .append(Component.literal(cookieCost > 0 ? " (" + formatCoins(bestNet) + " net/cookie, " + formatCoins(bestPerHour) + "/hr)" : "").withStyle(bestColor)));
+                                        .append(Component.literal(cookieCost > 0 ? " (" + formatCoins(bestNetPerHour) + " net/hr)" : "").withStyle(bestColor)));
                     }
                 });
 
