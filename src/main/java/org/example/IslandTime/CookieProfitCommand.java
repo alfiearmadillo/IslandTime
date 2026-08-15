@@ -39,7 +39,11 @@ public class CookieProfitCommand {
     // Cookie duration in hours (4 real days)
     private static final double COOKIE_HOURS = 96.0;
 
-    // Passive bits earning: 5.2083% of total bits per 30 min = bitsPerCookie / 9.6 per hour
+    // Passive bits earning rate: 250 bits per 30 min at base 4800 bits/cookie.
+    // Rate scales with total bits, so bitsPerHour = bitsPerCookie / 9.6
+    // (250/4800 per 30 min = 500/4800 per hour = 1/9.6 of total per hour online)
+    private static final double HOURS_TO_EARN_ALL_BITS = 9.6;
+
     // With Bits Talisman: 10% chance to double each claim → 1.1x effective rate
     private static final double BITS_TALISMAN_MULTIPLIER = 1.1;
 
@@ -55,9 +59,9 @@ public class CookieProfitCommand {
             effectiveBitsPerCookie *= BITS_TALISMAN_MULTIPLIER;
         }
 
-        // Bits earned per hour: you earn total bits over 96 hours of cookie duration
-        // Base rate = bitsPerCookie / 96 per hour; with talisman = that × 1.1
-        final double bitsPerHour = effectiveBitsPerCookie / COOKIE_HOURS;
+        // Bits earned per hour (online): 250 bits/30min at base scales with total
+        // bitsPerHour = bitsPerCookie / 9.6; with talisman: × 1.1
+        final double bitsPerHour = effectiveBitsPerCookie / HOURS_TO_EARN_ALL_BITS;
 
         if (baseBitsPerCookie <= 0) {
             client.player.sendSystemMessage(
