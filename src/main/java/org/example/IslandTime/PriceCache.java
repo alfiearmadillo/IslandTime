@@ -15,6 +15,7 @@ public class PriceCache {
 
     private static final String BAZAAR_API = "https://api.hypixel.net/v2/skyblock/bazaar";
     private static final String LOWEST_BIN_API = "https://moulberry.codes/lowestbin.json";
+    private static final String LOWEST_BIN_FALLBACK = "https://lb.tricked.pro/lowestbin";
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
     private static JsonObject cachedBazaar = null;
@@ -111,8 +112,16 @@ public class PriceCache {
     }
 
     private static JsonObject fetchLowestBins() {
+        JsonObject result = fetchJson(LOWEST_BIN_API);
+        if (result == null) {
+            result = fetchJson(LOWEST_BIN_FALLBACK);
+        }
+        return result;
+    }
+
+    private static JsonObject fetchJson(String url) {
         try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(LOWEST_BIN_API).toURL().openConnection();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(10_000);
             conn.setReadTimeout(10_000);
@@ -122,7 +131,7 @@ public class PriceCache {
                 return JsonParser.parseReader(reader).getAsJsonObject();
             }
         } catch (Exception e) {
-            System.err.println("[IslandTime] Lowest BIN fetch failed: " + e.getMessage());
+            System.err.println("[IslandTime] Fetch failed for " + url + ": " + e.getMessage());
         }
         return null;
     }
