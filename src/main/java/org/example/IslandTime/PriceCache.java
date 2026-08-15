@@ -16,6 +16,7 @@ public class PriceCache {
     private static final String BAZAAR_API = "https://api.hypixel.net/v2/skyblock/bazaar";
     private static final String LOWEST_BIN_API = "https://moulberry.codes/lowestbin.json";
     private static final String LOWEST_BIN_FALLBACK = "https://lb.tricked.pro/lowestbin";
+    private static final String LOWEST_BIN_FALLBACK_2 = "https://sky.coflnet.com/api/auctions/lowestBin";
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
     private static JsonObject cachedBazaar = null;
@@ -115,6 +116,9 @@ public class PriceCache {
         JsonObject result = fetchJson(LOWEST_BIN_API);
         if (result == null) {
             result = fetchJson(LOWEST_BIN_FALLBACK);
+        }
+        if (result == null) {
+            result = fetchJson(LOWEST_BIN_FALLBACK_2);
         }
         return result;
     }
