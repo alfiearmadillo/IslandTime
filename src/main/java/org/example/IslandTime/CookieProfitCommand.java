@@ -29,14 +29,13 @@ public class CookieProfitCommand {
     private static final int MAGMA_BUCKET_LAVA_BUCKETS = 2;
     private static final int PLASMA_BUCKET_LAVA_BUCKETS = 4;
 
-    // Cookie duration in real hours (4 days)
-    private static final double COOKIE_HOURS = 96.0;
+    // Wiki: 5.2083% of bits per cookie every 30 min (250 * multiplier).
+    // Takes ~10 hours of idle playtime to earn all bits without Bits Talisman.
+    private static final double BASE_HOURS_TO_EARN_ALL_BITS = 10.0;
 
-    // Bits earning: 250 per 30 min at base 4800 = all bits in 9.6 hours online
-    private static final double HOURS_TO_EARN_ALL_BITS = 9.6;
-
-    // Bits Talisman: 10% chance to double = 1.1x effective
-    private static final double BITS_TALISMAN_MULTIPLIER = 1.1;
+    // Bits Talisman: 10% chance to earn double per tick, draining the pool
+    // faster. Same total bits, earned in ~9.09 hours instead of 10.
+    private static final double BITS_TALISMAN_SPEED_MULTIPLIER = 1.1;
 
     public static void execute(Minecraft client) {
         if (client.player == null) return;
@@ -45,12 +44,13 @@ public class CookieProfitCommand {
         int baseBitsPerCookie = (config != null) ? config.misc.bitsPerCookie : 4800;
         boolean includeBitsTalisman = (config != null) && config.misc.includeBitsTalisman;
 
-        double effectiveBitsPerCookie = baseBitsPerCookie;
+        // Bits Talisman doesn't create extra bits — same total, earned faster
+        double hoursToEarn = BASE_HOURS_TO_EARN_ALL_BITS;
         if (includeBitsTalisman) {
-            effectiveBitsPerCookie *= BITS_TALISMAN_MULTIPLIER;
+            hoursToEarn = BASE_HOURS_TO_EARN_ALL_BITS / BITS_TALISMAN_SPEED_MULTIPLIER;
         }
 
-        final double bitsPerHour = effectiveBitsPerCookie / HOURS_TO_EARN_ALL_BITS;
+        final double bitsPerHour = baseBitsPerCookie / hoursToEarn;
 
         if (baseBitsPerCookie <= 0) {
             client.player.sendSystemMessage(
@@ -59,7 +59,8 @@ public class CookieProfitCommand {
             return;
         }
 
-        final double bitsPerCookie = effectiveBitsPerCookie;
+        final double bitsPerCookie = baseBitsPerCookie;
+        final double finalHoursToEarn = hoursToEarn;
 
         client.player.sendSystemMessage(
                 Component.literal("Fetching Bazaar prices...").withStyle(ChatFormatting.GRAY));
@@ -125,10 +126,10 @@ public class CookieProfitCommand {
                             Component.literal("═══ Cookie Profit Calculator ═══").withStyle(ChatFormatting.GOLD));
                     client.player.sendSystemMessage(
                             Component.literal("Bits/cookie: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(String.format("%.0f", bitsPerCookie)).withStyle(ChatFormatting.AQUA))
-                                    .append(Component.literal(includeBitsTalisman ? " (incl. Bits Talisman)" : "").withStyle(ChatFormatting.DARK_AQUA))
+                                    .append(Component.literal(String.format("%d", baseBitsPerCookie)).withStyle(ChatFormatting.AQUA))
                                     .append(Component.literal("  Bits/hr: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(String.format("%.0f", bitsPerHour)).withStyle(ChatFormatting.AQUA))
+                                    .append(Component.literal(includeBitsTalisman ? " (w/ Bits Tali)" : "").withStyle(ChatFormatting.DARK_AQUA))
                                     .append(Component.literal("  Cookie cost: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(cookieCost) : "N/A").withStyle(ChatFormatting.WHITE)));
                     client.player.sendSystemMessage(Component.literal(""));
@@ -144,8 +145,10 @@ public class CookieProfitCommand {
                         double profitPerBit = item.profitPerBit();
                         // Net profit per cookie = (profit per bit * bits per cookie) - cookie cost
                         double netPerCookie = profitPerBit * bitsPerCookie - (cookieCost > 0 ? cookieCost : 0);
-                        // Net per hour = net per cookie / cookie real duration
-                        double netPerHour = netPerCookie / COOKIE_HOURS;
+                        // Net per hour = profit/bit * bits/hr - cookie cost amortized over earning time
+                        double netPerHour = cookieCost > 0
+                                ? profitPerBit * bitsPerHour - cookieCost / finalHoursToEarn
+                                : profitPerBit * bitsPerHour;
                         ChatFormatting netCookieColor = (netPerCookie > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
                         ChatFormatting perBitColor = (profitPerBit > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
                         ChatFormatting netHrColor = (netPerHour > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
@@ -166,8 +169,9 @@ public class CookieProfitCommand {
                     // Best option summary
                     if (!items.isEmpty() && items.get(0).error == null) {
                         CookieItem best = items.get(0);
-                        double bestNetPerCookie = best.profitPerBit() * bitsPerCookie - (cookieCost > 0 ? cookieCost : 0);
-                        double bestNetPerHour = bestNetPerCookie / COOKIE_HOURS;
+                        double bestNetPerHour = cookieCost > 0
+                                ? best.profitPerBit() * bitsPerHour - cookieCost / finalHoursToEarn
+                                : best.profitPerBit() * bitsPerHour;
                         ChatFormatting bestColor = bestNetPerHour > 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
                         client.player.sendSystemMessage(
                                 Component.literal("Best: ").withStyle(ChatFormatting.GOLD)
