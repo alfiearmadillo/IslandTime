@@ -369,6 +369,12 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorSlider(minValue = 0, maxValue = 35, minStep = 1)
         public int agingInventorySlots = 0;
 
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Use Sell Offer", desc = "When enabled, uses sell offer (sell order) prices instead of insta-sell prices for aged items")
+        @ConfigEditorBoolean
+        public boolean agingUseSellOffer = false;
+
         // ── Cookie Profit ────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 5)
