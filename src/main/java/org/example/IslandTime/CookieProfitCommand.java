@@ -36,18 +36,32 @@ public class CookieProfitCommand {
     private static final int MAGMA_BUCKET_LAVA_BUCKETS = 2;   // 2 enchanted lava buckets
     private static final int PLASMA_BUCKET_LAVA_BUCKETS = 4;  // 4 enchanted lava buckets (2 per magma bucket × 2)
 
+    // Cookie duration in hours (4 real days)
+    private static final double COOKIE_HOURS = 96.0;
+
+    // Bits Talisman multiplier (10% chance to double = 1.1x effective)
+    private static final double BITS_TALISMAN_MULTIPLIER = 1.1;
+
     public static void execute(Minecraft client) {
         if (client.player == null) return;
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        int bitsPerCookie = (config != null) ? config.misc.bitsPerCookie : 4800;
+        int baseBitsPerCookie = (config != null) ? config.misc.bitsPerCookie : 4800;
+        boolean includeBitsTalisman = (config != null) && config.misc.includeBitsTalisman;
 
-        if (bitsPerCookie <= 0) {
+        double effectiveBitsPerCookie = baseBitsPerCookie;
+        if (includeBitsTalisman) {
+            effectiveBitsPerCookie *= BITS_TALISMAN_MULTIPLIER;
+        }
+
+        if (baseBitsPerCookie <= 0) {
             client.player.sendSystemMessage(
                     Component.literal("Set your bits per cookie in /islandtime under Misc > Cookie Profit.")
                             .withStyle(ChatFormatting.RED));
             return;
         }
+
+        final double bitsPerCookie = effectiveBitsPerCookie;
 
         client.player.sendSystemMessage(
                 Component.literal("Fetching Bazaar prices...").withStyle(ChatFormatting.GRAY));
@@ -118,7 +132,8 @@ public class CookieProfitCommand {
                             Component.literal("═══ Cookie Profit Calculator ═══").withStyle(ChatFormatting.GOLD));
                     client.player.sendSystemMessage(
                             Component.literal("Bits/cookie: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(String.valueOf(bitsPerCookie)).withStyle(ChatFormatting.AQUA))
+                                    .append(Component.literal(String.format("%.0f", bitsPerCookie)).withStyle(ChatFormatting.AQUA))
+                                    .append(Component.literal(includeBitsTalisman ? " (incl. Bits Talisman)" : "").withStyle(ChatFormatting.DARK_AQUA))
                                     .append(Component.literal("  Cookie cost: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(cookieCost > 0 ? formatCoins(cookieCost) : "N/A").withStyle(ChatFormatting.WHITE)));
                     client.player.sendSystemMessage(Component.literal(""));
@@ -133,6 +148,7 @@ public class CookieProfitCommand {
 
                         double profitPerCookie = item.profitPerBit * bitsPerCookie;
                         double netPerCookie = (cookieCost > 0) ? profitPerCookie - cookieCost : profitPerCookie;
+                        double profitPerHour = netPerCookie / COOKIE_HOURS;
                         ChatFormatting profitColor = (item.profitPerBit > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
                         ChatFormatting netColor = (netPerCookie > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
 
@@ -147,8 +163,10 @@ public class CookieProfitCommand {
                         client.player.sendSystemMessage(
                                 Component.literal("  Per cookie: ").withStyle(ChatFormatting.GRAY)
                                         .append(Component.literal(formatCoins(profitPerCookie)).withStyle(profitColor))
-                                        .append(Component.literal("  Net (minus cookie): ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(cookieCost > 0 ? formatCoins(netPerCookie) : "N/A").withStyle(netColor)));
+                                        .append(Component.literal("  Net: ").withStyle(ChatFormatting.GRAY))
+                                        .append(Component.literal(cookieCost > 0 ? formatCoins(netPerCookie) : "N/A").withStyle(netColor))
+                                        .append(Component.literal("  ").withStyle(ChatFormatting.GRAY))
+                                        .append(Component.literal(cookieCost > 0 ? formatCoins(profitPerHour) + "/hr" : "").withStyle(netColor)));
                         client.player.sendSystemMessage(Component.literal(""));
                     }
 
@@ -157,13 +175,14 @@ public class CookieProfitCommand {
                         CookieItem best = items.get(0);
                         double bestPerCookie = best.profitPerBit * bitsPerCookie;
                         double bestNet = (cookieCost > 0) ? bestPerCookie - cookieCost : bestPerCookie;
+                        double bestPerHour = (cookieCost > 0) ? bestNet / COOKIE_HOURS : 0;
                         ChatFormatting bestColor = bestNet > 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
                         client.player.sendSystemMessage(
                                 Component.literal("Best: ").withStyle(ChatFormatting.GOLD)
                                         .append(Component.literal(best.name).withStyle(ChatFormatting.YELLOW))
                                         .append(Component.literal(" at ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(formatCoins(best.profitPerBit) + "/bit").withStyle(bestColor))
-                                        .append(Component.literal(cookieCost > 0 ? " (" + formatCoins(bestNet) + " net/cookie)" : "").withStyle(bestColor)));
+                                        .append(Component.literal(cookieCost > 0 ? " (" + formatCoins(bestNet) + " net/cookie, " + formatCoins(bestPerHour) + "/hr)" : "").withStyle(bestColor)));
                     }
                 });
 

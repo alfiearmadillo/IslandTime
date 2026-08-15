@@ -394,6 +394,12 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorSlider(minValue = 4800, maxValue = 30000, minStep = 100)
         public int bitsPerCookie = 4800;
 
+        @ConfigAccordionId(id = 5)
+        @Expose
+        @ConfigOption(name = "Include Bits Talisman", desc = "When enabled, accounts for the Bits Talisman (10% chance to double bits earned, effectively 10% more bits per cookie)")
+        @ConfigEditorBoolean
+        public boolean includeBitsTalisman = false;
+
         // ── Other ────────────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 3)
