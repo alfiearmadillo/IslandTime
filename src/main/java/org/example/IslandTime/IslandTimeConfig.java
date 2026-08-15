@@ -360,13 +360,13 @@ public class IslandTimeConfig extends Config {
         @ConfigAccordionId(id = 4)
         @Expose
         @ConfigOption(name = "Time Bag Slots", desc = "Number of Time Pocket (time-bag) slots available for aging items (items age at 2× speed)")
-        @ConfigEditorSlider(minValue = 0, maxValue = 10, minStep = 1)
+        @ConfigEditorSlider(minValue = 0, maxValue = 12, minStep = 1)
         public int agingTimeBagSlots = 3;
 
         @ConfigAccordionId(id = 4)
         @Expose
         @ConfigOption(name = "Inventory Slots", desc = "Number of inventory slots dedicated to levelling items (items age at 1× speed)")
-        @ConfigEditorSlider(minValue = 0, maxValue = 28, minStep = 1)
+        @ConfigEditorSlider(minValue = 0, maxValue = 35, minStep = 1)
         public int agingInventorySlots = 0;
 
         // ── Cookie Profit ────────────────────────────────────────────────────

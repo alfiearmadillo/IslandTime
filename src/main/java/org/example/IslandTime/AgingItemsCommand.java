@@ -18,6 +18,10 @@ import java.util.*;
  *
  * Aging items take 300 hours to complete (gaining stats each hour).
  * Items in the Time Pocket age at 2× speed (150 real hours).
+ *
+ * Most unaged items are AH-only; aged items are typically on Bazaar.
+ * When the unaged item is not on Bazaar, we show the aged sell price
+ * and note the buy price must come from AH.
  */
 public class AgingItemsCommand {
 
@@ -65,29 +69,42 @@ public class AgingItemsCommand {
                     double buyPrice  = getInstaBuyPrice(bazaarProducts, agingId);
                     double sellPrice = getInstaSellPrice(bazaarProducts, agedId);
 
-                    if (buyPrice < 0 || sellPrice < 0) {
+                    boolean buyIsAH = (buyPrice < 0);
+                    boolean sellUnavailable = (sellPrice < 0);
+
+                    if (sellUnavailable) {
+                        // Aged item not on BZ either — can't calculate
                         results.add(new ItemResult(agingId, agedId, buyPrice, sellPrice,
-                                Double.NaN, Double.NaN, "not on Bazaar"));
+                                Double.NaN, Double.NaN, true, true, "aged item not on Bazaar"));
                         continue;
                     }
 
-                    double profit = sellPrice - buyPrice;
-                    // Time Pocket items age at 2x speed (150 real hours), inventory items at 1x (300 hours)
-                    double timeBagHours = AGING_HOURS / TIME_POCKET_MULTIPLIER;
-                    double inventoryHours = AGING_HOURS;
-                    double profitPerHourTimeBag = profit / timeBagHours;
-                    double profitPerHourInventory = profit / inventoryHours;
+                    if (buyIsAH) {
+                        // Unaged is AH-only — show sell price only, no profit calc
+                        results.add(new ItemResult(agingId, agedId, -1, sellPrice,
+                                Double.NaN, Double.NaN, true, false, null));
+                    } else {
+                        // Both on BZ — full profit calc
+                        double profit = sellPrice - buyPrice;
+                        double timeBagHours = AGING_HOURS / TIME_POCKET_MULTIPLIER;
+                        double inventoryHours = AGING_HOURS;
+                        double profitPerHourTimeBag = profit / timeBagHours;
+                        double profitPerHourInventory = profit / inventoryHours;
 
-                    results.add(new ItemResult(agingId, agedId, buyPrice, sellPrice,
-                            profitPerHourTimeBag, profitPerHourInventory, null));
+                        results.add(new ItemResult(agingId, agedId, buyPrice, sellPrice,
+                                profitPerHourTimeBag, profitPerHourInventory, false, false, null));
+                    }
                 }
 
-                // Sort by time-bag profit/hr descending (NaN at bottom)
+                // Sort: items with full profit first (descending), then AH-only by sell price descending
                 results.sort((a, b) -> {
-                    if (Double.isNaN(a.profitPerHourTimeBag) && Double.isNaN(b.profitPerHourTimeBag)) return 0;
-                    if (Double.isNaN(a.profitPerHourTimeBag)) return 1;
-                    if (Double.isNaN(b.profitPerHourTimeBag)) return -1;
-                    return Double.compare(b.profitPerHourTimeBag, a.profitPerHourTimeBag);
+                    boolean aHasProfit = !Double.isNaN(a.profitPerHourTimeBag);
+                    boolean bHasProfit = !Double.isNaN(b.profitPerHourTimeBag);
+                    if (aHasProfit && bHasProfit) return Double.compare(b.profitPerHourTimeBag, a.profitPerHourTimeBag);
+                    if (aHasProfit) return -1;
+                    if (bHasProfit) return 1;
+                    // Both AH-only — sort by sell price
+                    return Double.compare(b.sellPrice, a.sellPrice);
                 });
 
                 // Display
@@ -112,30 +129,39 @@ public class AgingItemsCommand {
                             continue;
                         }
 
-                        ChatFormatting profitColor = (r.profitPerHourTimeBag > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
-
                         client.player.sendSystemMessage(
                                 Component.literal(formatId(r.agingId)).withStyle(ChatFormatting.YELLOW)
                                         .append(Component.literal(" → ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(formatId(r.agedId)).withStyle(ChatFormatting.YELLOW)));
-                        client.player.sendSystemMessage(
-                                Component.literal("  Buy: ").withStyle(ChatFormatting.GRAY)
-                                        .append(Component.literal(formatCoins(r.buyPrice)).withStyle(ChatFormatting.WHITE))
-                                        .append(Component.literal("  Sell: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(formatCoins(r.sellPrice)).withStyle(ChatFormatting.WHITE))
-                                        .append(Component.literal("  Profit: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(formatCoins(r.sellPrice - r.buyPrice)).withStyle(profitColor)));
-                        client.player.sendSystemMessage(
-                                Component.literal("  Time Bag: ").withStyle(ChatFormatting.GRAY)
-                                        .append(Component.literal(formatCoins(r.profitPerHourTimeBag) + "/hr").withStyle(profitColor))
-                                        .append(Component.literal("  Inventory: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(formatCoins(r.profitPerHourInventory) + "/hr").withStyle(profitColor)));
+
+                        if (r.buyIsAH) {
+                            // AH-only buy — show sell price only
+                            client.player.sendSystemMessage(
+                                    Component.literal("  Buy: ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal("AH only").withStyle(ChatFormatting.YELLOW))
+                                            .append(Component.literal("  Sell (Insta Sell): ").withStyle(ChatFormatting.GRAY))
+                                            .append(Component.literal(formatCoins(r.sellPrice)).withStyle(ChatFormatting.WHITE)));
+                        } else {
+                            // Both on BZ
+                            ChatFormatting profitColor = (r.profitPerHourTimeBag > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
+                            client.player.sendSystemMessage(
+                                    Component.literal("  Buy (Insta Buy): ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal(formatCoins(r.buyPrice)).withStyle(ChatFormatting.WHITE))
+                                            .append(Component.literal("  Sell (Insta Sell): ").withStyle(ChatFormatting.GRAY))
+                                            .append(Component.literal(formatCoins(r.sellPrice)).withStyle(ChatFormatting.WHITE))
+                                            .append(Component.literal("  Profit: ").withStyle(ChatFormatting.GRAY))
+                                            .append(Component.literal(formatCoins(r.sellPrice - r.buyPrice)).withStyle(profitColor)));
+                            client.player.sendSystemMessage(
+                                    Component.literal("  Time Bag: ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal(formatCoins(r.profitPerHourTimeBag) + "/hr").withStyle(profitColor))
+                                            .append(Component.literal("  Inventory: ").withStyle(ChatFormatting.GRAY))
+                                            .append(Component.literal(formatCoins(r.profitPerHourInventory) + "/hr").withStyle(profitColor)));
+                        }
                         client.player.sendSystemMessage(Component.literal(""));
                     }
 
-                    // Show estimated hourly income with configured slots
+                    // Show estimated hourly income with configured slots (only for items with full profit data)
                     if (totalSlots > 0 && !results.isEmpty()) {
-                        // Assign best items to time-bag slots first, then inventory
                         List<ItemResult> valid = new ArrayList<>();
                         for (ItemResult r : results) {
                             if (r.error == null && !Double.isNaN(r.profitPerHourTimeBag)) valid.add(r);
@@ -215,8 +241,8 @@ public class AgingItemsCommand {
     // ── formatting ──────────────────────────────────────────────────────────
 
     private static String formatCoins(double coins) {
-        if (coins >= 1_000_000) return String.format("%.1fM", coins / 1_000_000);
-        if (coins >= 1_000)     return String.format("%.1fk", coins / 1_000);
+        if (Math.abs(coins) >= 1_000_000) return String.format("%.1fM", coins / 1_000_000);
+        if (Math.abs(coins) >= 1_000)     return String.format("%.1fk", coins / 1_000);
         return String.format("%.1f", coins);
     }
 
@@ -246,16 +272,20 @@ public class AgingItemsCommand {
         final String agingId, agedId;
         final double buyPrice, sellPrice;
         final double profitPerHourTimeBag, profitPerHourInventory;
+        final boolean buyIsAH, sellIsAH;
         final String error;
 
         ItemResult(String agingId, String agedId, double buyPrice, double sellPrice,
-                   double profitPerHourTimeBag, double profitPerHourInventory, String error) {
+                   double profitPerHourTimeBag, double profitPerHourInventory,
+                   boolean buyIsAH, boolean sellIsAH, String error) {
             this.agingId = agingId;
             this.agedId = agedId;
             this.buyPrice = buyPrice;
             this.sellPrice = sellPrice;
             this.profitPerHourTimeBag = profitPerHourTimeBag;
             this.profitPerHourInventory = profitPerHourInventory;
+            this.buyIsAH = buyIsAH;
+            this.sellIsAH = sellIsAH;
             this.error = error;
         }
     }

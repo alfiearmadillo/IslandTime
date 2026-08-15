@@ -82,9 +82,9 @@ public class CookieProfitCommand {
                 if (kismetSellOffer > 0) {
                     double kismetProfit = kismetSellOffer;
                     double kismetPerBit = kismetProfit / KISMET_BITS;
-                    items.add(new CookieItem("Kismet Feather", KISMET_BITS, kismetProfit, kismetPerBit, null));
+                    items.add(new CookieItem("Kismet Feather", KISMET_BITS, kismetProfit, kismetPerBit, "Sell Offer", null));
                 } else {
-                    items.add(new CookieItem("Kismet Feather", KISMET_BITS, 0, 0, "price unavailable"));
+                    items.add(new CookieItem("Kismet Feather", KISMET_BITS, 0, 0, null, "price unavailable"));
                 }
 
                 // Magma Bucket
@@ -93,9 +93,9 @@ public class CookieProfitCommand {
                     double magmaProfit = magmaSell - magmaMaterialCost;
                     int magmaBits = MAGMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS;
                     double magmaPerBit = magmaProfit / magmaBits;
-                    items.add(new CookieItem("Magma Bucket", magmaBits, magmaProfit, magmaPerBit, null));
+                    items.add(new CookieItem("Magma Bucket", magmaBits, magmaProfit, magmaPerBit, "Insta Sell", null));
                 } else {
-                    items.add(new CookieItem("Magma Bucket", MAGMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, 0, "price unavailable"));
+                    items.add(new CookieItem("Magma Bucket", MAGMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, 0, null, "price unavailable"));
                 }
 
                 // Plasma Bucket
@@ -104,9 +104,9 @@ public class CookieProfitCommand {
                     double plasmaProfit = plasmaSell - plasmaMaterialCost;
                     int plasmaBits = PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS;
                     double plasmaPerBit = plasmaProfit / plasmaBits;
-                    items.add(new CookieItem("Plasma Bucket", plasmaBits, plasmaProfit, plasmaPerBit, null));
+                    items.add(new CookieItem("Plasma Bucket", plasmaBits, plasmaProfit, plasmaPerBit, "Insta Sell", null));
                 } else {
-                    items.add(new CookieItem("Plasma Bucket", PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, 0, "price unavailable"));
+                    items.add(new CookieItem("Plasma Bucket", PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, 0, null, "price unavailable"));
                 }
 
                 // Sort by profit per bit descending
@@ -138,7 +138,7 @@ public class CookieProfitCommand {
 
                         client.player.sendSystemMessage(
                                 Component.literal(item.name).withStyle(ChatFormatting.YELLOW)
-                                        .append(Component.literal(" (" + item.bitsCost + " bits)").withStyle(ChatFormatting.GRAY)));
+                                        .append(Component.literal(" (" + item.bitsCost + " bits, " + item.priceType + ")").withStyle(ChatFormatting.GRAY)));
                         client.player.sendSystemMessage(
                                 Component.literal("  Profit: ").withStyle(ChatFormatting.GRAY)
                                         .append(Component.literal(formatCoins(item.profit)).withStyle(profitColor))
@@ -247,13 +247,15 @@ public class CookieProfitCommand {
         final int bitsCost;
         final double profit;
         final double profitPerBit;
+        final String priceType;
         final String error;
 
-        CookieItem(String name, int bitsCost, double profit, double profitPerBit, String error) {
+        CookieItem(String name, int bitsCost, double profit, double profitPerBit, String priceType, String error) {
             this.name = name;
             this.bitsCost = bitsCost;
             this.profit = profit;
             this.profitPerBit = profitPerBit;
+            this.priceType = priceType;
             this.error = error;
         }
     }
