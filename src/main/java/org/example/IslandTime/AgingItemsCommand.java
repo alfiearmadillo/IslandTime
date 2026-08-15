@@ -1,15 +1,10 @@
 package org.example.islandtime;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URI;
 import java.util.*;
 
 /**
@@ -24,8 +19,6 @@ import java.util.*;
  */
 public class AgingItemsCommand {
 
-    private static final String BAZAAR_API = "https://api.hypixel.net/v2/skyblock/bazaar";
-    private static final String LOWEST_BIN_API = "https://moulberry.codes/lowestbin.json";
     private static final double AGING_HOURS = 300.0;
     private static final double TIME_POCKET_MULTIPLIER = 2.0;
 
@@ -52,8 +45,8 @@ public class AgingItemsCommand {
 
         new Thread(() -> {
             try {
-                JsonObject bazaarProducts = fetchBazaar();
-                JsonObject lowestBins = fetchLowestBins();
+                JsonObject bazaarProducts = PriceCache.getBazaar();
+                JsonObject lowestBins = PriceCache.getLowestBins();
 
                 if (bazaarProducts == null) {
                     sendError(client, "Failed to fetch Bazaar data.");
@@ -68,19 +61,19 @@ public class AgingItemsCommand {
                     String agedId  = pair[1];
 
                     // Buy price: try BZ first, then AH lowest BIN
-                    double buyPrice = getInstaBuyPrice(bazaarProducts, agingId);
+                    double buyPrice = PriceCache.getInstaBuyPrice(bazaarProducts, agingId);
                     boolean buyFromAH = false;
                     if (buyPrice < 0 && lowestBins != null) {
-                        buyPrice = getLowestBin(lowestBins, agingId);
+                        buyPrice = PriceCache.getLowestBin(lowestBins, agingId);
                         buyFromAH = (buyPrice > 0);
                     }
 
                     // Sell price: BZ insta-sell or sell-offer
                     double sellPrice;
                     if (useSellOffer) {
-                        sellPrice = getSellOfferPrice(bazaarProducts, agedId);
+                        sellPrice = PriceCache.getSellOfferPrice(bazaarProducts, agedId);
                     } else {
-                        sellPrice = getInstaSellPrice(bazaarProducts, agedId);
+                        sellPrice = PriceCache.getInstaSellPrice(bazaarProducts, agedId);
                     }
 
                     boolean buyUnavailable = (buyPrice <= 0);
@@ -97,13 +90,11 @@ public class AgingItemsCommand {
                         continue;
                     }
                     if (buyUnavailable) {
-                        // Can't find buy price anywhere — show sell only
                         results.add(new ItemResult(agingId, agedId, -1, sellPrice,
                                 Double.NaN, Double.NaN, false, "buy price N/A (0 on AH)", sellLabel));
                         continue;
                     }
 
-                    // Full profit calc
                     double profit = sellPrice - buyPrice;
                     double timeBagHours = AGING_HOURS / TIME_POCKET_MULTIPLIER;
                     double profitPerHourTimeBag = profit / timeBagHours;
@@ -160,16 +151,16 @@ public class AgingItemsCommand {
 
                         client.player.sendSystemMessage(
                                 Component.literal("  " + buyLabel + ": ").withStyle(ChatFormatting.GRAY)
-                                        .append(Component.literal(formatCoins(r.buyPrice)).withStyle(ChatFormatting.WHITE))
+                                        .append(Component.literal(PriceCache.formatCoins(r.buyPrice)).withStyle(ChatFormatting.WHITE))
                                         .append(Component.literal("  Sell (" + r.sellLabel + "): ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(formatCoins(r.sellPrice)).withStyle(ChatFormatting.WHITE))
+                                        .append(Component.literal(PriceCache.formatCoins(r.sellPrice)).withStyle(ChatFormatting.WHITE))
                                         .append(Component.literal("  Profit: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(formatCoins(profit)).withStyle(profitColor)));
+                                        .append(Component.literal(PriceCache.formatCoins(profit)).withStyle(profitColor)));
                         client.player.sendSystemMessage(
                                 Component.literal("  Time Bag: ").withStyle(ChatFormatting.GRAY)
-                                        .append(Component.literal(formatCoins(r.profitPerHourTimeBag) + "/hr").withStyle(profitColor))
+                                        .append(Component.literal(PriceCache.formatCoins(r.profitPerHourTimeBag) + "/hr").withStyle(profitColor))
                                         .append(Component.literal("  Inventory: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(formatCoins(r.profitPerHourInventory) + "/hr").withStyle(profitColor)));
+                                        .append(Component.literal(PriceCache.formatCoins(r.profitPerHourInventory) + "/hr").withStyle(profitColor)));
                         client.player.sendSystemMessage(Component.literal(""));
                     }
 
@@ -194,7 +185,7 @@ public class AgingItemsCommand {
                             ChatFormatting totalColor = totalPerHour > 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
                             client.player.sendSystemMessage(
                                     Component.literal("Est. total income: ").withStyle(ChatFormatting.GOLD)
-                                            .append(Component.literal(formatCoins(totalPerHour) + "/hr").withStyle(totalColor))
+                                            .append(Component.literal(PriceCache.formatCoins(totalPerHour) + "/hr").withStyle(totalColor))
                                             .append(Component.literal(" (best " + (tbAssigned + invAssigned) + " items)").withStyle(ChatFormatting.GRAY)));
                         }
                     }
@@ -206,79 +197,7 @@ public class AgingItemsCommand {
         }, "IslandTime-AgingItems").start();
     }
 
-    // ── API helpers ─────────────────────────────────────────────────────────
-
-    private static JsonObject fetchBazaar() {
-        try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(BAZAAR_API).toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10_000);
-            conn.setReadTimeout(10_000);
-            conn.setRequestProperty("User-Agent", "IslandTime-Mod");
-            if (conn.getResponseCode() != 200) return null;
-            try (InputStreamReader reader = new InputStreamReader(conn.getInputStream())) {
-                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-                if (root.has("products")) return root.getAsJsonObject("products");
-            }
-        } catch (Exception e) {
-            System.err.println("[IslandTime] Bazaar fetch failed: " + e.getMessage());
-        }
-        return null;
-    }
-
-    private static JsonObject fetchLowestBins() {
-        try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(LOWEST_BIN_API).toURL().openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10_000);
-            conn.setReadTimeout(10_000);
-            conn.setRequestProperty("User-Agent", "IslandTime-Mod");
-            if (conn.getResponseCode() != 200) return null;
-            try (InputStreamReader reader = new InputStreamReader(conn.getInputStream())) {
-                return JsonParser.parseReader(reader).getAsJsonObject();
-            }
-        } catch (Exception e) {
-            System.err.println("[IslandTime] Lowest BIN fetch failed: " + e.getMessage());
-        }
-        return null;
-    }
-
-    private static double getInstaBuyPrice(JsonObject products, String productId) {
-        JsonObject product = products.getAsJsonObject(productId);
-        if (product == null) return -1;
-        JsonObject qs = product.getAsJsonObject("quick_status");
-        if (qs == null) return -1;
-        JsonElement el = qs.get("buyPrice");
-        return el != null && !el.isJsonNull() ? el.getAsDouble() : -1;
-    }
-
-    private static double getInstaSellPrice(JsonObject products, String productId) {
-        JsonObject product = products.getAsJsonObject(productId);
-        if (product == null) return -1;
-        JsonObject qs = product.getAsJsonObject("quick_status");
-        if (qs == null) return -1;
-        JsonElement el = qs.get("sellPrice");
-        return el != null && !el.isJsonNull() ? el.getAsDouble() : -1;
-    }
-
-    /** Sell offer price (lowest sell order = what you'd list at). Same as BZ buyPrice. */
-    private static double getSellOfferPrice(JsonObject products, String productId) {
-        return getInstaBuyPrice(products, productId);
-    }
-
-    private static double getLowestBin(JsonObject lowestBins, String itemId) {
-        JsonElement el = lowestBins.get(itemId);
-        if (el == null || el.isJsonNull()) return -1;
-        return el.getAsDouble();
-    }
-
     // ── formatting ──────────────────────────────────────────────────────────
-
-    private static String formatCoins(double coins) {
-        if (Math.abs(coins) >= 1_000_000) return String.format("%.1fM", coins / 1_000_000);
-        if (Math.abs(coins) >= 1_000)     return String.format("%.1fk", coins / 1_000);
-        return String.format("%.1f", coins);
-    }
 
     private static String formatId(String id) {
         String[] parts = id.toLowerCase().split("_");
