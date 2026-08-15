@@ -369,6 +369,31 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorSlider(minValue = 0, maxValue = 28, minStep = 1)
         public int agingInventorySlots = 0;
 
+        // ── Cookie Profit ────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 5)
+        @ConfigOption(name = "Cookie Profit", desc = "Compare profit from spending Booster Cookie bits on various items")
+        public boolean cookieProfitAccordion = false;
+
+        @ConfigAccordionId(id = 5)
+        @ConfigOption(name = "Calculate Cookie Profit", desc = "Fetch Bazaar prices and compare profit per bit for cookie items")
+        @ConfigEditorButton(buttonText = " Calculate ")
+        public Runnable cookieProfitButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it cookieProfit");
+                }
+            }
+        };
+
+        @ConfigAccordionId(id = 5)
+        @Expose
+        @ConfigOption(name = "Bits Per Cookie", desc = "Your bits per cookie (base 4800, increases with Fame Rank multiplier)")
+        @ConfigEditorSlider(minValue = 4800, maxValue = 30000, minStep = 100)
+        public int bitsPerCookie = 4800;
+
         // ── Other ────────────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 3)

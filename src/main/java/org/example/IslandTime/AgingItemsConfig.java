@@ -34,7 +34,7 @@ public class AgingItemsConfig {
             {"BOTTLE_OF_JYRRE",      "REFINED_BOTTLE_OF_JYRRE"},
             {"DARK_CACAO_TRUFFLE",   "REFINED_DARK_CACAO_TRUFFLE"},
             {"DISCRITE",             "SPOTLITE"},
-            {"MOBY_DUCK",            "MOBY_DUCK_COLLECTORS_EDITION"},
+            {"MOBY_DUCK",            "MOBY_DUCK_COLLECTOR_EDITION"},
             {"NOT_VERY_MOLDY_BREAD", "VERY_MOLDY_BREAD"},
             {"ROSEWATER_FLASK",      "FILLED_ROSEWATER_FLASK"},
     };

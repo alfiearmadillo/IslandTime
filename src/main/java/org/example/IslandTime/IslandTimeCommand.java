@@ -214,6 +214,11 @@ public class IslandTimeCommand {
                                     }
                                     return 1;
                                 })))
+                .then(literal("cookieProfit")
+                        .executes(ctx -> {
+                            CookieProfitCommand.execute(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("players")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
@@ -1246,7 +1251,7 @@ public class IslandTimeCommand {
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
-                {"/islandtime help [page]", "Show this help (pages 1-9)"},
+                {"/islandtime help [page]", "Show this help (pages 1-10)"},
 
                 // Page 9 - Aging Items
                 {"/it agingItems", "Compare profit/hour for all configured aging items using live Bazaar prices"},
@@ -1254,6 +1259,10 @@ public class IslandTimeCommand {
                 {"/it agingItems remove <agingId>", "Remove an aging item pair by its aging SkyBlock ID"},
                 {"/it agingItems list", "List all configured aging item pairs"},
                 {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /islandtime GUI"},
+
+                // Page 10 - Cookie Profit
+                {"/it cookieProfit", "Compare profit/bit for spending cookie bits (Kismet Feather, Magma Bucket, Plasma Bucket)"},
+                {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /islandtime GUI"},
         };
 
         int commandsPerPage = 5;
