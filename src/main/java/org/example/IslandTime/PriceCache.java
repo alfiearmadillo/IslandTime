@@ -1,5 +1,6 @@
 package org.example.islandtime;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -16,7 +17,7 @@ public class PriceCache {
     private static final String BAZAAR_API = "https://api.hypixel.net/v2/skyblock/bazaar";
     private static final String LOWEST_BIN_API = "https://moulberry.codes/lowestbin.json";
     private static final String LOWEST_BIN_FALLBACK = "https://lb.tricked.pro/lowestbin";
-    private static final String LOWEST_BIN_FALLBACK_2 = "https://sky.coflnet.com/api/auctions/lowestBin";
+    private static final String LOWEST_BIN_FALLBACK_2 = "https://sky.coflnet.com/api/auctions/tag/%s/active/bin";
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
     private static JsonObject cachedBazaar = null;
@@ -77,11 +78,14 @@ public class PriceCache {
         return getInstaSellPrice(products, productId);
     }
 
-    /** AH lowest BIN price. */
+    /** AH lowest BIN price from bulk data. */
     public static double getLowestBin(JsonObject lowestBins, String itemId) {
-        JsonElement el = lowestBins.get(itemId);
-        if (el == null || el.isJsonNull()) return -1;
-        return el.getAsDouble();
+        if (lowestBins != null) {
+            JsonElement el = lowestBins.get(itemId);
+            if (el != null && !el.isJsonNull()) return el.getAsDouble();
+        }
+        // Bulk data unavailable or missing item — try Coflnet per-item API
+        return fetchCoflnetLowestBin(itemId);
     }
 
     // ── Formatting ─────────────────────────────────────────────────────────
@@ -117,10 +121,37 @@ public class PriceCache {
         if (result == null) {
             result = fetchJson(LOWEST_BIN_FALLBACK);
         }
-        if (result == null) {
-            result = fetchJson(LOWEST_BIN_FALLBACK_2);
-        }
         return result;
+    }
+
+    /** Coflnet per-item fallback: returns lowest BIN price for a single item. */
+    private static double fetchCoflnetLowestBin(String itemId) {
+        try {
+            String url = String.format(LOWEST_BIN_FALLBACK_2, itemId);
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(10_000);
+            conn.setRequestProperty("User-Agent", "IslandTime-Mod");
+            if (conn.getResponseCode() != 200) return -1;
+            try (InputStreamReader reader = new InputStreamReader(conn.getInputStream())) {
+                JsonArray arr = JsonParser.parseReader(reader).getAsJsonArray();
+                if (arr.isEmpty()) return -1;
+                // Find lowest starting bid among BIN auctions
+                double lowest = Double.MAX_VALUE;
+                for (JsonElement el : arr) {
+                    JsonObject auction = el.getAsJsonObject();
+                    if (auction.has("startingBid")) {
+                        double price = auction.get("startingBid").getAsDouble();
+                        if (price < lowest) lowest = price;
+                    }
+                }
+                return lowest < Double.MAX_VALUE ? lowest : -1;
+            }
+        } catch (Exception e) {
+            System.err.println("[IslandTime] Coflnet fetch failed for " + itemId + ": " + e.getMessage());
+        }
+        return -1;
     }
 
     private static JsonObject fetchJson(String url) {

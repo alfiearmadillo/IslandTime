@@ -60,10 +60,10 @@ public class AgingItemsCommand {
                     String agingId = pair[0];
                     String agedId  = pair[1];
 
-                    // Buy price: try BZ first, then AH lowest BIN
+                    // Buy price: try BZ first, then AH lowest BIN (with Coflnet fallback)
                     double buyPrice = PriceCache.getInstaBuyPrice(bazaarProducts, agingId);
                     boolean buyFromAH = false;
-                    if (buyPrice < 0 && lowestBins != null) {
+                    if (buyPrice < 0) {
                         buyPrice = PriceCache.getLowestBin(lowestBins, agingId);
                         buyFromAH = (buyPrice > 0);
                     }

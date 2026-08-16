@@ -129,7 +129,7 @@ public class CookieProfitCommand {
                                     .append(Component.literal(String.format("%d", baseBitsPerCookie)).withStyle(ChatFormatting.AQUA))
                                     .append(Component.literal("  Bits/hr: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(String.format("%.0f", bitsPerHour)).withStyle(ChatFormatting.AQUA))
-                                    .append(Component.literal(includeBitsTalisman ? " (w/ Bits Tali)" : "").withStyle(ChatFormatting.DARK_AQUA))
+                                    .append(Component.literal(includeBitsTalisman ? " \uD83C\uDD31" : "").withStyle(ChatFormatting.DARK_AQUA))
                                     .append(Component.literal("  Cookie cost: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(cookieCost) : "N/A").withStyle(ChatFormatting.WHITE)));
                     client.player.sendSystemMessage(Component.literal(""));
