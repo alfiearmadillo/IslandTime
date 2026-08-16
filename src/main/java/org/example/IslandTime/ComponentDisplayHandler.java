@@ -4,6 +4,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 
@@ -47,9 +48,23 @@ public class ComponentDisplayHandler {
         for (String name : names) {
             if (nbt.contains(name)) {
                 Tag element = nbt.get(name);
-                String value = element != null ? formatNbtValue(element) : "null";
-                // Dark gray text (§8)
-                tooltip.add(Component.literal("\u00A78" + name + ": " + value));
+                if (element == null) {
+                    tooltip.add(Component.literal("\u00A78" + name + ": null"));
+                } else if (element instanceof ListTag listTag) {
+                    tooltip.add(Component.literal("\u00A78" + name + ":"));
+                    for (int i = 0; i < listTag.size(); i++) {
+                        tooltip.add(Component.literal("\u00A78  " + formatNbtValue(listTag.get(i))));
+                    }
+                } else if (element instanceof CompoundTag compoundTag) {
+                    tooltip.add(Component.literal("\u00A78" + name + ":"));
+                    for (String key : compoundTag.getAllKeys()) {
+                        Tag child = compoundTag.get(key);
+                        String childValue = child != null ? formatNbtValue(child) : "null";
+                        tooltip.add(Component.literal("\u00A78  " + key + ": " + childValue));
+                    }
+                } else {
+                    tooltip.add(Component.literal("\u00A78" + name + ": " + formatNbtValue(element)));
+                }
             }
         }
     }
