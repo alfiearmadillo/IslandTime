@@ -14,11 +14,11 @@ import java.util.*;
  * - Kismet Feather (1,350 bits) — sell offer price
  * - Magma Bucket (3,000 bits for 1 Heat Core) — insta-sell minus material cost
  * - Plasma Bucket (9,000 bits for 3 Heat Cores) — insta-sell minus material cost
- * - Ultimate Carrot Candy (8,000 bits for Upgrade) — insta-sell minus 8x Superb Carrot Candy
+ * - Ultimate Carrot Candy (8,000 bits for Upgrade) — insta-sell 10x minus 8x Superb Carrot Candy
  * - XL Minion Storage (1,500 bits for X-pender) — insta-sell minus Large Storage cost
- * - XXL Minion Storage (1,500 bits for X-pender) — insta-sell minus XL Storage cost
+ * - XXL Minion Storage (3,000 bits for 2 X-penders) — insta-sell minus Large Storage cost
  * - Bitbug Shard (5,000 bits) — insta-sell
- * - Inferno Fuel Block (75 bits, or 65 with Blaze Slayer IX) — insta-sell
+ * - Inferno Fuel Block (3,120 bits with Blaze Slayer perk) — insta-sell
  * - 7 Levelling Enchantments (4,000-6,000 bits) — insta-sell
  *
  * Cookie price is sourced from Bazaar buy-order data.
@@ -35,20 +35,21 @@ public class CookieProfitCommand {
     private static final int MAGMA_BUCKET_LAVA_BUCKETS = 2;
     private static final int PLASMA_BUCKET_LAVA_BUCKETS = 4;
 
-    // Ultimate Carrot Candy — 8,000 bits for Upgrade + 8x Superb Carrot Candy (BZ material)
+    // Ultimate Carrot Candy — 8,000 bits for Upgrade + 8x Superb Carrot Candy → produces 10 candies
     private static final int ULTIMATE_CARROT_CANDY_UPGRADE_BITS = 8_000;
     private static final int ULTIMATE_CARROT_CANDY_SUPERB_COUNT = 8;
+    private static final int ULTIMATE_CARROT_CANDY_OUTPUT_COUNT = 10;
 
     // Minion Storage X-pender — 1,500 bits each
-    // XL = X-pender + Large Storage; XXL = X-pender + XL Storage
+    // XL = Large Storage + 1 X-pender; XXL = Large Storage + 2 X-penders
     private static final int XPENDER_BITS = 1_500;
 
     // Bitbug Shard — 5,000 bits each, direct BZ sale
     private static final int BITBUG_SHARD_BITS = 5_000;
 
-    // Inferno Fuel Block — 75 bits each (65 with Blaze Slayer IX perk), no crafting materials
-    private static final int INFERNO_FUEL_BITS = 75;
-    private static final int INFERNO_FUEL_BITS_SLAYER_PERK = 65;
+    // Inferno Fuel Block — 3,120 bits with Blaze Slayer perk, no crafting materials
+    // Without the perk, cost is unknown so we skip that entry
+    private static final int INFERNO_FUEL_BITS_SLAYER_PERK = 3_120;
 
     // Levelling Enchantments — most cost 4,000 bits, Hecatomb costs 6,000
     private static final String[][] LEVELLING_ENCHANTMENTS = {
@@ -167,10 +168,11 @@ public class CookieProfitCommand {
                     items.add(new CookieItem("Plasma Bucket", PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, null, "price unavailable"));
                 }
 
-                // Ultimate Carrot Candy (8,000 bits for Upgrade + 8x Superb Carrot Candy)
+                // Ultimate Carrot Candy (8,000 bits for Upgrade + 8x Superb → 10 candies)
                 if (ultimateCarrotCandySell > 0 && superbCarrotCandyCost > 0) {
                     double materialCost = ULTIMATE_CARROT_CANDY_SUPERB_COUNT * superbCarrotCandyCost;
-                    double profit = ultimateCarrotCandySell - materialCost;
+                    double revenue = ULTIMATE_CARROT_CANDY_OUTPUT_COUNT * ultimateCarrotCandySell;
+                    double profit = revenue - materialCost;
                     items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, profit, "Insta Sell", null));
                 } else {
                     items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, 0, null, "price unavailable"));
@@ -184,18 +186,12 @@ public class CookieProfitCommand {
                     items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
                 }
 
-                // XXL Minion Storage (1,500 bits X-pender + XL Storage)
-                if (xxlStorageSell > 0 && xlStorageSell > 0) {
-                    // XXL needs an XL as input; use XL insta-buy price as material cost
-                    double xlBuyCost = PriceCache.getInstaBuyPrice(products, "XLARGE_ENCHANTED_CHEST");
-                    if (xlBuyCost > 0) {
-                        double xxlProfit = xxlStorageSell - xlBuyCost;
-                        items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS, xxlProfit, "Insta Sell", null));
-                    } else {
-                        items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
-                    }
+                // XXL Minion Storage (2 X-penders = 3,000 bits + Large Storage)
+                if (xxlStorageSell > 0 && largeStorageCost > 0) {
+                    double xxlProfit = xxlStorageSell - largeStorageCost;
+                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, xxlProfit, "Insta Sell", null));
                 } else {
-                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
+                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, 0, null, "price unavailable"));
                 }
 
                 // Bitbug Shard (5,000 bits, direct sale)
@@ -205,13 +201,13 @@ public class CookieProfitCommand {
                     items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, 0, null, "price unavailable"));
                 }
 
-                // Inferno Fuel Block (75 bits each, or 65 with Blaze Slayer IX)
-                if (infernoFuelSell > 0) {
-                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_SLAYER_PERK : INFERNO_FUEL_BITS;
-                    String label = blazeSlayerPerk ? "Insta Sell (Slayer Perk)" : "Insta Sell";
-                    items.add(new CookieItem("Inferno Fuel Block", fuelBits, infernoFuelSell, label, null));
+                // Inferno Fuel Block (3,120 bits with Blaze Slayer perk, cost unknown without)
+                if (infernoFuelSell > 0 && blazeSlayerPerk) {
+                    items.add(new CookieItem("Inferno Fuel Block", INFERNO_FUEL_BITS_SLAYER_PERK, infernoFuelSell, "Insta Sell (Slayer Perk)", null));
+                } else if (!blazeSlayerPerk) {
+                    // Don't show — cost without perk is unknown
                 } else {
-                    items.add(new CookieItem("Inferno Fuel Block", INFERNO_FUEL_BITS, 0, null, "price unavailable"));
+                    items.add(new CookieItem("Inferno Fuel Block", INFERNO_FUEL_BITS_SLAYER_PERK, 0, null, "price unavailable"));
                 }
 
                 // Levelling Enchantments
