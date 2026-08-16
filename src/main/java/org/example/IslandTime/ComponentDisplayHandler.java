@@ -57,7 +57,7 @@ public class ComponentDisplayHandler {
                     }
                 } else if (element instanceof CompoundTag compoundTag) {
                     tooltip.add(Component.literal("\u00A78" + name + ":"));
-                    for (String key : compoundTag.getAllKeys()) {
+                    for (String key : compoundTag.keySet()) {
                         Tag child = compoundTag.get(key);
                         String childValue = child != null ? formatNbtValue(child) : "null";
                         tooltip.add(Component.literal("\u00A78  " + key + ": " + childValue));
