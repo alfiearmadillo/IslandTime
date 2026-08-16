@@ -149,6 +149,12 @@ public class AgingItemsCommand {
                         double profit = r.sellPrice - r.buyPrice;
                         ChatFormatting profitColor = (profit > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
 
+                        // Total hourly income for this item if it filled all configured slots
+                        // (time bag slots at 2x speed + inventory slots at normal speed).
+                        double totalPerHour = (timeBagSlots * r.profitPerHourTimeBag)
+                                + (inventorySlots * r.profitPerHourInventory);
+                        ChatFormatting totalColor = (totalPerHour > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
+
                         client.player.sendSystemMessage(
                                 Component.literal("  " + PriceCache.formatCoins(r.buyPrice)).withStyle(ChatFormatting.WHITE)
                                         .append(Component.literal(" → ").withStyle(ChatFormatting.GRAY))
@@ -156,26 +162,8 @@ public class AgingItemsCommand {
                                         .append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY))
                                         .append(Component.literal("Profit: ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(PriceCache.formatCoins(profit)).withStyle(profitColor))
-                                        .append(Component.literal("  (" + PriceCache.formatCoins(r.profitPerHourInventory) + "/hr)").withStyle(profitColor)));
+                                        .append(Component.literal("  (" + PriceCache.formatCoins(totalPerHour) + "/hr total)").withStyle(totalColor)));
                         client.player.sendSystemMessage(Component.literal(""));
-                    }
-
-                    // Estimated hourly income
-                    if (totalSlots > 0) {
-                        List<ItemResult> valid = new ArrayList<>();
-                        for (ItemResult r : results) {
-                            if (r.error == null && !Double.isNaN(r.profitPerHourTimeBag)) valid.add(r);
-                        }
-                        if (!valid.isEmpty()) {
-                            ItemResult best = valid.get(0); // already sorted best first
-                            double totalPerHour = (timeBagSlots * best.profitPerHourTimeBag)
-                                    + (inventorySlots * best.profitPerHourInventory);
-                            ChatFormatting totalColor = totalPerHour > 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
-                            client.player.sendSystemMessage(
-                                    Component.literal("Est. total income: ").withStyle(ChatFormatting.GOLD)
-                                            .append(Component.literal(PriceCache.formatCoins(totalPerHour) + "/hr").withStyle(totalColor))
-                                            .append(Component.literal(" (" + totalSlots + " slots of " + formatId(best.agingId) + ")").withStyle(ChatFormatting.GRAY)));
-                        }
                     }
                 });
 
