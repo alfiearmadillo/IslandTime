@@ -8,7 +8,7 @@ import com.google.gson.JsonParser;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -19,6 +19,7 @@ public class PriceCache {
     private static final String BAZAAR_API = "https://api.hypixel.net/v2/skyblock/bazaar";
     private static final String COFLNET_ITEM_API = "https://sky.coflnet.com/api/item/price/%s/bin";
     private static final String COFLNET_ACTIVE_BIN_API = "https://sky.coflnet.com/api/auctions/tag/%s/active/bin";
+    private static final String COFLNET_SOLD_API = "https://sky.coflnet.com/api/auctions/tag/%s/sold";
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
     private static JsonObject cachedBazaar = null;
@@ -125,7 +126,10 @@ public class PriceCache {
         double price = fetchCoflnetItemPrice(itemId);
         if (price > 0) return price;
         // Fall back to active BIN listings
-        return fetchCoflnetActiveBin(itemId);
+        price = fetchCoflnetActiveBin(itemId);
+        if (price > 0) return price;
+        // Fall back to recent sold auctions (for items with no active BINs)
+        return fetchCoflnetSold(itemId);
     }
 
     /** Coflnet /api/item/price/{tag}/bin — returns a simple lowest BIN price. */
@@ -183,6 +187,43 @@ public class PriceCache {
             }
         } catch (Exception e) {
             System.err.println("[IslandTime] Coflnet active BIN failed for " + itemId + ": " + e.getMessage());
+        }
+        return -1;
+    }
+
+    /** Coflnet /api/auctions/tag/{tag}/sold — recent sold auctions as price fallback. */
+    private static double fetchCoflnetSold(String itemId) {
+        try {
+            String url = String.format(COFLNET_SOLD_API, itemId);
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(10_000);
+            conn.setRequestProperty("User-Agent", "IslandTime-Mod");
+            if (conn.getResponseCode() != 200) return -1;
+            try (InputStreamReader reader = new InputStreamReader(conn.getInputStream())) {
+                JsonElement parsed = JsonParser.parseReader(reader);
+                if (!parsed.isJsonArray()) return -1;
+                JsonArray arr = parsed.getAsJsonArray();
+                if (arr.isEmpty()) return -1;
+                // Collect prices from recent sales and return the median
+                List<Double> prices = new ArrayList<>();
+                for (JsonElement el : arr) {
+                    if (!el.isJsonObject()) continue;
+                    JsonObject sale = el.getAsJsonObject();
+                    for (String field : new String[]{"price", "highestBid", "highest_bid", "startingBid", "starting_bid"}) {
+                        if (sale.has(field)) {
+                            double p = sale.get(field).getAsDouble();
+                            if (p > 0) { prices.add(p); break; }
+                        }
+                    }
+                }
+                if (prices.isEmpty()) return -1;
+                Collections.sort(prices);
+                return prices.get(prices.size() / 2); // median
+            }
+        } catch (Exception e) {
+            System.err.println("[IslandTime] Coflnet sold auctions failed for " + itemId + ": " + e.getMessage());
         }
         return -1;
     }
