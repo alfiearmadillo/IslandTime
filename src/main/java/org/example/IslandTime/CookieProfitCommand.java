@@ -18,7 +18,7 @@ import java.util.*;
  * - XL Minion Storage (1,500 bits for X-pender) — insta-sell minus Large Storage cost
  * - XXL Minion Storage (3,000 bits for 2 X-penders) — insta-sell minus Large Storage cost
  * - Bitbug Shard (5,000 bits) — insta-sell
- * - Inferno Fuel Block (3,120 bits with Blaze Slayer perk) — insta-sell
+ * - Inferno Fuel Block x64 (3,600 bits, or 3,120 with Blaze Slayer IX) — insta-sell
  * - 7 Levelling Enchantments (4,000-6,000 bits) — insta-sell
  *
  * Cookie price is sourced from Bazaar buy-order data.
@@ -47,9 +47,9 @@ public class CookieProfitCommand {
     // Bitbug Shard — 5,000 bits each, direct BZ sale
     private static final int BITBUG_SHARD_BITS = 5_000;
 
-    // Inferno Fuel Block — 3,120 bits with Blaze Slayer perk, no crafting materials
-    // Without the perk, cost is unknown so we skip that entry
-    private static final int INFERNO_FUEL_BITS_SLAYER_PERK = 3_120;
+    // Inferno Fuel Block x64 — 3,600 bits for 64, or 3,120 bits with Blaze Slayer IX
+    private static final int INFERNO_FUEL_BITS_64 = 3_600;
+    private static final int INFERNO_FUEL_BITS_64_SLAYER_PERK = 3_120;
 
     // Levelling Enchantments — most cost 4,000 bits, Hecatomb costs 6,000
     private static final String[][] LEVELLING_ENCHANTMENTS = {
@@ -201,13 +201,15 @@ public class CookieProfitCommand {
                     items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, 0, null, "price unavailable"));
                 }
 
-                // Inferno Fuel Block (3,120 bits with Blaze Slayer perk, cost unknown without)
-                if (infernoFuelSell > 0 && blazeSlayerPerk) {
-                    items.add(new CookieItem("Inferno Fuel Block", INFERNO_FUEL_BITS_SLAYER_PERK, infernoFuelSell, "Insta Sell (Slayer Perk)", null));
-                } else if (!blazeSlayerPerk) {
-                    // Don't show — cost without perk is unknown
+                // Inferno Fuel Block x64 (3,600 bits or 3,120 with Blaze Slayer IX)
+                if (infernoFuelSell > 0) {
+                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
+                    double profit = 64.0 * infernoFuelSell;
+                    String label = blazeSlayerPerk ? "Insta Sell x64 (Slayer Perk)" : "Insta Sell x64";
+                    items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, profit, label, null));
                 } else {
-                    items.add(new CookieItem("Inferno Fuel Block", INFERNO_FUEL_BITS_SLAYER_PERK, 0, null, "price unavailable"));
+                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
+                    items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, 0, null, "price unavailable"));
                 }
 
                 // Levelling Enchantments
