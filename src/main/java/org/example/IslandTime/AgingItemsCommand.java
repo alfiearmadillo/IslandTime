@@ -166,22 +166,14 @@ public class AgingItemsCommand {
                             if (r.error == null && !Double.isNaN(r.profitPerHourTimeBag)) valid.add(r);
                         }
                         if (!valid.isEmpty()) {
-                            double totalPerHour = 0;
-                            int tbAssigned = 0, invAssigned = 0;
-                            for (ItemResult r : valid) {
-                                if (tbAssigned < timeBagSlots) {
-                                    totalPerHour += r.profitPerHourTimeBag;
-                                    tbAssigned++;
-                                } else if (invAssigned < inventorySlots) {
-                                    totalPerHour += r.profitPerHourInventory;
-                                    invAssigned++;
-                                } else break;
-                            }
+                            ItemResult best = valid.get(0); // already sorted best first
+                            double totalPerHour = (timeBagSlots * best.profitPerHourTimeBag)
+                                    + (inventorySlots * best.profitPerHourInventory);
                             ChatFormatting totalColor = totalPerHour > 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
                             client.player.sendSystemMessage(
                                     Component.literal("Est. total income: ").withStyle(ChatFormatting.GOLD)
                                             .append(Component.literal(PriceCache.formatCoins(totalPerHour) + "/hr").withStyle(totalColor))
-                                            .append(Component.literal(" (best " + (tbAssigned + invAssigned) + " items)").withStyle(ChatFormatting.GRAY)));
+                                            .append(Component.literal(" (" + totalSlots + " slots of " + formatId(best.agingId) + ")").withStyle(ChatFormatting.GRAY)));
                         }
                     }
                 });
