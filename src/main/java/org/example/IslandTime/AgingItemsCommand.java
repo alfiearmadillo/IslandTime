@@ -119,9 +119,9 @@ public class AgingItemsCommand {
                             Component.literal("═══ Aging Items Profit/Hour ═══").withStyle(ChatFormatting.GOLD));
                     client.player.sendSystemMessage(
                             Component.literal("Slots: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(timeBagSlots + " time-bag").withStyle(ChatFormatting.AQUA))
+                                    .append(Component.literal(timeBagSlots + " tb").withStyle(ChatFormatting.AQUA))
                                     .append(Component.literal(" + ").withStyle(ChatFormatting.GRAY))
-                                    .append(Component.literal(inventorySlots + " inventory").withStyle(ChatFormatting.AQUA))
+                                    .append(Component.literal(inventorySlots + " inv").withStyle(ChatFormatting.AQUA))
                                     .append(Component.literal(" = " + totalSlots + " total").withStyle(ChatFormatting.WHITE))
                                     .append(Component.literal("  Sell mode: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(sellLabel).withStyle(ChatFormatting.AQUA)));
@@ -150,7 +150,11 @@ public class AgingItemsCommand {
                         ChatFormatting profitColor = (profit > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
 
                         client.player.sendSystemMessage(
-                                Component.literal("  Profit: ").withStyle(ChatFormatting.GRAY)
+                                Component.literal("  " + PriceCache.formatCoins(r.buyPrice)).withStyle(ChatFormatting.WHITE)
+                                        .append(Component.literal(" → ").withStyle(ChatFormatting.GRAY))
+                                        .append(Component.literal(PriceCache.formatCoins(r.sellPrice)).withStyle(ChatFormatting.WHITE))
+                                        .append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY))
+                                        .append(Component.literal("Profit: ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(PriceCache.formatCoins(profit)).withStyle(profitColor))
                                         .append(Component.literal("  (" + PriceCache.formatCoins(r.profitPerHourInventory) + "/hr)").withStyle(profitColor)));
                         client.player.sendSystemMessage(Component.literal(""));
