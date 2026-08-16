@@ -31,7 +31,7 @@ public class AgingItemsConfig {
     // ── defaults ────────────────────────────────────────────────────────────
 
     private static final String[][] DEFAULT_PAIRS = {
-            {"BOTTLE_OF_JYRRE",      "REFINED_BOTTLE_OF_JYRRE"},
+            {"NEW_BOTTLE_OF_JYRRE",  "REFINED_BOTTLE_OF_JYRRE"},
             {"DARK_CACAO_TRUFFLE",   "REFINED_DARK_CACAO_TRUFFLE"},
             {"DISCRITE",             "SPOTLITE"},
             {"MOBY_DUCK",            "MOBY_DUCK_COLLECTOR_EDITION"},
