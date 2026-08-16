@@ -127,7 +127,12 @@ public class AgingItemsCommand {
                                     .append(Component.literal(sellLabel).withStyle(ChatFormatting.AQUA)));
                     client.player.sendSystemMessage(Component.literal(""));
 
+                    int topCount = (config != null) ? config.misc.agingTopCount : 0;
+                    int shown = 0;
+
                     for (ItemResult r : results) {
+                        if (topCount > 0 && r.error == null && shown >= topCount) continue;
+
                         client.player.sendSystemMessage(
                                 Component.literal(formatId(r.agingId)).withStyle(ChatFormatting.YELLOW)
                                         .append(Component.literal(" → ").withStyle(ChatFormatting.GRAY))
@@ -140,22 +145,14 @@ public class AgingItemsCommand {
                             continue;
                         }
 
-                        String buyLabel = r.buyFromAH ? "Buy (AH BIN)" : "Buy (Insta Buy)";
-                        ChatFormatting profitColor = (r.profitPerHourTimeBag > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
+                        shown++;
                         double profit = r.sellPrice - r.buyPrice;
+                        ChatFormatting profitColor = (profit > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
 
                         client.player.sendSystemMessage(
-                                Component.literal("  " + buyLabel + ": ").withStyle(ChatFormatting.GRAY)
-                                        .append(Component.literal(PriceCache.formatCoins(r.buyPrice)).withStyle(ChatFormatting.WHITE))
-                                        .append(Component.literal("  Sell (" + r.sellLabel + "): ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(PriceCache.formatCoins(r.sellPrice)).withStyle(ChatFormatting.WHITE))
-                                        .append(Component.literal("  Profit: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(PriceCache.formatCoins(profit)).withStyle(profitColor)));
-                        client.player.sendSystemMessage(
-                                Component.literal("  Time Bag: ").withStyle(ChatFormatting.GRAY)
-                                        .append(Component.literal(PriceCache.formatCoins(r.profitPerHourTimeBag) + "/hr").withStyle(profitColor))
-                                        .append(Component.literal("  Inventory: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(PriceCache.formatCoins(r.profitPerHourInventory) + "/hr").withStyle(profitColor)));
+                                Component.literal("  Profit: ").withStyle(ChatFormatting.GRAY)
+                                        .append(Component.literal(PriceCache.formatCoins(profit)).withStyle(profitColor))
+                                        .append(Component.literal("  (" + PriceCache.formatCoins(r.profitPerHourInventory) + "/hr)").withStyle(profitColor)));
                         client.player.sendSystemMessage(Component.literal(""));
                     }
 

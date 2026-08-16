@@ -375,6 +375,12 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorBoolean
         public boolean agingUseSellOffer = false;
 
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Show Top X Items", desc = "Only show the top X most profitable items (0 = show all)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 10, minStep = 1)
+        public int agingTopCount = 0;
+
         // ── Cookie Profit ────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 5)
