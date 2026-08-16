@@ -14,12 +14,12 @@ import java.util.*;
  * - Kismet Feather (1,350 bits) — sell offer price
  * - Magma Bucket (3,000 bits for 1 Heat Core) — insta-sell minus material cost
  * - Plasma Bucket (9,000 bits for 3 Heat Cores) — insta-sell minus material cost
- * - Supreme Carrot Candy (8,000 bits) — insta-sell
- * - XL Minion Storage (1,500 bits) — insta-sell minus material cost
- * - XXL Minion Storage (3,000 bits) — insta-sell minus material cost
- * - Bitbug Shards (300 bits) — insta-sell
- * - Inferno Fuel Block x64 (75,000 bits) — insta-sell minus material cost
- * - 7 Levelling Enchantments — insta-sell
+ * - Ultimate Carrot Candy (8,000 bits for Upgrade) — insta-sell minus 8x Superb Carrot Candy
+ * - XL Minion Storage (1,500 bits for X-pender) — insta-sell minus Large Storage cost
+ * - XXL Minion Storage (1,500 bits for X-pender) — insta-sell minus XL Storage cost
+ * - Bitbug Shard (5,000 bits) — insta-sell
+ * - Inferno Fuel Block (75 bits, or 65 with Blaze Slayer IX) — insta-sell
+ * - 7 Levelling Enchantments (4,000-6,000 bits) — insta-sell
  *
  * Cookie price is sourced from Bazaar buy-order data.
  */
@@ -35,31 +35,30 @@ public class CookieProfitCommand {
     private static final int MAGMA_BUCKET_LAVA_BUCKETS = 2;
     private static final int PLASMA_BUCKET_LAVA_BUCKETS = 4;
 
-    // Supreme Carrot Candy — 8,000 bits, no additional crafting materials on BZ
-    private static final int SUPREME_CARROT_CANDY_BITS = 8_000;
+    // Ultimate Carrot Candy — 8,000 bits for Upgrade + 8x Superb Carrot Candy (BZ material)
+    private static final int ULTIMATE_CARROT_CANDY_UPGRADE_BITS = 8_000;
+    private static final int ULTIMATE_CARROT_CANDY_SUPERB_COUNT = 8;
 
-    // Minion Storage — XL: 1,500 bits + 1 Enchanted Redstone Block; XXL: 3,000 bits + 1 Enchanted Redstone Block
-    private static final int XL_STORAGE_BITS = 1_500;
-    private static final int XXL_STORAGE_BITS = 3_000;
+    // Minion Storage X-pender — 1,500 bits each
+    // XL = X-pender + Large Storage; XXL = X-pender + XL Storage
+    private static final int XPENDER_BITS = 1_500;
 
-    // Bitbug Shards — 300 bits each, direct sale
-    private static final int BITBUG_SHARD_BITS = 300;
+    // Bitbug Shard — 5,000 bits each, direct BZ sale
+    private static final int BITBUG_SHARD_BITS = 5_000;
 
-    // Inferno Fuel Block x64 — 75,000 bits + 64 Nether Stars (or 32 with Blaze Slayer perk)
-    private static final int INFERNO_FUEL_BITS = 75_000;
-    private static final int INFERNO_FUEL_NETHER_STARS = 64;
-    private static final int INFERNO_FUEL_NETHER_STARS_PERK = 32;
+    // Inferno Fuel Block — 75 bits each (65 with Blaze Slayer IX perk), no crafting materials
+    private static final int INFERNO_FUEL_BITS = 75;
+    private static final int INFERNO_FUEL_BITS_SLAYER_PERK = 65;
 
-    // Levelling Enchantments — all cost 2,000 bits each
-    private static final int ENCHANTMENT_BITS = 2_000;
+    // Levelling Enchantments — most cost 4,000 bits, Hecatomb costs 6,000
     private static final String[][] LEVELLING_ENCHANTMENTS = {
-            {"ENCHANTMENT_COMPACT_1", "Compact"},
-            {"ENCHANTMENT_EXPERTISE_1", "Expertise"},
-            {"ENCHANTMENT_CULTIVATING_1", "Cultivating"},
-            {"ENCHANTMENT_CHAMPION_1", "Champion"},
-            {"ENCHANTMENT_HECATOMB_1", "Hecatomb"},
-            {"ENCHANTMENT_TOXOPHILITE_1", "Toxophilite"},
-            {"ENCHANTMENT_SMARTY_PANTS_1", "Smarty Pants"},
+            {"ENCHANTMENT_COMPACT_1", "Compact", "4000"},
+            {"ENCHANTMENT_EXPERTISE_1", "Expertise", "4000"},
+            {"ENCHANTMENT_CULTIVATING_1", "Cultivating", "4000"},
+            {"ENCHANTMENT_CHAMPION_1", "Champion", "4000"},
+            {"ENCHANTMENT_HECATOMB_1", "Hecatomb", "6000"},
+            {"ENCHANTMENT_TOXOPHILITE_1", "Toxophilite", "4000"},
+            {"ENCHANTMENT_SMARTY_PANTS_1", "Smarty Pants", "4000"},
     };
 
     // Wiki: 5.2083% of bits per cookie every 30 min (250 * multiplier).
@@ -124,20 +123,20 @@ public class CookieProfitCommand {
                 // Plasma Bucket — insta-sell
                 double plasmaSell = PriceCache.getInstaSellPrice(products, "PLASMA_BUCKET");
 
-                // Supreme Carrot Candy — insta-sell
-                double supremeCarrotCandySell = PriceCache.getInstaSellPrice(products, "SUPREME_CARROT_CANDY");
+                // Ultimate Carrot Candy — insta-sell + 8x Superb Carrot Candy material cost
+                double ultimateCarrotCandySell = PriceCache.getInstaSellPrice(products, "ULTIMATE_CARROT_CANDY");
+                double superbCarrotCandyCost = PriceCache.getInstaBuyPrice(products, "SUPERB_CARROT_CANDY");
 
-                // Minion Storage — insta-sell + material cost
-                double xlStorageSell = PriceCache.getInstaSellPrice(products, "MINION_STORAGE_X_LARGE");
-                double xxlStorageSell = PriceCache.getInstaSellPrice(products, "MINION_STORAGE_XX_LARGE");
-                double enchRedstoneBlockCost = PriceCache.getInstaBuyPrice(products, "ENCHANTED_REDSTONE_BLOCK");
+                // XL/XXL Minion Storage — insta-sell + material costs
+                double xlStorageSell = PriceCache.getInstaSellPrice(products, "XLARGE_ENCHANTED_CHEST");
+                double xxlStorageSell = PriceCache.getInstaSellPrice(products, "XXLARGE_ENCHANTED_CHEST");
+                double largeStorageCost = PriceCache.getInstaBuyPrice(products, "LARGE_ENCHANTED_CHEST");
 
-                // Bitbug Shards — insta-sell
-                double bitbugShardSell = PriceCache.getInstaSellPrice(products, "BITBUG_SHARD");
+                // Bitbug Shard — insta-sell
+                double bitbugShardSell = PriceCache.getInstaSellPrice(products, "SHARD_BITBUG");
 
-                // Inferno Fuel Block — insta-sell + Nether Star material cost
+                // Inferno Fuel Block — insta-sell (no crafting materials needed)
                 double infernoFuelSell = PriceCache.getInstaSellPrice(products, "INFERNO_FUEL_BLOCK");
-                double netherStarCost = PriceCache.getInstaBuyPrice(products, "NETHER_STAR");
 
                 List<CookieItem> items = new ArrayList<>();
 
@@ -168,56 +167,63 @@ public class CookieProfitCommand {
                     items.add(new CookieItem("Plasma Bucket", PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, null, "price unavailable"));
                 }
 
-                // Supreme Carrot Candy
-                if (supremeCarrotCandySell > 0) {
-                    items.add(new CookieItem("Supreme Carrot Candy", SUPREME_CARROT_CANDY_BITS, supremeCarrotCandySell, "Insta Sell", null));
+                // Ultimate Carrot Candy (8,000 bits for Upgrade + 8x Superb Carrot Candy)
+                if (ultimateCarrotCandySell > 0 && superbCarrotCandyCost > 0) {
+                    double materialCost = ULTIMATE_CARROT_CANDY_SUPERB_COUNT * superbCarrotCandyCost;
+                    double profit = ultimateCarrotCandySell - materialCost;
+                    items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, profit, "Insta Sell", null));
                 } else {
-                    items.add(new CookieItem("Supreme Carrot Candy", SUPREME_CARROT_CANDY_BITS, 0, null, "price unavailable"));
+                    items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, 0, null, "price unavailable"));
                 }
 
-                // XL Minion Storage
-                if (xlStorageSell > 0 && enchRedstoneBlockCost > 0) {
-                    double xlProfit = xlStorageSell - enchRedstoneBlockCost;
-                    items.add(new CookieItem("XL Minion Storage", XL_STORAGE_BITS, xlProfit, "Insta Sell", null));
+                // XL Minion Storage (1,500 bits X-pender + Large Storage)
+                if (xlStorageSell > 0 && largeStorageCost > 0) {
+                    double xlProfit = xlStorageSell - largeStorageCost;
+                    items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, xlProfit, "Insta Sell", null));
                 } else {
-                    items.add(new CookieItem("XL Minion Storage", XL_STORAGE_BITS, 0, null, "price unavailable"));
+                    items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
                 }
 
-                // XXL Minion Storage
-                if (xxlStorageSell > 0 && enchRedstoneBlockCost > 0) {
-                    double xxlProfit = xxlStorageSell - enchRedstoneBlockCost;
-                    items.add(new CookieItem("XXL Minion Storage", XXL_STORAGE_BITS, xxlProfit, "Insta Sell", null));
+                // XXL Minion Storage (1,500 bits X-pender + XL Storage)
+                if (xxlStorageSell > 0 && xlStorageSell > 0) {
+                    // XXL needs an XL as input; use XL insta-buy price as material cost
+                    double xlBuyCost = PriceCache.getInstaBuyPrice(products, "XLARGE_ENCHANTED_CHEST");
+                    if (xlBuyCost > 0) {
+                        double xxlProfit = xxlStorageSell - xlBuyCost;
+                        items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS, xxlProfit, "Insta Sell", null));
+                    } else {
+                        items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
+                    }
                 } else {
-                    items.add(new CookieItem("XXL Minion Storage", XXL_STORAGE_BITS, 0, null, "price unavailable"));
+                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
                 }
 
-                // Bitbug Shards
+                // Bitbug Shard (5,000 bits, direct sale)
                 if (bitbugShardSell > 0) {
                     items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, bitbugShardSell, "Insta Sell", null));
                 } else {
                     items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, 0, null, "price unavailable"));
                 }
 
-                // Inferno Fuel Block x64
-                if (infernoFuelSell > 0 && netherStarCost > 0) {
-                    int starCount = blazeSlayerPerk ? INFERNO_FUEL_NETHER_STARS_PERK : INFERNO_FUEL_NETHER_STARS;
-                    double materialCost = starCount * netherStarCost;
-                    double infernoProfit = infernoFuelSell - materialCost;
+                // Inferno Fuel Block (75 bits each, or 65 with Blaze Slayer IX)
+                if (infernoFuelSell > 0) {
+                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_SLAYER_PERK : INFERNO_FUEL_BITS;
                     String label = blazeSlayerPerk ? "Insta Sell (Slayer Perk)" : "Insta Sell";
-                    items.add(new CookieItem("Inferno Fuel Block x64", INFERNO_FUEL_BITS, infernoProfit, label, null));
+                    items.add(new CookieItem("Inferno Fuel Block", fuelBits, infernoFuelSell, label, null));
                 } else {
-                    items.add(new CookieItem("Inferno Fuel Block x64", INFERNO_FUEL_BITS, 0, null, "price unavailable"));
+                    items.add(new CookieItem("Inferno Fuel Block", INFERNO_FUEL_BITS, 0, null, "price unavailable"));
                 }
 
                 // Levelling Enchantments
                 for (String[] ench : LEVELLING_ENCHANTMENTS) {
                     String bzId = ench[0];
                     String name = ench[1];
+                    int enchBits = Integer.parseInt(ench[2]);
                     double enchSell = PriceCache.getInstaSellPrice(products, bzId);
                     if (enchSell > 0) {
-                        items.add(new CookieItem(name + " I", ENCHANTMENT_BITS, enchSell, "Insta Sell", null));
+                        items.add(new CookieItem(name + " I", enchBits, enchSell, "Insta Sell", null));
                     } else {
-                        items.add(new CookieItem(name + " I", ENCHANTMENT_BITS, 0, null, "price unavailable"));
+                        items.add(new CookieItem(name + " I", enchBits, 0, null, "price unavailable"));
                     }
                 }
 

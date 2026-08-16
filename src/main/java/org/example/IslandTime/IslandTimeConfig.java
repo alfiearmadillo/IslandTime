@@ -414,7 +414,7 @@ public class IslandTimeConfig extends Config {
 
         @ConfigAccordionId(id = 5)
         @Expose
-        @ConfigOption(name = "Inferno Fuel Blaze Slayer Perk", desc = "When enabled, reduces Inferno Fuel Block cost by accounting for the Blaze Slayer perk (halves Nether Star cost)")
+        @ConfigOption(name = "Inferno Fuel Blaze Slayer Perk", desc = "When enabled, uses the discounted Inferno Fuel Block cost (65 bits instead of 75) from Blaze Slayer IX")
         @ConfigEditorBoolean
         public boolean infernoFuelBlazeSlayerPerk = false;
 
