@@ -412,6 +412,18 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorBoolean
         public boolean includeBitsTalisman = false;
 
+        @ConfigAccordionId(id = 5)
+        @Expose
+        @ConfigOption(name = "Inferno Fuel Blaze Slayer Perk", desc = "When enabled, uses the discounted x64 Inferno Fuel Block cost (3,120 bits instead of 3,600) from Blaze Slayer IX")
+        @ConfigEditorBoolean
+        public boolean infernoFuelBlazeSlayerPerk = false;
+
+        @ConfigAccordionId(id = 5)
+        @Expose
+        @ConfigOption(name = "Show Top X Items", desc = "Only show the top X most profitable items (0 = show all)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 20, minStep = 1)
+        public int cookieTopCount = 0;
+
         // ── Other ────────────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 3)

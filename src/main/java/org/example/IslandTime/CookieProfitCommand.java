@@ -10,10 +10,16 @@ import java.util.*;
 /**
  * Compares profit from spending Booster Cookie bits on various items.
  *
- * Currently supports:
+ * Supports:
  * - Kismet Feather (1,350 bits) — sell offer price
  * - Magma Bucket (3,000 bits for 1 Heat Core) — insta-sell minus material cost
  * - Plasma Bucket (9,000 bits for 3 Heat Cores) — insta-sell minus material cost
+ * - Ultimate Carrot Candy (8,000 bits for Upgrade) — insta-sell 10x minus 8x Superb Carrot Candy
+ * - XL Minion Storage (1,500 bits for X-pender) — insta-sell minus Large Storage cost
+ * - XXL Minion Storage (3,000 bits for 2 X-penders) — insta-sell minus Large Storage cost
+ * - Bitbug Shard (5,000 bits) — insta-sell
+ * - Inferno Fuel Block x64 (3,600 bits, or 3,120 with Blaze Slayer IX) — insta-sell
+ * - 7 Levelling Enchantments (4,000-6,000 bits) — insta-sell
  *
  * Cookie price is sourced from Bazaar buy-order data.
  */
@@ -29,6 +35,33 @@ public class CookieProfitCommand {
     private static final int MAGMA_BUCKET_LAVA_BUCKETS = 2;
     private static final int PLASMA_BUCKET_LAVA_BUCKETS = 4;
 
+    // Ultimate Carrot Candy — 8,000 bits for Upgrade + 8x Superb Carrot Candy → produces 10 candies
+    private static final int ULTIMATE_CARROT_CANDY_UPGRADE_BITS = 8_000;
+    private static final int ULTIMATE_CARROT_CANDY_SUPERB_COUNT = 8;
+    private static final int ULTIMATE_CARROT_CANDY_OUTPUT_COUNT = 10;
+
+    // Minion Storage X-pender — 1,500 bits each
+    // XL = Large Storage + 1 X-pender; XXL = Large Storage + 2 X-penders
+    private static final int XPENDER_BITS = 1_500;
+
+    // Bitbug Shard — 5,000 bits each, direct BZ sale
+    private static final int BITBUG_SHARD_BITS = 5_000;
+
+    // Inferno Fuel Block x64 — 3,600 bits for 64, or 3,120 bits with Blaze Slayer IX
+    private static final int INFERNO_FUEL_BITS_64 = 3_600;
+    private static final int INFERNO_FUEL_BITS_64_SLAYER_PERK = 3_120;
+
+    // Levelling Enchantments — most cost 4,000 bits, Hecatomb costs 6,000
+    private static final String[][] LEVELLING_ENCHANTMENTS = {
+            {"ENCHANTMENT_COMPACT_1", "Compact", "4000"},
+            {"ENCHANTMENT_EXPERTISE_1", "Expertise", "4000"},
+            {"ENCHANTMENT_CULTIVATING_1", "Cultivating", "4000"},
+            {"ENCHANTMENT_CHAMPION_1", "Champion", "4000"},
+            {"ENCHANTMENT_HECATOMB_1", "Hecatomb", "6000"},
+            {"ENCHANTMENT_TOXOPHILITE_1", "Toxophilite", "4000"},
+            {"ENCHANTMENT_SMARTY_PANTS_1", "Smarty Pants", "4000"},
+    };
+
     // Wiki: 5.2083% of bits per cookie every 30 min (250 * multiplier).
     // Takes ~10 hours of idle playtime to earn all bits without Bits Talisman.
     private static final double BASE_HOURS_TO_EARN_ALL_BITS = 10.0;
@@ -43,6 +76,8 @@ public class CookieProfitCommand {
         IslandTimeConfig config = ConfigManager.getConfig();
         int baseBitsPerCookie = (config != null) ? config.misc.bitsPerCookie : 4800;
         boolean includeBitsTalisman = (config != null) && config.misc.includeBitsTalisman;
+        boolean blazeSlayerPerk = (config != null) && config.misc.infernoFuelBlazeSlayerPerk;
+        int topCount = (config != null) ? config.misc.cookieTopCount : 0;
 
         // Bits Talisman doesn't create extra bits — same total, earned faster
         double hoursToEarn = BASE_HOURS_TO_EARN_ALL_BITS;
@@ -61,6 +96,7 @@ public class CookieProfitCommand {
 
         final double bitsPerCookie = baseBitsPerCookie;
         final double finalHoursToEarn = hoursToEarn;
+        final int finalTopCount = topCount;
 
         client.player.sendSystemMessage(
                 Component.literal("Fetching Bazaar prices...").withStyle(ChatFormatting.GRAY));
@@ -87,6 +123,21 @@ public class CookieProfitCommand {
 
                 // Plasma Bucket — insta-sell
                 double plasmaSell = PriceCache.getInstaSellPrice(products, "PLASMA_BUCKET");
+
+                // Ultimate Carrot Candy — insta-sell + 8x Superb Carrot Candy material cost
+                double ultimateCarrotCandySell = PriceCache.getInstaSellPrice(products, "ULTIMATE_CARROT_CANDY");
+                double superbCarrotCandyCost = PriceCache.getInstaBuyPrice(products, "SUPERB_CARROT_CANDY");
+
+                // XL/XXL Minion Storage — insta-sell + material costs
+                double xlStorageSell = PriceCache.getInstaSellPrice(products, "XLARGE_ENCHANTED_CHEST");
+                double xxlStorageSell = PriceCache.getInstaSellPrice(products, "XXLARGE_ENCHANTED_CHEST");
+                double largeStorageCost = PriceCache.getInstaBuyPrice(products, "LARGE_ENCHANTED_CHEST");
+
+                // Bitbug Shard — insta-sell
+                double bitbugShardSell = PriceCache.getInstaSellPrice(products, "SHARD_BITBUG");
+
+                // Inferno Fuel Block — insta-sell (no crafting materials needed)
+                double infernoFuelSell = PriceCache.getInstaSellPrice(products, "INFERNO_FUEL_BLOCK");
 
                 List<CookieItem> items = new ArrayList<>();
 
@@ -117,6 +168,63 @@ public class CookieProfitCommand {
                     items.add(new CookieItem("Plasma Bucket", PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, null, "price unavailable"));
                 }
 
+                // Ultimate Carrot Candy (8,000 bits for Upgrade + 8x Superb → 10 candies)
+                if (ultimateCarrotCandySell > 0 && superbCarrotCandyCost > 0) {
+                    double materialCost = ULTIMATE_CARROT_CANDY_SUPERB_COUNT * superbCarrotCandyCost;
+                    double revenue = ULTIMATE_CARROT_CANDY_OUTPUT_COUNT * ultimateCarrotCandySell;
+                    double profit = revenue - materialCost;
+                    items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, profit, "Insta Sell", null));
+                } else {
+                    items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, 0, null, "price unavailable"));
+                }
+
+                // XL Minion Storage (1,500 bits X-pender + Large Storage)
+                if (xlStorageSell > 0 && largeStorageCost > 0) {
+                    double xlProfit = xlStorageSell - largeStorageCost;
+                    items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, xlProfit, "Insta Sell", null));
+                } else {
+                    items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
+                }
+
+                // XXL Minion Storage (2 X-penders = 3,000 bits + Large Storage)
+                if (xxlStorageSell > 0 && largeStorageCost > 0) {
+                    double xxlProfit = xxlStorageSell - largeStorageCost;
+                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, xxlProfit, "Insta Sell", null));
+                } else {
+                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, 0, null, "price unavailable"));
+                }
+
+                // Bitbug Shard (5,000 bits, direct sale)
+                if (bitbugShardSell > 0) {
+                    items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, bitbugShardSell, "Insta Sell", null));
+                } else {
+                    items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, 0, null, "price unavailable"));
+                }
+
+                // Inferno Fuel Block x64 (3,600 bits or 3,120 with Blaze Slayer IX)
+                if (infernoFuelSell > 0) {
+                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
+                    double profit = 64.0 * infernoFuelSell;
+                    String label = blazeSlayerPerk ? "Insta Sell x64 (Slayer Perk)" : "Insta Sell x64";
+                    items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, profit, label, null));
+                } else {
+                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
+                    items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, 0, null, "price unavailable"));
+                }
+
+                // Levelling Enchantments
+                for (String[] ench : LEVELLING_ENCHANTMENTS) {
+                    String bzId = ench[0];
+                    String name = ench[1];
+                    int enchBits = Integer.parseInt(ench[2]);
+                    double enchSell = PriceCache.getInstaSellPrice(products, bzId);
+                    if (enchSell > 0) {
+                        items.add(new CookieItem(name + " I", enchBits, enchSell, "Insta Sell", null));
+                    } else {
+                        items.add(new CookieItem(name + " I", enchBits, 0, null, "price unavailable"));
+                    }
+                }
+
                 // Sort by profit per bit descending
                 items.sort((a, b) -> Double.compare(b.profitPerBit(), a.profitPerBit()));
 
@@ -134,13 +242,19 @@ public class CookieProfitCommand {
                                     .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(cookieCost) : "N/A").withStyle(ChatFormatting.WHITE)));
                     client.player.sendSystemMessage(Component.literal(""));
 
+                    int shown = 0;
                     for (CookieItem item : items) {
                         if (item.error != null) {
-                            client.player.sendSystemMessage(
-                                    Component.literal(item.name).withStyle(ChatFormatting.YELLOW)
-                                            .append(Component.literal(" — " + item.error).withStyle(ChatFormatting.RED)));
+                            if (finalTopCount <= 0) {
+                                client.player.sendSystemMessage(
+                                        Component.literal(item.name).withStyle(ChatFormatting.YELLOW)
+                                                .append(Component.literal(" — " + item.error).withStyle(ChatFormatting.RED)));
+                            }
                             continue;
                         }
+
+                        if (finalTopCount > 0 && shown >= finalTopCount) continue;
+                        shown++;
 
                         double profitPerBit = item.profitPerBit();
                         // Net profit per cookie = (profit per bit * bits per cookie) - cookie cost

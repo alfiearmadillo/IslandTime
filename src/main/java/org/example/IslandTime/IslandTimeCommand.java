@@ -1261,7 +1261,7 @@ public class IslandTimeCommand {
                 {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /islandtime GUI"},
 
                 // Page 10 - Cookie Profit
-                {"/it cookieProfit", "Compare profit/bit for spending cookie bits (Kismet Feather, Magma Bucket, Plasma Bucket)"},
+                {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
                 {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /islandtime GUI"},
         };
 
