@@ -25,6 +25,7 @@ public class IslandTimeMod implements ClientModInitializer {
         ChatRelayConfig.load();
         PlayerListManager.load();
         BlockHighlightManager.load();
+        AgingItemsConfig.load();
         IslandChatRelay.register();
         ChatMessageStore.register();
 

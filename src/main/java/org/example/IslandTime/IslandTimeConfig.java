@@ -338,6 +338,80 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorKeybind(defaultKey = 86) // GLFW_KEY_V
         public int copySkinKeybind = 86;
 
+        // ── Aging Items ──────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 4)
+        @ConfigOption(name = "Aging Items", desc = "Compare profit per hour for levelling items (Bottle of Jyrre, Dark Cacao Truffle, etc.)")
+        public boolean agingItemsAccordion = false;
+
+        @ConfigAccordionId(id = 4)
+        @ConfigOption(name = "Compare Aging Items", desc = "Fetch Bazaar prices and compare profit/hour for all configured aging items")
+        @ConfigEditorButton(buttonText = " Compare Now ")
+        public Runnable agingItemsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it agingItems");
+                }
+            }
+        };
+
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Time Bag Slots", desc = "Number of Time Pocket (time-bag) slots available for aging items (items age at 2× speed)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 12, minStep = 1)
+        public int agingTimeBagSlots = 3;
+
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Inventory Slots", desc = "Number of inventory slots dedicated to levelling items (items age at 1× speed)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 35, minStep = 1)
+        public int agingInventorySlots = 0;
+
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Use Sell Offer", desc = "When enabled, uses sell offer (sell order) prices instead of insta-sell prices for aged items")
+        @ConfigEditorBoolean
+        public boolean agingUseSellOffer = false;
+
+        @ConfigAccordionId(id = 4)
+        @Expose
+        @ConfigOption(name = "Show Top X Items", desc = "Only show the top X most profitable items (0 = show all)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 10, minStep = 1)
+        public int agingTopCount = 0;
+
+        // ── Cookie Profit ────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 5)
+        @ConfigOption(name = "Cookie Profit", desc = "Compare profit from spending Booster Cookie bits on various items")
+        public boolean cookieProfitAccordion = false;
+
+        @ConfigAccordionId(id = 5)
+        @ConfigOption(name = "Calculate Cookie Profit", desc = "Fetch Bazaar prices and compare profit per bit for cookie items")
+        @ConfigEditorButton(buttonText = " Calculate ")
+        public Runnable cookieProfitButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it cookieProfit");
+                }
+            }
+        };
+
+        @ConfigAccordionId(id = 5)
+        @Expose
+        @ConfigOption(name = "Bits Per Cookie", desc = "Your bits per cookie (base 4800, increases with Fame Rank multiplier)")
+        @ConfigEditorSlider(minValue = 4800, maxValue = 30000, minStep = 100)
+        public int bitsPerCookie = 4800;
+
+        @ConfigAccordionId(id = 5)
+        @Expose
+        @ConfigOption(name = "Include Bits Talisman", desc = "When enabled, accounts for the Bits Talisman (10% chance to double bits earned, effectively 10% more bits per cookie)")
+        @ConfigEditorBoolean
+        public boolean includeBitsTalisman = false;
+
         // ── Other ────────────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 3)
