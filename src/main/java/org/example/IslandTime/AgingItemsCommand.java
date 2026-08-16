@@ -46,7 +46,6 @@ public class AgingItemsCommand {
         new Thread(() -> {
             try {
                 JsonObject bazaarProducts = PriceCache.getBazaar();
-                JsonObject lowestBins = PriceCache.getLowestBins();
 
                 if (bazaarProducts == null) {
                     sendError(client, "Failed to fetch Bazaar data.");
@@ -60,11 +59,11 @@ public class AgingItemsCommand {
                     String agingId = pair[0];
                     String agedId  = pair[1];
 
-                    // Buy price: try BZ first, then AH lowest BIN (with Coflnet fallback)
+                    // Buy price: try BZ first, then AH lowest BIN via Coflnet
                     double buyPrice = PriceCache.getInstaBuyPrice(bazaarProducts, agingId);
                     boolean buyFromAH = false;
                     if (buyPrice < 0) {
-                        buyPrice = PriceCache.getLowestBin(lowestBins, agingId);
+                        buyPrice = PriceCache.getLowestBin(null, agingId);
                         buyFromAH = (buyPrice > 0);
                     }
 
@@ -126,10 +125,6 @@ public class AgingItemsCommand {
                                     .append(Component.literal(" = " + totalSlots + " total").withStyle(ChatFormatting.WHITE))
                                     .append(Component.literal("  Sell mode: ").withStyle(ChatFormatting.GRAY))
                                     .append(Component.literal(sellLabel).withStyle(ChatFormatting.AQUA)));
-                    if (lowestBins == null) {
-                        client.player.sendSystemMessage(
-                                Component.literal("  (AH data unavailable — AH-only items may show N/A)").withStyle(ChatFormatting.RED));
-                    }
                     client.player.sendSystemMessage(Component.literal(""));
 
                     for (ItemResult r : results) {

@@ -8,6 +8,8 @@ import com.google.gson.JsonParser;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Caches Bazaar and AH lowest-BIN data for 5 minutes to avoid hammering APIs.
@@ -15,16 +17,15 @@ import java.net.URI;
 public class PriceCache {
 
     private static final String BAZAAR_API = "https://api.hypixel.net/v2/skyblock/bazaar";
-    private static final String LOWEST_BIN_API = "https://moulberry.codes/lowestbin.json";
-    private static final String LOWEST_BIN_FALLBACK = "https://lb.tricked.pro/lowestbin";
-    private static final String LOWEST_BIN_FALLBACK_2 = "https://sky.coflnet.com/api/auctions/tag/%s/active/bin";
+    private static final String COFLNET_ITEM_API = "https://sky.coflnet.com/api/item/price/%s/bin";
+    private static final String COFLNET_ACTIVE_BIN_API = "https://sky.coflnet.com/api/auctions/tag/%s/active/bin";
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
     private static JsonObject cachedBazaar = null;
     private static long bazaarCacheTime = 0;
 
-    private static JsonObject cachedLowestBins = null;
-    private static long lowestBinsCacheTime = 0;
+    // Per-item cache for AH lowest BIN prices
+    private static final Map<String, CachedPrice> lowestBinCache = new ConcurrentHashMap<>();
 
     public static JsonObject getBazaar() {
         long now = System.currentTimeMillis();
@@ -34,16 +35,6 @@ public class PriceCache {
         cachedBazaar = fetchBazaar();
         bazaarCacheTime = now;
         return cachedBazaar;
-    }
-
-    public static JsonObject getLowestBins() {
-        long now = System.currentTimeMillis();
-        if (cachedLowestBins != null && (now - lowestBinsCacheTime) < CACHE_DURATION_MS) {
-            return cachedLowestBins;
-        }
-        cachedLowestBins = fetchLowestBins();
-        lowestBinsCacheTime = now;
-        return cachedLowestBins;
     }
 
     // ── Price extraction helpers ────────────────────────────────────────────
@@ -78,14 +69,16 @@ public class PriceCache {
         return getInstaSellPrice(products, productId);
     }
 
-    /** AH lowest BIN price from bulk data. */
-    public static double getLowestBin(JsonObject lowestBins, String itemId) {
-        if (lowestBins != null) {
-            JsonElement el = lowestBins.get(itemId);
-            if (el != null && !el.isJsonNull()) return el.getAsDouble();
+    /** AH lowest BIN price via Coflnet per-item API (cached 5 min). */
+    public static double getLowestBin(JsonObject unusedBulkData, String itemId) {
+        long now = System.currentTimeMillis();
+        CachedPrice cached = lowestBinCache.get(itemId);
+        if (cached != null && (now - cached.time) < CACHE_DURATION_MS) {
+            return cached.price;
         }
-        // Bulk data unavailable or missing item — try Coflnet per-item API
-        return fetchCoflnetLowestBin(itemId);
+        double price = fetchCoflnetPrice(itemId);
+        lowestBinCache.put(itemId, new CachedPrice(price, now));
+        return price;
     }
 
     // ── Formatting ─────────────────────────────────────────────────────────
@@ -116,18 +109,22 @@ public class PriceCache {
         return null;
     }
 
-    private static JsonObject fetchLowestBins() {
-        JsonObject result = fetchJson(LOWEST_BIN_API);
-        if (result == null) {
-            result = fetchJson(LOWEST_BIN_FALLBACK);
-        }
-        return result;
+    /**
+     * Fetches the lowest BIN price for a single item from Coflnet.
+     * Tries the per-item price endpoint first, falls back to active BIN listing.
+     */
+    private static double fetchCoflnetPrice(String itemId) {
+        // Try the simple per-item price endpoint first
+        double price = fetchCoflnetItemPrice(itemId);
+        if (price > 0) return price;
+        // Fall back to active BIN listings
+        return fetchCoflnetActiveBin(itemId);
     }
 
-    /** Coflnet per-item fallback: returns lowest BIN price for a single item. */
-    private static double fetchCoflnetLowestBin(String itemId) {
+    /** Coflnet /api/item/price/{tag}/bin — returns a simple lowest BIN price. */
+    private static double fetchCoflnetItemPrice(String itemId) {
         try {
-            String url = String.format(LOWEST_BIN_FALLBACK_2, itemId);
+            String url = String.format(COFLNET_ITEM_API, itemId);
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(10_000);
@@ -135,39 +132,62 @@ public class PriceCache {
             conn.setRequestProperty("User-Agent", "IslandTime-Mod");
             if (conn.getResponseCode() != 200) return -1;
             try (InputStreamReader reader = new InputStreamReader(conn.getInputStream())) {
-                JsonArray arr = JsonParser.parseReader(reader).getAsJsonArray();
-                if (arr.isEmpty()) return -1;
-                // Find lowest starting bid among BIN auctions
-                double lowest = Double.MAX_VALUE;
-                for (JsonElement el : arr) {
-                    JsonObject auction = el.getAsJsonObject();
-                    if (auction.has("startingBid")) {
-                        double price = auction.get("startingBid").getAsDouble();
-                        if (price < lowest) lowest = price;
-                    }
+                JsonElement parsed = JsonParser.parseReader(reader);
+                // Could be a number, object with "lowest", or other format
+                if (parsed.isJsonPrimitive()) {
+                    return parsed.getAsDouble();
                 }
-                return lowest < Double.MAX_VALUE ? lowest : -1;
+                if (parsed.isJsonObject()) {
+                    JsonObject obj = parsed.getAsJsonObject();
+                    if (obj.has("lowest")) return obj.get("lowest").getAsDouble();
+                    if (obj.has("price")) return obj.get("price").getAsDouble();
+                }
             }
         } catch (Exception e) {
-            System.err.println("[IslandTime] Coflnet fetch failed for " + itemId + ": " + e.getMessage());
+            System.err.println("[IslandTime] Coflnet item price failed for " + itemId + ": " + e.getMessage());
         }
         return -1;
     }
 
-    private static JsonObject fetchJson(String url) {
+    /** Coflnet /api/auctions/tag/{tag}/active/bin — returns sorted BIN listings. */
+    private static double fetchCoflnetActiveBin(String itemId) {
         try {
+            String url = String.format(COFLNET_ACTIVE_BIN_API, itemId);
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(10_000);
             conn.setReadTimeout(10_000);
             conn.setRequestProperty("User-Agent", "IslandTime-Mod");
-            if (conn.getResponseCode() != 200) return null;
+            if (conn.getResponseCode() != 200) return -1;
             try (InputStreamReader reader = new InputStreamReader(conn.getInputStream())) {
-                return JsonParser.parseReader(reader).getAsJsonObject();
+                JsonElement parsed = JsonParser.parseReader(reader);
+                if (!parsed.isJsonArray()) return -1;
+                JsonArray arr = parsed.getAsJsonArray();
+                if (arr.isEmpty()) return -1;
+                // Results are sorted by price (lowest first) — take first entry
+                JsonObject first = arr.get(0).getAsJsonObject();
+                // Try multiple possible field names
+                for (String field : new String[]{"price", "startingBid", "starting_bid"}) {
+                    if (first.has(field)) {
+                        double p = first.get(field).getAsDouble();
+                        if (p > 0) return p;
+                    }
+                }
             }
         } catch (Exception e) {
-            System.err.println("[IslandTime] Fetch failed for " + url + ": " + e.getMessage());
+            System.err.println("[IslandTime] Coflnet active BIN failed for " + itemId + ": " + e.getMessage());
         }
-        return null;
+        return -1;
+    }
+
+    // ── Cache entry ────────────────────────────────────────────────────────
+
+    private static class CachedPrice {
+        final double price;
+        final long time;
+        CachedPrice(double price, long time) {
+            this.price = price;
+            this.time = time;
+        }
     }
 }
