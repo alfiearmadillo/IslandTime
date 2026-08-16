@@ -160,7 +160,7 @@ public class CookieProfitCommand {
                                 Component.literal("  Net/cookie: ").withStyle(ChatFormatting.GRAY)
                                         .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(netPerCookie) : "N/A").withStyle(netCookieColor))
                                         .append(Component.literal("  Per bit: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(PriceCache.formatCoins(profitPerBit)).withStyle(perBitColor))
+                                        .append(Component.literal(PriceCache.formatCoinsPrecise(profitPerBit)).withStyle(perBitColor))
                                         .append(Component.literal("  Net/hr: ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(netPerHour) + "/hr" : "N/A").withStyle(netHrColor)));
                         client.player.sendSystemMessage(Component.literal(""));
@@ -177,7 +177,7 @@ public class CookieProfitCommand {
                                 Component.literal("Best: ").withStyle(ChatFormatting.GOLD)
                                         .append(Component.literal(best.name).withStyle(ChatFormatting.YELLOW))
                                         .append(Component.literal(" at ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(PriceCache.formatCoins(best.profitPerBit()) + "/bit").withStyle(bestColor))
+                                        .append(Component.literal(PriceCache.formatCoinsPrecise(best.profitPerBit()) + "/bit").withStyle(bestColor))
                                         .append(Component.literal(cookieCost > 0 ? " (" + PriceCache.formatCoins(bestNetPerHour) + " net/hr)" : "").withStyle(bestColor)));
                     }
                 });

@@ -89,6 +89,13 @@ public class PriceCache {
         return String.format("%.1f", coins);
     }
 
+    /** Higher precision format for small per-unit values where differences matter. */
+    public static String formatCoinsPrecise(double coins) {
+        if (Math.abs(coins) >= 1_000_000) return String.format("%.2fM", coins / 1_000_000);
+        if (Math.abs(coins) >= 1_000)     return String.format("%.2fk", coins / 1_000);
+        return String.format("%.1f", coins);
+    }
+
     // ── Fetch helpers ──────────────────────────────────────────────────────
 
     private static JsonObject fetchBazaar() {
