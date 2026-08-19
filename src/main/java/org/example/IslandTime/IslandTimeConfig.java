@@ -424,6 +424,65 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorSlider(minValue = 0, maxValue = 20, minStep = 1)
         public int cookieTopCount = 0;
 
+        @ConfigAccordionId(id = 5)
+        @ConfigEditorAccordion(id = 6)
+        @ConfigOption(name = "Sell Mode Overrides", desc = "Toggle each item between Insta Sell and Sell Offer pricing")
+        public boolean sellModeAccordion = false;
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "Kismet Feather", desc = "Sell mode for Kismet Feather (default: Sell Offer)")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int kismetSellMode = 1; // Sell Offer
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "Magma Bucket", desc = "Sell mode for Magma Bucket")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int magmaBucketSellMode = 0; // Insta Sell
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "Plasma Bucket", desc = "Sell mode for Plasma Bucket")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int plasmaBucketSellMode = 0; // Insta Sell
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "Ultimate Carrot Candy", desc = "Sell mode for Ultimate Carrot Candy")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int ultimateCarrotCandySellMode = 0; // Insta Sell
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "XL Minion Storage", desc = "Sell mode for XL Minion Storage")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int xlStorageSellMode = 0; // Insta Sell
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "XXL Minion Storage", desc = "Sell mode for XXL Minion Storage")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int xxlStorageSellMode = 0; // Insta Sell
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "Bitbug Shard", desc = "Sell mode for Bitbug Shard")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int bitbugShardSellMode = 0; // Insta Sell
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "Inferno Fuel Block", desc = "Sell mode for Inferno Fuel Block")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int infernoFuelSellMode = 0; // Insta Sell
+
+        @ConfigAccordionId(id = 6)
+        @Expose
+        @ConfigOption(name = "Levelling Enchantments", desc = "Sell mode for all Levelling Enchantments")
+        @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
+        public int enchantmentSellMode = 0; // Insta Sell
+
         // ── Other ────────────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 3)
