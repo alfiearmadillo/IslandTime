@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 
 import java.util.*;
 
@@ -70,6 +71,21 @@ public class CookieProfitCommand {
     // faster. Same total bits, earned in ~9.09 hours instead of 10.
     private static final double BITS_TALISMAN_SPEED_MULTIPLIER = 1.1;
 
+    /** Returns true if the sell mode config value means "Sell Offer" (index 1). */
+    private static boolean isSellOffer(int sellMode) {
+        return sellMode == 1;
+    }
+
+    private static double getPrice(JsonObject products, String productId, boolean sellOffer) {
+        return sellOffer
+                ? PriceCache.getSellOfferPrice(products, productId)
+                : PriceCache.getInstaSellPrice(products, productId);
+    }
+
+    private static String sellLabel(boolean sellOffer) {
+        return sellOffer ? "Sell Offer" : "Insta Sell";
+    }
+
     public static void execute(Minecraft client) {
         if (client.player == null) return;
 
@@ -78,6 +94,17 @@ public class CookieProfitCommand {
         boolean includeBitsTalisman = (config != null) && config.misc.includeBitsTalisman;
         boolean blazeSlayerPerk = (config != null) && config.misc.infernoFuelBlazeSlayerPerk;
         int topCount = (config != null) ? config.misc.cookieTopCount : 0;
+
+        // Per-item sell mode overrides
+        boolean kismetSellOffer = (config != null) && isSellOffer(config.misc.kismetSellMode);
+        boolean magmaSellOffer = (config != null) && isSellOffer(config.misc.magmaBucketSellMode);
+        boolean plasmaSellOffer = (config != null) && isSellOffer(config.misc.plasmaBucketSellMode);
+        boolean carrotSellOffer = (config != null) && isSellOffer(config.misc.ultimateCarrotCandySellMode);
+        boolean xlSellOffer = (config != null) && isSellOffer(config.misc.xlStorageSellMode);
+        boolean xxlSellOffer = (config != null) && isSellOffer(config.misc.xxlStorageSellMode);
+        boolean bitbugSellOffer = (config != null) && isSellOffer(config.misc.bitbugShardSellMode);
+        boolean fuelSellOffer = (config != null) && isSellOffer(config.misc.infernoFuelSellMode);
+        boolean enchSellOffer = (config != null) && isSellOffer(config.misc.enchantmentSellMode);
 
         // Bits Talisman doesn't create extra bits — same total, earned faster
         double hoursToEarn = BASE_HOURS_TO_EARN_ALL_BITS;
@@ -112,104 +139,133 @@ public class CookieProfitCommand {
                 // Cookie cost (buy order)
                 double cookieCost = PriceCache.getBuyOrderPrice(products, "BOOSTER_COOKIE");
 
-                // Kismet Feather — sell offer
-                double kismetSellOffer = PriceCache.getSellOfferPrice(products, "KISMET_FEATHER");
-
                 // Enchanted Lava Bucket — insta-buy (material cost)
                 double lavaBucketCost = PriceCache.getInstaBuyPrice(products, "ENCHANTED_LAVA_BUCKET");
 
-                // Magma Bucket — insta-sell
-                double magmaSell = PriceCache.getInstaSellPrice(products, "MAGMA_BUCKET");
-
-                // Plasma Bucket — insta-sell
-                double plasmaSell = PriceCache.getInstaSellPrice(products, "PLASMA_BUCKET");
-
-                // Ultimate Carrot Candy — insta-sell + 8x Superb Carrot Candy material cost
-                double ultimateCarrotCandySell = PriceCache.getInstaSellPrice(products, "ULTIMATE_CARROT_CANDY");
-                double superbCarrotCandyCost = PriceCache.getInstaBuyPrice(products, "SUPERB_CARROT_CANDY");
-
-                // XL/XXL Minion Storage — insta-sell + material costs
-                double xlStorageSell = PriceCache.getInstaSellPrice(products, "XLARGE_ENCHANTED_CHEST");
-                double xxlStorageSell = PriceCache.getInstaSellPrice(products, "XXLARGE_ENCHANTED_CHEST");
+                // Large Storage — insta-buy (material cost)
                 double largeStorageCost = PriceCache.getInstaBuyPrice(products, "LARGE_ENCHANTED_CHEST");
 
-                // Bitbug Shard — insta-sell
-                double bitbugShardSell = PriceCache.getInstaSellPrice(products, "SHARD_BITBUG");
-
-                // Inferno Fuel Block — insta-sell (no crafting materials needed)
-                double infernoFuelSell = PriceCache.getInstaSellPrice(products, "INFERNO_FUEL_BLOCK");
+                // Superb Carrot Candy — insta-buy (material cost)
+                double superbCarrotCandyCost = PriceCache.getInstaBuyPrice(products, "SUPERB_CARROT_CANDY");
 
                 List<CookieItem> items = new ArrayList<>();
 
                 // Kismet Feather
-                if (kismetSellOffer > 0) {
-                    items.add(new CookieItem("Kismet Feather", KISMET_BITS, kismetSellOffer, "Sell Offer", null));
-                } else {
-                    items.add(new CookieItem("Kismet Feather", KISMET_BITS, 0, null, "price unavailable"));
+                {
+                    double price = getPrice(products, "KISMET_FEATHER", kismetSellOffer);
+                    if (price > 0) {
+                        String breakdown = "Kismet Feather " + sellLabel(kismetSellOffer) + ": " + PriceCache.formatCoins(price)
+                                + "\nProfit: " + PriceCache.formatCoins(price);
+                        items.add(new CookieItem("Kismet Feather", KISMET_BITS, price, sellLabel(kismetSellOffer), null, breakdown));
+                    } else {
+                        items.add(new CookieItem("Kismet Feather", KISMET_BITS, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // Magma Bucket
-                if (magmaSell > 0 && lavaBucketCost > 0) {
-                    double magmaMaterialCost = MAGMA_BUCKET_LAVA_BUCKETS * lavaBucketCost;
-                    double magmaProfit = magmaSell - magmaMaterialCost;
-                    int magmaBits = MAGMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS;
-                    items.add(new CookieItem("Magma Bucket", magmaBits, magmaProfit, "Insta Sell", null));
-                } else {
-                    items.add(new CookieItem("Magma Bucket", MAGMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, null, "price unavailable"));
+                {
+                    double magmaPrice = getPrice(products, "MAGMA_BUCKET", magmaSellOffer);
+                    if (magmaPrice > 0 && lavaBucketCost > 0) {
+                        double magmaMaterialCost = MAGMA_BUCKET_LAVA_BUCKETS * lavaBucketCost;
+                        double magmaProfit = magmaPrice - magmaMaterialCost;
+                        int magmaBits = MAGMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS;
+                        String breakdown = "Magma Bucket " + sellLabel(magmaSellOffer) + ": " + PriceCache.formatCoins(magmaPrice)
+                                + "\n" + MAGMA_BUCKET_LAVA_BUCKETS + "x Ench. Lava Bucket cost: " + PriceCache.formatCoins(lavaBucketCost) + " each = " + PriceCache.formatCoins(magmaMaterialCost)
+                                + "\nProfit: " + PriceCache.formatCoins(magmaPrice) + " - " + PriceCache.formatCoins(magmaMaterialCost) + " = " + PriceCache.formatCoins(magmaProfit);
+                        items.add(new CookieItem("Magma Bucket", magmaBits, magmaProfit, sellLabel(magmaSellOffer), null, breakdown));
+                    } else {
+                        items.add(new CookieItem("Magma Bucket", MAGMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // Plasma Bucket
-                if (plasmaSell > 0 && lavaBucketCost > 0) {
-                    double plasmaMaterialCost = PLASMA_BUCKET_LAVA_BUCKETS * lavaBucketCost;
-                    double plasmaProfit = plasmaSell - plasmaMaterialCost;
-                    int plasmaBits = PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS;
-                    items.add(new CookieItem("Plasma Bucket", plasmaBits, plasmaProfit, "Insta Sell", null));
-                } else {
-                    items.add(new CookieItem("Plasma Bucket", PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, null, "price unavailable"));
+                {
+                    double plasmaPrice = getPrice(products, "PLASMA_BUCKET", plasmaSellOffer);
+                    if (plasmaPrice > 0 && lavaBucketCost > 0) {
+                        double plasmaMaterialCost = PLASMA_BUCKET_LAVA_BUCKETS * lavaBucketCost;
+                        double plasmaProfit = plasmaPrice - plasmaMaterialCost;
+                        int plasmaBits = PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS;
+                        String breakdown = "Plasma Bucket " + sellLabel(plasmaSellOffer) + ": " + PriceCache.formatCoins(plasmaPrice)
+                                + "\n" + PLASMA_BUCKET_LAVA_BUCKETS + "x Ench. Lava Bucket cost: " + PriceCache.formatCoins(lavaBucketCost) + " each = " + PriceCache.formatCoins(plasmaMaterialCost)
+                                + "\nProfit: " + PriceCache.formatCoins(plasmaPrice) + " - " + PriceCache.formatCoins(plasmaMaterialCost) + " = " + PriceCache.formatCoins(plasmaProfit);
+                        items.add(new CookieItem("Plasma Bucket", plasmaBits, plasmaProfit, sellLabel(plasmaSellOffer), null, breakdown));
+                    } else {
+                        items.add(new CookieItem("Plasma Bucket", PLASMA_BUCKET_HEAT_CORES * HEAT_CORE_BITS, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // Ultimate Carrot Candy (8,000 bits for Upgrade + 8x Superb → 10 candies)
-                if (ultimateCarrotCandySell > 0 && superbCarrotCandyCost > 0) {
-                    double materialCost = ULTIMATE_CARROT_CANDY_SUPERB_COUNT * superbCarrotCandyCost;
-                    double revenue = ULTIMATE_CARROT_CANDY_OUTPUT_COUNT * ultimateCarrotCandySell;
-                    double profit = revenue - materialCost;
-                    items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, profit, "Insta Sell", null));
-                } else {
-                    items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, 0, null, "price unavailable"));
+                {
+                    double carrotPrice = getPrice(products, "ULTIMATE_CARROT_CANDY", carrotSellOffer);
+                    if (carrotPrice > 0 && superbCarrotCandyCost > 0) {
+                        double materialCost = ULTIMATE_CARROT_CANDY_SUPERB_COUNT * superbCarrotCandyCost;
+                        double revenue = ULTIMATE_CARROT_CANDY_OUTPUT_COUNT * carrotPrice;
+                        double profit = revenue - materialCost;
+                        String breakdown = ULTIMATE_CARROT_CANDY_OUTPUT_COUNT + "x Ult. Carrot Candy " + sellLabel(carrotSellOffer) + ": " + PriceCache.formatCoins(carrotPrice) + " each = " + PriceCache.formatCoins(revenue)
+                                + "\n" + ULTIMATE_CARROT_CANDY_SUPERB_COUNT + "x Superb Carrot Candy cost: " + PriceCache.formatCoins(superbCarrotCandyCost) + " each = " + PriceCache.formatCoins(materialCost)
+                                + "\nProfit: " + PriceCache.formatCoins(revenue) + " - " + PriceCache.formatCoins(materialCost) + " = " + PriceCache.formatCoins(profit);
+                        items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, profit, sellLabel(carrotSellOffer), null, breakdown));
+                    } else {
+                        items.add(new CookieItem("Ultimate Carrot Candy", ULTIMATE_CARROT_CANDY_UPGRADE_BITS, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // XL Minion Storage (1,500 bits X-pender + Large Storage)
-                if (xlStorageSell > 0 && largeStorageCost > 0) {
-                    double xlProfit = xlStorageSell - largeStorageCost;
-                    items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, xlProfit, "Insta Sell", null));
-                } else {
-                    items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, 0, null, "price unavailable"));
+                {
+                    double xlPrice = getPrice(products, "XLARGE_ENCHANTED_CHEST", xlSellOffer);
+                    if (xlPrice > 0 && largeStorageCost > 0) {
+                        double xlProfit = xlPrice - largeStorageCost;
+                        String breakdown = "XL Storage " + sellLabel(xlSellOffer) + ": " + PriceCache.formatCoins(xlPrice)
+                                + "\nLarge Storage cost: " + PriceCache.formatCoins(largeStorageCost)
+                                + "\nProfit: " + PriceCache.formatCoins(xlPrice) + " - " + PriceCache.formatCoins(largeStorageCost) + " = " + PriceCache.formatCoins(xlProfit);
+                        items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, xlProfit, sellLabel(xlSellOffer), null, breakdown));
+                    } else {
+                        items.add(new CookieItem("XL Minion Storage", XPENDER_BITS, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // XXL Minion Storage (2 X-penders = 3,000 bits + Large Storage)
-                if (xxlStorageSell > 0 && largeStorageCost > 0) {
-                    double xxlProfit = xxlStorageSell - largeStorageCost;
-                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, xxlProfit, "Insta Sell", null));
-                } else {
-                    items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, 0, null, "price unavailable"));
+                {
+                    double xxlPrice = getPrice(products, "XXLARGE_ENCHANTED_CHEST", xxlSellOffer);
+                    if (xxlPrice > 0 && largeStorageCost > 0) {
+                        double xxlProfit = xxlPrice - largeStorageCost;
+                        String breakdown = "XXL Storage " + sellLabel(xxlSellOffer) + ": " + PriceCache.formatCoins(xxlPrice)
+                                + "\nLarge Storage cost: " + PriceCache.formatCoins(largeStorageCost)
+                                + "\nProfit: " + PriceCache.formatCoins(xxlPrice) + " - " + PriceCache.formatCoins(largeStorageCost) + " = " + PriceCache.formatCoins(xxlProfit);
+                        items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, xxlProfit, sellLabel(xxlSellOffer), null, breakdown));
+                    } else {
+                        items.add(new CookieItem("XXL Minion Storage", XPENDER_BITS * 2, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // Bitbug Shard (5,000 bits, direct sale)
-                if (bitbugShardSell > 0) {
-                    items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, bitbugShardSell, "Insta Sell", null));
-                } else {
-                    items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, 0, null, "price unavailable"));
+                {
+                    double bitbugPrice = getPrice(products, "SHARD_BITBUG", bitbugSellOffer);
+                    if (bitbugPrice > 0) {
+                        String breakdown = "Bitbug Shard " + sellLabel(bitbugSellOffer) + ": " + PriceCache.formatCoins(bitbugPrice)
+                                + "\nProfit: " + PriceCache.formatCoins(bitbugPrice);
+                        items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, bitbugPrice, sellLabel(bitbugSellOffer), null, breakdown));
+                    } else {
+                        items.add(new CookieItem("Bitbug Shard", BITBUG_SHARD_BITS, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // Inferno Fuel Block x64 (3,600 bits or 3,120 with Blaze Slayer IX)
-                if (infernoFuelSell > 0) {
-                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
-                    double profit = 64.0 * infernoFuelSell;
-                    String label = blazeSlayerPerk ? "Insta Sell x64 (Slayer Perk)" : "Insta Sell x64";
-                    items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, profit, label, null));
-                } else {
-                    int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
-                    items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, 0, null, "price unavailable"));
+                {
+                    double fuelPrice = getPrice(products, "INFERNO_FUEL_BLOCK", fuelSellOffer);
+                    if (fuelPrice > 0) {
+                        int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
+                        double profit = 64.0 * fuelPrice;
+                        String slayerNote = blazeSlayerPerk ? " (Slayer Perk)" : "";
+                        String label = sellLabel(fuelSellOffer) + " x64" + slayerNote;
+                        String breakdown = "64x Inferno Fuel Block " + sellLabel(fuelSellOffer) + ": " + PriceCache.formatCoins(fuelPrice) + " each = " + PriceCache.formatCoins(profit)
+                                + "\nBits cost: " + fuelBits + slayerNote
+                                + "\nProfit: " + PriceCache.formatCoins(profit);
+                        items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, profit, label, null, breakdown));
+                    } else {
+                        int fuelBits = blazeSlayerPerk ? INFERNO_FUEL_BITS_64_SLAYER_PERK : INFERNO_FUEL_BITS_64;
+                        items.add(new CookieItem("Inferno Fuel Block x64", fuelBits, 0, null, "price unavailable", null));
+                    }
                 }
 
                 // Levelling Enchantments
@@ -217,11 +273,13 @@ public class CookieProfitCommand {
                     String bzId = ench[0];
                     String name = ench[1];
                     int enchBits = Integer.parseInt(ench[2]);
-                    double enchSell = PriceCache.getInstaSellPrice(products, bzId);
-                    if (enchSell > 0) {
-                        items.add(new CookieItem(name + " I", enchBits, enchSell, "Insta Sell", null));
+                    double enchPrice = getPrice(products, bzId, enchSellOffer);
+                    if (enchPrice > 0) {
+                        String breakdown = name + " I " + sellLabel(enchSellOffer) + ": " + PriceCache.formatCoins(enchPrice)
+                                + "\nProfit: " + PriceCache.formatCoins(enchPrice);
+                        items.add(new CookieItem(name + " I", enchBits, enchPrice, sellLabel(enchSellOffer), null, breakdown));
                     } else {
-                        items.add(new CookieItem(name + " I", enchBits, 0, null, "price unavailable"));
+                        items.add(new CookieItem(name + " I", enchBits, 0, null, "price unavailable", null));
                     }
                 }
 
@@ -267,16 +325,25 @@ public class CookieProfitCommand {
                         ChatFormatting perBitColor = (profitPerBit > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
                         ChatFormatting netHrColor = (netPerHour > 0) ? ChatFormatting.GREEN : ChatFormatting.RED;
 
+                        // Build hover text with calc breakdown
+                        Component hoverText = Component.literal(item.calcBreakdown != null ? item.calcBreakdown : item.name)
+                                .withStyle(ChatFormatting.WHITE);
+
+                        // Line 1: item name + bits + sell mode (with hover showing calc breakdown)
                         client.player.sendSystemMessage(
                                 Component.literal(item.name).withStyle(ChatFormatting.YELLOW)
-                                        .append(Component.literal(" (" + item.bitsCost + " bits, " + item.priceType + ")").withStyle(ChatFormatting.GRAY)));
+                                        .append(Component.literal(" (" + item.bitsCost + " bits, " + item.priceType + ")").withStyle(ChatFormatting.GRAY))
+                                        .withStyle(style -> style.withHoverEvent(new HoverEvent.ShowText(hoverText))));
+
+                        // Line 2: net/cookie, per bit, net/hr (with same hover showing calc breakdown)
                         client.player.sendSystemMessage(
                                 Component.literal("  Net/cookie: ").withStyle(ChatFormatting.GRAY)
                                         .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(netPerCookie) : "N/A").withStyle(netCookieColor))
                                         .append(Component.literal("  Per bit: ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(PriceCache.formatCoinsPrecise(profitPerBit)).withStyle(perBitColor))
                                         .append(Component.literal("  Net/hr: ").withStyle(ChatFormatting.GRAY))
-                                        .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(netPerHour) + "/hr" : "N/A").withStyle(netHrColor)));
+                                        .append(Component.literal(cookieCost > 0 ? PriceCache.formatCoins(netPerHour) + "/hr" : "N/A").withStyle(netHrColor))
+                                        .withStyle(style -> style.withHoverEvent(new HoverEvent.ShowText(hoverText))));
                         client.player.sendSystemMessage(Component.literal(""));
                     }
 
@@ -317,13 +384,15 @@ public class CookieProfitCommand {
         final double profit;
         final String priceType;
         final String error;
+        final String calcBreakdown;
 
-        CookieItem(String name, int bitsCost, double profit, String priceType, String error) {
+        CookieItem(String name, int bitsCost, double profit, String priceType, String error, String calcBreakdown) {
             this.name = name;
             this.bitsCost = bitsCost;
             this.profit = profit;
             this.priceType = priceType;
             this.error = error;
+            this.calcBreakdown = calcBreakdown;
         }
 
         double profitPerBit() {
