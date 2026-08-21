@@ -32,6 +32,9 @@ public class IslandTimeMod implements ClientModInitializer {
         // Initialize MoulConfig
         ConfigManager.initialize();
 
+        // Restore settings if AFK mode was active when the game last exited
+        AfkModeManager.restoreIfNeeded();
+
         // Register tick events
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             IslandTimeTracker.tick(client);
