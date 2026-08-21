@@ -28,10 +28,10 @@ public class AfkModeManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File BACKUP_FILE = new File("config/islandtime_afk_backup.json");
 
-    // AFK values
-    private static final int AFK_FPS_LIMIT = 2;
+    // AFK values — respects OptionInstance validator ranges
+    private static final int AFK_FPS_LIMIT = 10;         // minimum allowed by OptionInstance (range 10-260)
     private static final int AFK_RENDER_DISTANCE = 2;
-    private static final int AFK_SIMULATION_DISTANCE = 2;
+    private static final int AFK_SIMULATION_DISTANCE = 5; // minimum allowed by OptionInstance (range 5-32)
 
     /** Serializable snapshot of all settings we override. */
     private static class SavedSettings {
@@ -51,6 +51,7 @@ public class AfkModeManager {
         double glintStrength;
         double darknessEffectScale;
         double damageTiltStrength;
+        boolean cutoutLeaves;
     }
 
     private static SavedSettings saved;
@@ -120,6 +121,7 @@ public class AfkModeManager {
         opts.glintStrength().set(0.0);
         opts.darknessEffectScale().set(0.0);
         opts.damageTiltStrength().set(0.0);
+        opts.cutoutLeaves().set(false);
 
         // Persist and force renderer to pick up new render distance
         opts.save();
@@ -133,7 +135,7 @@ public class AfkModeManager {
             client.player.sendSystemMessage(
                     Component.literal("[IslandTime] AFK mode ").withStyle(ChatFormatting.GOLD)
                             .append(Component.literal("enabled").withStyle(ChatFormatting.GREEN))
-                            .append(Component.literal(" — FPS 2, render 2, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
+                            .append(Component.literal(" — FPS 10, render 2, sim 5, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
         }
     }
 
@@ -181,6 +183,7 @@ public class AfkModeManager {
         s.glintStrength = opts.glintStrength().get();
         s.darknessEffectScale = opts.darknessEffectScale().get();
         s.damageTiltStrength = opts.damageTiltStrength().get();
+        s.cutoutLeaves = opts.cutoutLeaves().get();
         return s;
     }
 
@@ -201,6 +204,7 @@ public class AfkModeManager {
         opts.glintStrength().set(s.glintStrength);
         opts.darknessEffectScale().set(s.darknessEffectScale);
         opts.damageTiltStrength().set(s.damageTiltStrength);
+        opts.cutoutLeaves().set(s.cutoutLeaves);
     }
 
     private static void saveBackup(SavedSettings s) {
