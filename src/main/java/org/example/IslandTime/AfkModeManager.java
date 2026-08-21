@@ -30,7 +30,7 @@ public class AfkModeManager {
     private static final File BACKUP_FILE = new File("config/islandtime_afk_backup.json");
 
     // AFK values
-    private static final int AFK_FPS_LIMIT = 2;
+    private static final int AFK_FPS_LIMIT = 10; // vanilla minimum is 10
     private static final int AFK_RENDER_DISTANCE = 2;
     private static final int AFK_SIMULATION_DISTANCE = 2;
 
@@ -41,7 +41,6 @@ public class AfkModeManager {
         int simulationDistance;
         String particles; // enum name
         double soundVolume;
-        boolean vsync;
         boolean entityShadows;
         String cloudStatus; // enum name
         String graphicsPreset; // enum name
@@ -112,7 +111,6 @@ public class AfkModeManager {
         opts.simulationDistance().set(AFK_SIMULATION_DISTANCE);
         opts.particles().set(ParticleStatus.MINIMAL);
         opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(0.0);
-        opts.enableVsync().set(true);
         opts.entityShadows().set(false);
         opts.cloudStatus().set(CloudStatus.OFF);
         opts.graphicsPreset().set(GraphicsPreset.FAST);
@@ -132,7 +130,7 @@ public class AfkModeManager {
             client.player.sendSystemMessage(
                     Component.literal("[IslandTime] AFK mode ").withStyle(ChatFormatting.GOLD)
                             .append(Component.literal("enabled").withStyle(ChatFormatting.GREEN))
-                            .append(Component.literal(" — FPS 2, render 2, graphics fast, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
+                            .append(Component.literal(" — FPS 10, render 2, graphics fast, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
         }
     }
 
@@ -166,7 +164,6 @@ public class AfkModeManager {
         s.simulationDistance = opts.simulationDistance().get();
         s.particles = opts.particles().get().name();
         s.soundVolume = opts.getSoundSourceVolume(SoundSource.MASTER);
-        s.vsync = opts.enableVsync().get();
         s.entityShadows = opts.entityShadows().get();
         s.cloudStatus = opts.cloudStatus().get().name();
         s.graphicsPreset = opts.graphicsPreset().get().name();
@@ -188,7 +185,6 @@ public class AfkModeManager {
         opts.simulationDistance().set(s.simulationDistance);
         opts.particles().set(ParticleStatus.valueOf(s.particles));
         opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(s.soundVolume);
-        opts.enableVsync().set(s.vsync);
         opts.entityShadows().set(s.entityShadows);
         opts.cloudStatus().set(CloudStatus.valueOf(s.cloudStatus));
         opts.graphicsPreset().set(GraphicsPreset.valueOf(s.graphicsPreset));
