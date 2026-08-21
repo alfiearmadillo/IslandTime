@@ -30,7 +30,7 @@ public class AfkModeManager {
     private static final File BACKUP_FILE = new File("config/islandtime_afk_backup.json");
 
     // AFK values
-    private static final int AFK_FPS_LIMIT = 10; // vanilla minimum is 10
+    private static final int AFK_FPS_LIMIT = 2;
     private static final int AFK_RENDER_DISTANCE = 2;
     private static final int AFK_SIMULATION_DISTANCE = 2;
 
@@ -124,13 +124,19 @@ public class AfkModeManager {
         opts.darknessEffectScale().set(0.0);
         opts.damageTiltStrength().set(0.0);
 
+        // Persist and force renderer to pick up new render distance
+        opts.save();
+        if (client.levelRenderer != null) {
+            client.levelRenderer.allChanged();
+        }
+
         active = true;
 
         if (client.player != null) {
             client.player.sendSystemMessage(
                     Component.literal("[IslandTime] AFK mode ").withStyle(ChatFormatting.GOLD)
                             .append(Component.literal("enabled").withStyle(ChatFormatting.GREEN))
-                            .append(Component.literal(" — FPS 10, render 2, graphics fast, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
+                            .append(Component.literal(" — FPS 2, render 2, graphics fast, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
         }
     }
 
@@ -143,6 +149,9 @@ public class AfkModeManager {
 
         // Persist restored settings to options.txt and remove backup
         opts.save();
+        if (client.levelRenderer != null) {
+            client.levelRenderer.allChanged();
+        }
         BACKUP_FILE.delete();
         saved = null;
         active = false;
