@@ -4,16 +4,18 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.CloudStatus;
-import net.minecraft.client.GraphicsPreset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ParticleStatus;
 import net.minecraft.sounds.SoundSource;
 
+import net.minecraft.client.OptionInstance;
+
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.lang.reflect.Field;
 
 /**
  * Manages AFK mode — drastically reduces resource usage by lowering
@@ -43,7 +45,6 @@ public class AfkModeManager {
         double soundVolume;
         boolean entityShadows;
         String cloudStatus; // enum name
-        String graphicsPreset; // enum name
         int mipmapLevels;
         int biomeBlendRadius;
         boolean smoothLighting;
@@ -53,6 +54,41 @@ public class AfkModeManager {
         double glintStrength;
         double darknessEffectScale;
         double damageTiltStrength;
+    }
+
+    /**
+     * Bypass OptionInstance's validator and set the value directly via reflection.
+     * This is needed because Sodium/vanilla clamp slider values (e.g. render min 8).
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> void forceSet(OptionInstance<T> option, T value) {
+        try {
+            // OptionInstance stores value in a field called "value"
+            Field valueField = OptionInstance.class.getDeclaredField("value");
+            valueField.setAccessible(true);
+            valueField.set(option, value);
+        } catch (NoSuchFieldException e) {
+            // Try alternative field names (obfuscated environments)
+            try {
+                for (Field f : OptionInstance.class.getDeclaredFields()) {
+                    if (f.getType() == Object.class || f.getType() == value.getClass()) {
+                        f.setAccessible(true);
+                        Object current = f.get(option);
+                        if (current != null && current.getClass() == value.getClass()) {
+                            f.set(option, value);
+                            return;
+                        }
+                    }
+                }
+                // Fallback to normal set if reflection fails
+                option.set(value);
+            } catch (Exception ex) {
+                option.set(value);
+            }
+        } catch (Exception e) {
+            // Fallback to normal set
+            option.set(value);
+        }
     }
 
     private static SavedSettings saved;
@@ -105,24 +141,26 @@ public class AfkModeManager {
         // Persist backup to disk so we can restore after crash/disconnect
         saveBackup(saved);
 
-        // Apply AFK settings
-        opts.framerateLimit().set(AFK_FPS_LIMIT);
-        opts.renderDistance().set(AFK_RENDER_DISTANCE);
-        opts.simulationDistance().set(AFK_SIMULATION_DISTANCE);
+        // Apply AFK settings — use forceSet to bypass OptionInstance validators
+        // which clamp values (e.g. Sodium sets render distance min to 8)
+        forceSet(opts.framerateLimit(), AFK_FPS_LIMIT);
+        forceSet(opts.renderDistance(), AFK_RENDER_DISTANCE);
+        forceSet(opts.simulationDistance(), AFK_SIMULATION_DISTANCE);
         opts.particles().set(ParticleStatus.MINIMAL);
-        opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(0.0);
+        forceSet(opts.getSoundSourceOptionInstance(SoundSource.MASTER), 0.0);
         opts.entityShadows().set(false);
         opts.cloudStatus().set(CloudStatus.OFF);
-        opts.graphicsPreset().set(GraphicsPreset.FAST);
-        opts.mipmapLevels().set(0);
-        opts.biomeBlendRadius().set(0);
+        // Don't change graphicsPreset — Sodium splits it into per-feature quality
+        // settings (like leaves). Changing it breaks those individual settings.
+        forceSet(opts.mipmapLevels(), 0);
+        forceSet(opts.biomeBlendRadius(), 0);
         opts.ambientOcclusion().set(false);
-        opts.entityDistanceScaling().set(0.5);
-        opts.screenEffectScale().set(0.0);
-        opts.glintSpeed().set(0.0);
-        opts.glintStrength().set(0.0);
-        opts.darknessEffectScale().set(0.0);
-        opts.damageTiltStrength().set(0.0);
+        forceSet(opts.entityDistanceScaling(), 0.5);
+        forceSet(opts.screenEffectScale(), 0.0);
+        forceSet(opts.glintSpeed(), 0.0);
+        forceSet(opts.glintStrength(), 0.0);
+        forceSet(opts.darknessEffectScale(), 0.0);
+        forceSet(opts.damageTiltStrength(), 0.0);
 
         // Persist and force renderer to pick up new render distance
         opts.save();
@@ -175,7 +213,6 @@ public class AfkModeManager {
         s.soundVolume = opts.getSoundSourceVolume(SoundSource.MASTER);
         s.entityShadows = opts.entityShadows().get();
         s.cloudStatus = opts.cloudStatus().get().name();
-        s.graphicsPreset = opts.graphicsPreset().get().name();
         s.mipmapLevels = opts.mipmapLevels().get();
         s.biomeBlendRadius = opts.biomeBlendRadius().get();
         s.smoothLighting = opts.ambientOcclusion().get();
@@ -189,23 +226,22 @@ public class AfkModeManager {
     }
 
     private static void applySettings(Options opts, SavedSettings s) {
-        opts.framerateLimit().set(s.fpsLimit);
-        opts.renderDistance().set(s.renderDistance);
-        opts.simulationDistance().set(s.simulationDistance);
+        forceSet(opts.framerateLimit(), s.fpsLimit);
+        forceSet(opts.renderDistance(), s.renderDistance);
+        forceSet(opts.simulationDistance(), s.simulationDistance);
         opts.particles().set(ParticleStatus.valueOf(s.particles));
-        opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(s.soundVolume);
+        forceSet(opts.getSoundSourceOptionInstance(SoundSource.MASTER), s.soundVolume);
         opts.entityShadows().set(s.entityShadows);
         opts.cloudStatus().set(CloudStatus.valueOf(s.cloudStatus));
-        opts.graphicsPreset().set(GraphicsPreset.valueOf(s.graphicsPreset));
-        opts.mipmapLevels().set(s.mipmapLevels);
-        opts.biomeBlendRadius().set(s.biomeBlendRadius);
+        forceSet(opts.mipmapLevels(), s.mipmapLevels);
+        forceSet(opts.biomeBlendRadius(), s.biomeBlendRadius);
         opts.ambientOcclusion().set(s.smoothLighting);
-        opts.entityDistanceScaling().set(s.entityDistanceScaling);
-        opts.screenEffectScale().set(s.screenEffectScale);
-        opts.glintSpeed().set(s.glintSpeed);
-        opts.glintStrength().set(s.glintStrength);
-        opts.darknessEffectScale().set(s.darknessEffectScale);
-        opts.damageTiltStrength().set(s.damageTiltStrength);
+        forceSet(opts.entityDistanceScaling(), s.entityDistanceScaling);
+        forceSet(opts.screenEffectScale(), s.screenEffectScale);
+        forceSet(opts.glintSpeed(), s.glintSpeed);
+        forceSet(opts.glintStrength(), s.glintStrength);
+        forceSet(opts.darknessEffectScale(), s.darknessEffectScale);
+        forceSet(opts.damageTiltStrength(), s.damageTiltStrength);
     }
 
     private static void saveBackup(SavedSettings s) {
