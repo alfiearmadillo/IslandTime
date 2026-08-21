@@ -1273,7 +1273,7 @@ public class IslandTimeCommand {
                 // Page 10 - Cookie Profit & AFK Mode
                 {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
                 {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /islandtime GUI"},
-                {"/it afkMode", "Toggle AFK mode — FPS 2, render 2, graphics fast, sounds off, particles minimal, mipmaps off, clouds off, entity shadows off. Run again to restore."},
+                {"/it afkMode", "Toggle AFK mode — minimises all client-side resource usage (FPS, render, graphics, sounds, particles, lighting, effects). Run again to restore."},
         };
 
         int commandsPerPage = 5;

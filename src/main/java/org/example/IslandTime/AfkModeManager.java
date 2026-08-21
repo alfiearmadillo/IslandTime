@@ -31,6 +31,14 @@ public class AfkModeManager {
     private static GraphicsStatus savedGraphicsMode;
     private static int savedMipmapLevels;
     private static int savedBiomeBlendRadius;
+    private static boolean savedSmoothLighting;
+    private static double savedEntityDistanceScaling;
+    private static double savedScreenEffectScale;
+    private static double savedDistortionEffectScale;
+    private static double savedGlintSpeed;
+    private static double savedGlintStrength;
+    private static double savedDarknessEffectScale;
+    private static double savedDamageTiltStrength;
 
     // AFK values
     private static final int AFK_FPS_LIMIT = 2;
@@ -64,6 +72,14 @@ public class AfkModeManager {
         savedGraphicsMode = opts.graphicsMode().get();
         savedMipmapLevels = opts.mipmapLevels().get();
         savedBiomeBlendRadius = opts.biomeBlendRadius().get();
+        savedSmoothLighting = opts.ambientOcclusion().get();
+        savedEntityDistanceScaling = opts.entityDistanceScaling().get();
+        savedScreenEffectScale = opts.screenEffectScale().get();
+        savedDistortionEffectScale = opts.distortionEffectScale().get();
+        savedGlintSpeed = opts.glintSpeed().get();
+        savedGlintStrength = opts.glintStrength().get();
+        savedDarknessEffectScale = opts.darknessEffectScale().get();
+        savedDamageTiltStrength = opts.damageTiltStrength().get();
 
         // Apply AFK settings
         opts.framerateLimit().set(AFK_FPS_LIMIT);
@@ -77,6 +93,14 @@ public class AfkModeManager {
         opts.graphicsMode().set(GraphicsStatus.FAST);
         opts.mipmapLevels().set(0);
         opts.biomeBlendRadius().set(0);
+        opts.ambientOcclusion().set(false);
+        opts.entityDistanceScaling().set(0.5);
+        opts.screenEffectScale().set(0.0);
+        opts.distortionEffectScale().set(0.0);
+        opts.glintSpeed().set(0.0);
+        opts.glintStrength().set(0.0);
+        opts.darknessEffectScale().set(0.0);
+        opts.damageTiltStrength().set(0.0);
 
         active = true;
 
@@ -103,6 +127,14 @@ public class AfkModeManager {
         opts.graphicsMode().set(savedGraphicsMode);
         opts.mipmapLevels().set(savedMipmapLevels);
         opts.biomeBlendRadius().set(savedBiomeBlendRadius);
+        opts.ambientOcclusion().set(savedSmoothLighting);
+        opts.entityDistanceScaling().set(savedEntityDistanceScaling);
+        opts.screenEffectScale().set(savedScreenEffectScale);
+        opts.distortionEffectScale().set(savedDistortionEffectScale);
+        opts.glintSpeed().set(savedGlintSpeed);
+        opts.glintStrength().set(savedGlintStrength);
+        opts.darknessEffectScale().set(savedDarknessEffectScale);
+        opts.damageTiltStrength().set(savedDamageTiltStrength);
 
         active = false;
 
