@@ -2,7 +2,7 @@ package org.example.islandtime;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.OptionInstance;
+import net.minecraft.client.GraphicsStatus;
 import net.minecraft.client.Options;
 import net.minecraft.client.ParticleStatus;
 import net.minecraft.network.chat.Component;
@@ -28,7 +28,9 @@ public class AfkModeManager {
     private static boolean savedVsync;
     private static boolean savedEntityShadows;
     private static int savedCloudStatus; // CloudStatus ordinal
-    private static double savedFov;
+    private static GraphicsStatus savedGraphicsMode;
+    private static int savedMipmapLevels;
+    private static int savedBiomeBlendRadius;
 
     // AFK values
     private static final int AFK_FPS_LIMIT = 2;
@@ -59,7 +61,9 @@ public class AfkModeManager {
         savedVsync = opts.enableVsync().get();
         savedEntityShadows = opts.entityShadows().get();
         savedCloudStatus = opts.cloudStatus().get().getId();
-        savedFov = opts.fov().get();
+        savedGraphicsMode = opts.graphicsMode().get();
+        savedMipmapLevels = opts.mipmapLevels().get();
+        savedBiomeBlendRadius = opts.biomeBlendRadius().get();
 
         // Apply AFK settings
         opts.framerateLimit().set(AFK_FPS_LIMIT);
@@ -69,9 +73,10 @@ public class AfkModeManager {
         opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(0.0);
         opts.enableVsync().set(true);
         opts.entityShadows().set(false);
-        // CloudStatus: OFF = 1 in the enum (OFF, FAST, FANCY)
         opts.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
-        opts.fov().set(30);
+        opts.graphicsMode().set(GraphicsStatus.FAST);
+        opts.mipmapLevels().set(0);
+        opts.biomeBlendRadius().set(0);
 
         active = true;
 
@@ -79,7 +84,7 @@ public class AfkModeManager {
             client.player.sendSystemMessage(
                     Component.literal("[IslandTime] AFK mode ").withStyle(ChatFormatting.GOLD)
                             .append(Component.literal("enabled").withStyle(ChatFormatting.GREEN))
-                            .append(Component.literal(" — FPS cap 2, render 2, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
+                            .append(Component.literal(" — FPS 2, render 2, graphics fast, sounds off, particles minimal").withStyle(ChatFormatting.GRAY)));
         }
     }
 
@@ -95,7 +100,9 @@ public class AfkModeManager {
         opts.enableVsync().set(savedVsync);
         opts.entityShadows().set(savedEntityShadows);
         opts.cloudStatus().set(net.minecraft.client.CloudStatus.byId(savedCloudStatus));
-        opts.fov().set((int) savedFov);
+        opts.graphicsMode().set(savedGraphicsMode);
+        opts.mipmapLevels().set(savedMipmapLevels);
+        opts.biomeBlendRadius().set(savedBiomeBlendRadius);
 
         active = false;
 
