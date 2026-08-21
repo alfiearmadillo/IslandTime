@@ -81,6 +81,10 @@ public class AfkModeManager {
         savedDarknessEffectScale = opts.darknessEffectScale().get();
         savedDamageTiltStrength = opts.damageTiltStrength().get();
 
+        // Save options.txt with pre-AFK values so a crash during AFK
+        // won't persist the reduced settings to disk
+        opts.save();
+
         // Apply AFK settings
         opts.framerateLimit().set(AFK_FPS_LIMIT);
         opts.renderDistance().set(AFK_RENDER_DISTANCE);
@@ -135,6 +139,9 @@ public class AfkModeManager {
         opts.glintStrength().set(savedGlintStrength);
         opts.darknessEffectScale().set(savedDarknessEffectScale);
         opts.damageTiltStrength().set(savedDamageTiltStrength);
+
+        // Persist restored settings to disk
+        opts.save();
 
         active = false;
 
