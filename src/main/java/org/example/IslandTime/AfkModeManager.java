@@ -1,5 +1,7 @@
 package org.example.islandtime;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.GraphicsStatus;
@@ -8,45 +10,83 @@ import net.minecraft.client.ParticleStatus;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundSource;
 
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+
 /**
  * Manages AFK mode — drastically reduces resource usage by lowering
  * FPS cap, render distance, particles, sound, etc.
  *
  * All changes are client-side only; nothing touches packets or
- * server-side state.  Original settings are restored on toggle-off.
+ * server-side state.  Original settings are persisted to a backup
+ * file so they survive crashes and vanilla options.txt auto-saves.
  */
 public class AfkModeManager {
 
     private static boolean active = false;
-
-    // Saved originals
-    private static int savedFpsLimit;
-    private static int savedRenderDistance;
-    private static int savedSimulationDistance;
-    private static ParticleStatus savedParticles;
-    private static double savedSoundVolume;
-    private static boolean savedVsync;
-    private static boolean savedEntityShadows;
-    private static int savedCloudStatus; // CloudStatus ordinal
-    private static GraphicsStatus savedGraphicsMode;
-    private static int savedMipmapLevels;
-    private static int savedBiomeBlendRadius;
-    private static boolean savedSmoothLighting;
-    private static double savedEntityDistanceScaling;
-    private static double savedScreenEffectScale;
-    private static double savedDistortionEffectScale;
-    private static double savedGlintSpeed;
-    private static double savedGlintStrength;
-    private static double savedDarknessEffectScale;
-    private static double savedDamageTiltStrength;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final File BACKUP_FILE = new File("config/islandtime_afk_backup.json");
 
     // AFK values
     private static final int AFK_FPS_LIMIT = 2;
     private static final int AFK_RENDER_DISTANCE = 2;
     private static final int AFK_SIMULATION_DISTANCE = 2;
 
+    /** Serializable snapshot of all settings we override. */
+    private static class SavedSettings {
+        int fpsLimit;
+        int renderDistance;
+        int simulationDistance;
+        String particles; // enum name
+        double soundVolume;
+        boolean vsync;
+        boolean entityShadows;
+        int cloudStatus;
+        String graphicsMode; // enum name
+        int mipmapLevels;
+        int biomeBlendRadius;
+        boolean smoothLighting;
+        double entityDistanceScaling;
+        double screenEffectScale;
+        double distortionEffectScale;
+        double glintSpeed;
+        double glintStrength;
+        double darknessEffectScale;
+        double damageTiltStrength;
+    }
+
+    private static SavedSettings saved;
+
     public static boolean isActive() {
         return active;
+    }
+
+    /**
+     * Called on mod init — if a backup file exists, AFK mode was active
+     * when the game last exited (crash or normal quit). Restore settings.
+     */
+    public static void restoreIfNeeded() {
+        if (!BACKUP_FILE.exists()) return;
+        try {
+            Minecraft client = Minecraft.getInstance();
+            Options opts = client.options;
+            SavedSettings s;
+            try (FileReader reader = new FileReader(BACKUP_FILE)) {
+                s = GSON.fromJson(reader, SavedSettings.class);
+            }
+            if (s == null) {
+                BACKUP_FILE.delete();
+                return;
+            }
+            applySettings(opts, s);
+            opts.save();
+            BACKUP_FILE.delete();
+            System.out.println("[IslandTime] Restored pre-AFK settings from backup (previous session ended during AFK mode)");
+        } catch (Exception e) {
+            System.err.println("[IslandTime] Failed to restore AFK backup: " + e.getMessage());
+            BACKUP_FILE.delete();
+        }
     }
 
     public static void toggle(Minecraft client) {
@@ -60,30 +100,11 @@ public class AfkModeManager {
     private static void enable(Minecraft client) {
         Options opts = client.options;
 
-        // Save current settings
-        savedFpsLimit = opts.framerateLimit().get();
-        savedRenderDistance = opts.renderDistance().get();
-        savedSimulationDistance = opts.simulationDistance().get();
-        savedParticles = opts.particles().get();
-        savedSoundVolume = opts.getSoundSourceVolume(SoundSource.MASTER);
-        savedVsync = opts.enableVsync().get();
-        savedEntityShadows = opts.entityShadows().get();
-        savedCloudStatus = opts.cloudStatus().get().getId();
-        savedGraphicsMode = opts.graphicsMode().get();
-        savedMipmapLevels = opts.mipmapLevels().get();
-        savedBiomeBlendRadius = opts.biomeBlendRadius().get();
-        savedSmoothLighting = opts.ambientOcclusion().get();
-        savedEntityDistanceScaling = opts.entityDistanceScaling().get();
-        savedScreenEffectScale = opts.screenEffectScale().get();
-        savedDistortionEffectScale = opts.distortionEffectScale().get();
-        savedGlintSpeed = opts.glintSpeed().get();
-        savedGlintStrength = opts.glintStrength().get();
-        savedDarknessEffectScale = opts.darknessEffectScale().get();
-        savedDamageTiltStrength = opts.damageTiltStrength().get();
+        // Snapshot current settings
+        saved = captureSettings(opts);
 
-        // Save options.txt with pre-AFK values so a crash during AFK
-        // won't persist the reduced settings to disk
-        opts.save();
+        // Persist backup to disk so we can restore after crash/disconnect
+        saveBackup(saved);
 
         // Apply AFK settings
         opts.framerateLimit().set(AFK_FPS_LIMIT);
@@ -119,30 +140,14 @@ public class AfkModeManager {
     private static void disable(Minecraft client) {
         Options opts = client.options;
 
-        // Restore saved settings
-        opts.framerateLimit().set(savedFpsLimit);
-        opts.renderDistance().set(savedRenderDistance);
-        opts.simulationDistance().set(savedSimulationDistance);
-        opts.particles().set(savedParticles);
-        opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(savedSoundVolume);
-        opts.enableVsync().set(savedVsync);
-        opts.entityShadows().set(savedEntityShadows);
-        opts.cloudStatus().set(net.minecraft.client.CloudStatus.byId(savedCloudStatus));
-        opts.graphicsMode().set(savedGraphicsMode);
-        opts.mipmapLevels().set(savedMipmapLevels);
-        opts.biomeBlendRadius().set(savedBiomeBlendRadius);
-        opts.ambientOcclusion().set(savedSmoothLighting);
-        opts.entityDistanceScaling().set(savedEntityDistanceScaling);
-        opts.screenEffectScale().set(savedScreenEffectScale);
-        opts.distortionEffectScale().set(savedDistortionEffectScale);
-        opts.glintSpeed().set(savedGlintSpeed);
-        opts.glintStrength().set(savedGlintStrength);
-        opts.darknessEffectScale().set(savedDarknessEffectScale);
-        opts.damageTiltStrength().set(savedDamageTiltStrength);
+        if (saved != null) {
+            applySettings(opts, saved);
+        }
 
-        // Persist restored settings to disk
+        // Persist restored settings to options.txt and remove backup
         opts.save();
-
+        BACKUP_FILE.delete();
+        saved = null;
         active = false;
 
         if (client.player != null) {
@@ -150,6 +155,65 @@ public class AfkModeManager {
                     Component.literal("[IslandTime] AFK mode ").withStyle(ChatFormatting.GOLD)
                             .append(Component.literal("disabled").withStyle(ChatFormatting.RED))
                             .append(Component.literal(" — settings restored").withStyle(ChatFormatting.GRAY)));
+        }
+    }
+
+    // ---- helpers ----
+
+    private static SavedSettings captureSettings(Options opts) {
+        SavedSettings s = new SavedSettings();
+        s.fpsLimit = opts.framerateLimit().get();
+        s.renderDistance = opts.renderDistance().get();
+        s.simulationDistance = opts.simulationDistance().get();
+        s.particles = opts.particles().get().name();
+        s.soundVolume = opts.getSoundSourceVolume(SoundSource.MASTER);
+        s.vsync = opts.enableVsync().get();
+        s.entityShadows = opts.entityShadows().get();
+        s.cloudStatus = opts.cloudStatus().get().getId();
+        s.graphicsMode = opts.graphicsMode().get().name();
+        s.mipmapLevels = opts.mipmapLevels().get();
+        s.biomeBlendRadius = opts.biomeBlendRadius().get();
+        s.smoothLighting = opts.ambientOcclusion().get();
+        s.entityDistanceScaling = opts.entityDistanceScaling().get();
+        s.screenEffectScale = opts.screenEffectScale().get();
+        s.distortionEffectScale = opts.distortionEffectScale().get();
+        s.glintSpeed = opts.glintSpeed().get();
+        s.glintStrength = opts.glintStrength().get();
+        s.darknessEffectScale = opts.darknessEffectScale().get();
+        s.damageTiltStrength = opts.damageTiltStrength().get();
+        return s;
+    }
+
+    private static void applySettings(Options opts, SavedSettings s) {
+        opts.framerateLimit().set(s.fpsLimit);
+        opts.renderDistance().set(s.renderDistance);
+        opts.simulationDistance().set(s.simulationDistance);
+        opts.particles().set(ParticleStatus.valueOf(s.particles));
+        opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(s.soundVolume);
+        opts.enableVsync().set(s.vsync);
+        opts.entityShadows().set(s.entityShadows);
+        opts.cloudStatus().set(net.minecraft.client.CloudStatus.byId(s.cloudStatus));
+        opts.graphicsMode().set(GraphicsStatus.valueOf(s.graphicsMode));
+        opts.mipmapLevels().set(s.mipmapLevels);
+        opts.biomeBlendRadius().set(s.biomeBlendRadius);
+        opts.ambientOcclusion().set(s.smoothLighting);
+        opts.entityDistanceScaling().set(s.entityDistanceScaling);
+        opts.screenEffectScale().set(s.screenEffectScale);
+        opts.distortionEffectScale().set(s.distortionEffectScale);
+        opts.glintSpeed().set(s.glintSpeed);
+        opts.glintStrength().set(s.glintStrength);
+        opts.darknessEffectScale().set(s.darknessEffectScale);
+        opts.damageTiltStrength().set(s.damageTiltStrength);
+    }
+
+    private static void saveBackup(SavedSettings s) {
+        try {
+            BACKUP_FILE.getParentFile().mkdirs();
+            try (FileWriter writer = new FileWriter(BACKUP_FILE)) {
+                GSON.toJson(s, writer);
+            }
+        } catch (Exception e) {
+            System.err.println("[IslandTime] Failed to save AFK backup: " + e.getMessage());
         }
     }
 }
