@@ -3,11 +3,12 @@ package org.example.islandtime;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.CloudStatus;
+import net.minecraft.client.GraphicsPreset;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.GraphicsStatus;
 import net.minecraft.client.Options;
-import net.minecraft.client.ParticleStatus;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ParticleStatus;
 import net.minecraft.sounds.SoundSource;
 
 import java.io.File;
@@ -42,14 +43,13 @@ public class AfkModeManager {
         double soundVolume;
         boolean vsync;
         boolean entityShadows;
-        int cloudStatus;
-        String graphicsMode; // enum name
+        String cloudStatus; // enum name
+        String graphicsPreset; // enum name
         int mipmapLevels;
         int biomeBlendRadius;
         boolean smoothLighting;
         double entityDistanceScaling;
         double screenEffectScale;
-        double distortionEffectScale;
         double glintSpeed;
         double glintStrength;
         double darknessEffectScale;
@@ -114,14 +114,13 @@ public class AfkModeManager {
         opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(0.0);
         opts.enableVsync().set(true);
         opts.entityShadows().set(false);
-        opts.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
-        opts.graphicsMode().set(GraphicsStatus.FAST);
+        opts.cloudStatus().set(CloudStatus.OFF);
+        opts.graphicsPreset().set(GraphicsPreset.FAST);
         opts.mipmapLevels().set(0);
         opts.biomeBlendRadius().set(0);
         opts.ambientOcclusion().set(false);
         opts.entityDistanceScaling().set(0.5);
         opts.screenEffectScale().set(0.0);
-        opts.distortionEffectScale().set(0.0);
         opts.glintSpeed().set(0.0);
         opts.glintStrength().set(0.0);
         opts.darknessEffectScale().set(0.0);
@@ -169,14 +168,13 @@ public class AfkModeManager {
         s.soundVolume = opts.getSoundSourceVolume(SoundSource.MASTER);
         s.vsync = opts.enableVsync().get();
         s.entityShadows = opts.entityShadows().get();
-        s.cloudStatus = opts.cloudStatus().get().getId();
-        s.graphicsMode = opts.graphicsMode().get().name();
+        s.cloudStatus = opts.cloudStatus().get().name();
+        s.graphicsPreset = opts.graphicsPreset().get().name();
         s.mipmapLevels = opts.mipmapLevels().get();
         s.biomeBlendRadius = opts.biomeBlendRadius().get();
         s.smoothLighting = opts.ambientOcclusion().get();
         s.entityDistanceScaling = opts.entityDistanceScaling().get();
         s.screenEffectScale = opts.screenEffectScale().get();
-        s.distortionEffectScale = opts.distortionEffectScale().get();
         s.glintSpeed = opts.glintSpeed().get();
         s.glintStrength = opts.glintStrength().get();
         s.darknessEffectScale = opts.darknessEffectScale().get();
@@ -192,14 +190,13 @@ public class AfkModeManager {
         opts.getSoundSourceOptionInstance(SoundSource.MASTER).set(s.soundVolume);
         opts.enableVsync().set(s.vsync);
         opts.entityShadows().set(s.entityShadows);
-        opts.cloudStatus().set(net.minecraft.client.CloudStatus.byId(s.cloudStatus));
-        opts.graphicsMode().set(GraphicsStatus.valueOf(s.graphicsMode));
+        opts.cloudStatus().set(CloudStatus.valueOf(s.cloudStatus));
+        opts.graphicsPreset().set(GraphicsPreset.valueOf(s.graphicsPreset));
         opts.mipmapLevels().set(s.mipmapLevels);
         opts.biomeBlendRadius().set(s.biomeBlendRadius);
         opts.ambientOcclusion().set(s.smoothLighting);
         opts.entityDistanceScaling().set(s.entityDistanceScaling);
         opts.screenEffectScale().set(s.screenEffectScale);
-        opts.distortionEffectScale().set(s.distortionEffectScale);
         opts.glintSpeed().set(s.glintSpeed);
         opts.glintStrength().set(s.glintStrength);
         opts.darknessEffectScale().set(s.darknessEffectScale);
