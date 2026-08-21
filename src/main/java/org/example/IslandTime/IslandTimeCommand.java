@@ -87,6 +87,11 @@ public class IslandTimeCommand {
                         .then(literal("remove")
                                 .then(argument("blockid", StringArgumentType.greedyString())
                                         .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))))
+                .then(literal("afkMode")
+                        .executes(ctx -> {
+                            AfkModeManager.toggle(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
@@ -217,6 +222,11 @@ public class IslandTimeCommand {
                 .then(literal("cookieProfit")
                         .executes(ctx -> {
                             CookieProfitCommand.execute(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("afkMode")
+                        .executes(ctx -> {
+                            AfkModeManager.toggle(ctx.getSource().getClient());
                             return 1;
                         }))
                 .then(literal("players")
@@ -1260,9 +1270,10 @@ public class IslandTimeCommand {
                 {"/it agingItems list", "List all configured aging item pairs"},
                 {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /islandtime GUI"},
 
-                // Page 10 - Cookie Profit
+                // Page 10 - Cookie Profit & AFK Mode
                 {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
                 {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /islandtime GUI"},
+                {"/it afkMode", "Toggle AFK mode — caps FPS to 2, render distance 2, sounds off, particles minimal, clouds off, entity shadows off, VSync on. Run again to restore."},
         };
 
         int commandsPerPage = 5;
