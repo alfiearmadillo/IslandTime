@@ -23,7 +23,8 @@ public class ChatMessageStore {
     }
 
     private static void addMessage(Component message) {
-        messages.add(0, message);
+        // Copy the component to preserve formatting (some messages use mutable/lazy components)
+        messages.add(0, message.copy());
         if (messages.size() > MAX_MESSAGES) {
             messages.remove(messages.size() - 1);
         }

@@ -25,11 +25,16 @@ public class PlayerListScreen extends Screen {
     private static final int BUTTON_SIZE = 20;
     private static final int PADDING = 4;
 
+    private static int savedScrollOffset = 0; // persisted across openings (per session)
     private int scrollOffset = 0;
     private int listTop;
     private int listBottom;
     private int listLeft;
     private int listWidth;
+
+    // Search bar
+    private EditBox searchField;
+    private String searchQuery = "";
 
     // Add player dialog state
     private boolean addDialogOpen = false;
@@ -66,17 +71,57 @@ public class PlayerListScreen extends Screen {
     }
 
     @Override
+    public void onClose() {
+        savedScrollOffset = scrollOffset;
+        super.onClose();
+    }
+
+    /**
+     * Returns the filtered player list based on the current search query.
+     * Searches name, item name (from note), and rule name (from note).
+     */
+    private List<PlayerListManager.PlayerEntry> getFilteredPlayers() {
+        List<PlayerListManager.PlayerEntry> all = PlayerListManager.getPlayers();
+        if (searchQuery.isEmpty()) return all;
+
+        List<PlayerListManager.PlayerEntry> filtered = new ArrayList<>();
+        for (PlayerListManager.PlayerEntry entry : all) {
+            // Check name
+            if (entry.name.toLowerCase().contains(searchQuery)) {
+                filtered.add(entry);
+                continue;
+            }
+            // Check item name and rule from note
+            String itemName = extractFieldNextLine(entry.note, "Item Name");
+            String rule = extractFieldNextLine(entry.note, "Rule");
+            if ((itemName != null && itemName.toLowerCase().contains(searchQuery))
+                    || (rule != null && rule.toLowerCase().contains(searchQuery))) {
+                filtered.add(entry);
+            }
+        }
+        return filtered;
+    }
+
+    @Override
     protected void init() {
         super.init();
         listLeft = width / 2 - 160;
         listWidth = 320;
-        listTop = HEADER_HEIGHT + 10;
+        listTop = HEADER_HEIGHT + 30; // extra space for search bar
         listBottom = height - 10;
+        scrollOffset = savedScrollOffset;
 
         if (!addDialogOpen && !editDialogOpen && !colorPickerOpen) {
             addRenderableWidget(Button.builder(Component.literal("+ Add Player"), btn -> openAddDialog())
                     .bounds(width / 2 - 50, 10, 100, 20)
                     .build());
+
+            // Search bar
+            searchField = new EditBox(font, listLeft, HEADER_HEIGHT + 6, listWidth, 16, Component.literal("Search"));
+            searchField.setMaxLength(128);
+            searchField.setHint(Component.literal("Search by name, item, or rule...").withStyle(ChatFormatting.GRAY));
+            searchField.setResponder(query -> searchQuery = query.trim().toLowerCase());
+            addRenderableWidget(searchField);
         }
     }
 
@@ -213,7 +258,7 @@ public class PlayerListScreen extends Screen {
     }
 
     private void renderPlayerList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-        List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
+        List<PlayerListManager.PlayerEntry> players = getFilteredPlayers();
 
         if (players.isEmpty()) {
             Component emptyMsg = Component.literal("No players added yet. Click '+ Add Player' to get started.")
@@ -315,7 +360,7 @@ public class PlayerListScreen extends Screen {
 
     /**
      * Renders a scaled-down mirror of recent chat messages to the left of the player list.
-     * Uses a mixin accessor to read ChatComponent's private allMessages field.
+     * Uses half font size via pose stack scaling and fills up to the top of the screen.
      */
     private void renderChatMirror(GuiGraphicsExtractor context) {
         List<Component> messages = ChatMessageStore.getMessages();
@@ -323,27 +368,36 @@ public class PlayerListScreen extends Screen {
         if (messages.isEmpty()) return;
 
         // Position chat to the left of the player list, at the bottom
+        float scale = 0.5f;
         int chatX = 4;
-        int chatMaxWidth = listLeft - 10;
+        int chatMaxWidth = (int) ((listLeft - 10) / scale);
         int lineHeight = 9;
-        int maxLines = 20;
-        int startY = height - 40; // Start from bottom, go up
+        int bottomY = height - 40;
+        int topY = 4;
+        int maxLines = (int) ((bottomY - topY) / (lineHeight * scale));
+
+        context.pose().pushMatrix();
+        context.pose().scale(scale, scale);
 
         int count = Math.min(messages.size(), maxLines);
         for (int i = 0; i < count; i++) {
             Component text = messages.get(i);
             if (text == null) continue;
 
-            int y = startY - (i * lineHeight);
-            // Truncate if too wide
+            // Calculate position in scaled space
+            int y = (int) (bottomY / scale) - (i * lineHeight);
+
+            // Truncate if too wide, preserving style via Component
             String str = text.getString();
             if (font.width(str) > chatMaxWidth) {
                 str = font.plainSubstrByWidth(str, chatMaxWidth - 6) + "...";
-                context.text(font, Component.literal(str), chatX, y, 0xFFCCCCCC, true);
+                context.text(font, Component.literal(str), (int) (chatX / scale), y, 0xFFCCCCCC, true);
             } else {
-                context.text(font, text, chatX, y, 0xFFCCCCCC, true);
+                context.text(font, text, (int) (chatX / scale), y, -1, true);
             }
         }
+
+        context.pose().popMatrix();
     }
 
     /**
@@ -457,7 +511,7 @@ public class PlayerListScreen extends Screen {
      * (head, name, or note area — everything to the left of action buttons).
      */
     private void renderTooltip(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-        List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
+        List<PlayerListManager.PlayerEntry> players = getFilteredPlayers();
 
         for (int i = 0; i < players.size(); i++) {
             int drawIndex = i - scrollOffset;
@@ -611,7 +665,7 @@ public class PlayerListScreen extends Screen {
         if (addDialogOpen || editDialogOpen) return false;
 
         // Scrollbar drag
-        List<PlayerListManager.PlayerEntry> allPlayers = PlayerListManager.getPlayers();
+        List<PlayerListManager.PlayerEntry> allPlayers = getFilteredPlayers();
         int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
         if (allPlayers.size() > visibleRows) {
             int scrollbarX = listLeft + listWidth + 2;
@@ -624,7 +678,7 @@ public class PlayerListScreen extends Screen {
         }
 
         // Check action button clicks and name/note area clicks in the player list
-        List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
+        List<PlayerListManager.PlayerEntry> players = getFilteredPlayers();
         for (int i = 0; i < players.size(); i++) {
             int drawIndex = i - scrollOffset;
             int rowY = listTop + drawIndex * ROW_HEIGHT;
@@ -634,11 +688,12 @@ public class PlayerListScreen extends Screen {
             int btnY = rowY + (ROW_HEIGHT - BUTTON_SIZE) / 2;
 
             PlayerListManager.PlayerEntry entry = players.get(i);
+            int realIndex = PlayerListManager.getPlayers().indexOf(entry);
             String cmdName = entry.name.isEmpty() ? entry.uuid : entry.name;
 
             // Party
             if (isInBounds(mouseX, mouseY, btnX, btnY, BUTTON_SIZE, BUTTON_SIZE)) {
-                PlayerListManager.touchLastInteracted(i);
+                PlayerListManager.touchLastInteracted(realIndex);
                 sendCommand("party " + cmdName);
                 return true;
             }
@@ -646,7 +701,7 @@ public class PlayerListScreen extends Screen {
 
             // Invite
             if (isInBounds(mouseX, mouseY, btnX, btnY, BUTTON_SIZE, BUTTON_SIZE)) {
-                PlayerListManager.touchLastInteracted(i);
+                PlayerListManager.touchLastInteracted(realIndex);
                 sendCommand("invite " + cmdName);
                 return true;
             }
@@ -654,14 +709,14 @@ public class PlayerListScreen extends Screen {
 
             // Edit
             if (isInBounds(mouseX, mouseY, btnX, btnY, BUTTON_SIZE, BUTTON_SIZE)) {
-                openEditDialog(i);
+                openEditDialog(realIndex);
                 return true;
             }
             btnX += BUTTON_SIZE + 2;
 
             // Delete
             if (isInBounds(mouseX, mouseY, btnX, btnY, BUTTON_SIZE, BUTTON_SIZE)) {
-                PlayerListManager.removePlayer(i);
+                PlayerListManager.removePlayer(realIndex);
                 return true;
             }
 
@@ -669,7 +724,7 @@ public class PlayerListScreen extends Screen {
             int buttonsStartX = listLeft + listWidth - (BUTTON_SIZE + 2) * 4;
             if (isInBounds(mouseX, mouseY, listLeft, rowY, buttonsStartX - listLeft, ROW_HEIGHT)) {
                 colorPickerOpen = true;
-                colorPickerIndex = i;
+                colorPickerIndex = realIndex;
                 clearWidgets();
                 return true;
             }
@@ -703,7 +758,7 @@ public class PlayerListScreen extends Screen {
     }
 
     private void updateScrollFromMouse(double mouseY) {
-        List<PlayerListManager.PlayerEntry> players = PlayerListManager.getPlayers();
+        List<PlayerListManager.PlayerEntry> players = getFilteredPlayers();
         int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
         int maxScroll = Math.max(0, players.size() - visibleRows);
         float ratio = (float) (mouseY - listTop) / (listBottom - listTop);
@@ -737,7 +792,14 @@ public class PlayerListScreen extends Screen {
             }
             return super.keyPressed(event);
         }
-        if (event.key() == GLFW.GLFW_KEY_ESCAPE || event.key() == GLFW.GLFW_KEY_E) {
+        if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
+            this.onClose();
+            return true;
+        }
+        if (searchField != null && searchField.isFocused()) {
+            return super.keyPressed(event);
+        }
+        if (event.key() == GLFW.GLFW_KEY_E) {
             this.onClose();
             return true;
         }
