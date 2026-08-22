@@ -376,8 +376,8 @@ public class PlayerListScreen extends Screen {
         int topY = 4;
         int maxLines = (int) ((bottomY - topY) / (lineHeight * scale));
 
-        context.pose().pushPose();
-        context.pose().scale(scale, scale, 1.0f);
+        context.pose().pushMatrix();
+        context.pose().scale(scale, scale);
 
         int count = Math.min(messages.size(), maxLines);
         for (int i = 0; i < count; i++) {
@@ -397,7 +397,7 @@ public class PlayerListScreen extends Screen {
             }
         }
 
-        context.pose().popPose();
+        context.pose().popMatrix();
     }
 
     /**
