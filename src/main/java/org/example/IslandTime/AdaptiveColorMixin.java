@@ -1,7 +1,7 @@
 package org.example.islandtime.mixin;
 
-import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.util.ARGB;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.DyedItemColor;
@@ -20,7 +20,7 @@ import java.util.Set;
  * custom_data "color" tag (format "R:G:B", 0-255 each) instead of the
  * forced default leather color.
  */
-@Mixin(ItemStack.class)
+@Mixin(DyedItemColor.class)
 public abstract class AdaptiveColorMixin {
 
     private static final Set<String> ADAPTIVE_IDS = Set.of(
@@ -28,22 +28,15 @@ public abstract class AdaptiveColorMixin {
         "STARRED_ADAPTIVE_CHESTPLATE", "STARRED_ADAPTIVE_LEGGINGS", "STARRED_ADAPTIVE_BOOTS"
     );
 
-    @SuppressWarnings("unchecked")
-    @Inject(method = "get", at = @At("RETURN"), cancellable = true)
-    private <T> void islandtime_overrideAdaptiveColor(
-            DataComponentType<? extends T> type,
-            CallbackInfoReturnable<T> cir) {
-
-        if (type != DataComponents.DYED_COLOR) return;
+    @Inject(method = "getOrDefault", at = @At("RETURN"), cancellable = true)
+    private static void islandtime_overrideAdaptiveColor(
+            ItemStack stack, int defaultColor,
+            CallbackInfoReturnable<Integer> cir) {
 
         IslandTimeConfig config = ConfigManager.getConfig();
         if (config == null || !config.misc.trueAdaptiveColor) return;
 
-        // Already has a dyed color (adaptive armor always does)
-        if (cir.getReturnValue() == null) return;
-
-        ItemStack self = (ItemStack) (Object) this;
-        CustomData customData = self.get(DataComponents.CUSTOM_DATA);
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
         if (customData == null) return;
 
         CompoundTag nbt = customData.copyTag();
@@ -62,7 +55,7 @@ public abstract class AdaptiveColorMixin {
             int g = Integer.parseInt(parts[1]);
             int b = Integer.parseInt(parts[2]);
             int rgb = (r << 16) | (g << 8) | b;
-            cir.setReturnValue((T) new DyedItemColor(rgb));
+            cir.setReturnValue(ARGB.opaque(rgb));
         } catch (NumberFormatException ignored) {
             // Malformed color tag — keep the original
         }
