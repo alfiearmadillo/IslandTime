@@ -506,6 +506,15 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean keepResourcePack = false;
+
+        @ConfigAccordionId(id = 3)
+        @Expose
+        @ConfigOption(
+            name = "True Adaptive Color",
+            desc = "When enabled, Adaptive armor pieces (chest, legs, boots — starred and unstarred) are re-dyed client-side to the color stored in their custom_data color tag instead of the forced default."
+        )
+        @ConfigEditorBoolean
+        public boolean trueAdaptiveColor = false;
     }
 
     public static class Signs {
