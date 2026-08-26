@@ -55,10 +55,19 @@ public class ResourcePackManager {
         String cachedHash = ResourcePackConfig.getCachedPackHash();
         String cachedUrl = ResourcePackConfig.getCachedPackUrl();
 
-        // Need non-empty hashes to compare
-        if (cachedHash.isEmpty() || hash == null || hash.isEmpty()) return false;
+        // If server sends a non-empty hash and we have a cached hash, compare both
+        if (!cachedHash.isEmpty() && hash != null && !hash.isEmpty()) {
+            return cachedHash.equalsIgnoreCase(hash) && url.equals(cachedUrl);
+        }
 
-        return cachedHash.equalsIgnoreCase(hash) && url.equals(cachedUrl);
+        // Server sent empty hash (Hypixel does this) — fall back to URL-only match
+        // as long as we have a cached URL from a previous successful download
+        if (!cachedUrl.isEmpty() && url.equals(cachedUrl)) {
+            System.out.println("[IslandTime] Server sent empty hash, using URL-only cache match");
+            return true;
+        }
+
+        return false;
     }
 
     /**
