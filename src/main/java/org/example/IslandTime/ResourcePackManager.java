@@ -56,6 +56,40 @@ public class ResourcePackManager {
     }
 
     /**
+     * Try to copy the cached pack to resourcepacks/ and add it to enabled list.
+     * Returns true if copy succeeded (or was unnecessary), false if the file was locked.
+     */
+    private static boolean applyCachedPackDirect() {
+        if (!hasCachedPack()) return false;
+
+        try {
+            Minecraft client = Minecraft.getInstance();
+            if (client == null) return false;
+
+            Path resourcePacksDir = client.getResourcePackDirectory();
+            Path targetPack = resourcePacksDir.resolve(PACK_FILE_NAME);
+            Files.createDirectories(resourcePacksDir);
+
+            boolean needsCopy = !Files.exists(targetPack)
+                    || Files.size(targetPack) != Files.size(CACHED_PACK);
+            if (needsCopy) {
+                Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            if (!client.options.resourcePacks.contains(PACK_PROFILE_ID)) {
+                client.options.resourcePacks.add(PACK_PROFILE_ID);
+                client.options.save();
+            }
+            return true;
+        } catch (FileSystemException fse) {
+            return false;
+        } catch (Exception e) {
+            System.err.println("[IslandTime] applyCachedPackDirect error: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Apply the cached resource pack to the client.
      * Copies the cached pack into the resourcepacks folder and ensures it's in the
      * enabled packs list. Does NOT force a resource reload — the pack will be loaded
@@ -170,20 +204,43 @@ public class ResourcePackManager {
 
                 System.out.println("[IslandTime] Resource pack cached successfully (" + data.length + " bytes)");
 
-                // Apply the pack (copy to resourcepacks dir, add to options)
-                // then trigger a resource reload after a delay to avoid conflicts
+                // Apply the pack on the render thread.
+                // If the file is locked, we first reload resources to release the lock,
+                // then copy, then reload again to load the new content.
                 Minecraft client = Minecraft.getInstance();
                 client.execute(() -> {
-                    applyCachedPack();
-                    // Delay the reload using our daemon scheduler
-                    SCHEDULER.schedule(() -> client.execute(() -> {
+                    if (applyCachedPackDirect()) {
+                        // Copy succeeded — just reload to pick up new content
+                        SCHEDULER.schedule(() -> client.execute(() -> {
+                            try {
+                                client.reloadResourcePacks();
+                                System.out.println("[IslandTime] Resource pack reload triggered");
+                            } catch (Exception e) {
+                                System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
+                            }
+                        }), 2, TimeUnit.SECONDS);
+                    } else {
+                        // Copy failed (file locked) — remove pack from list, reload to release lock,
+                        // then copy and reload again
+                        System.out.println("[IslandTime] Pack locked, triggering unload-copy-reload cycle");
+                        client.options.resourcePacks.remove(PACK_PROFILE_ID);
+                        client.options.save();
                         try {
                             client.reloadResourcePacks();
-                            System.out.println("[IslandTime] Resource pack reload triggered");
-                        } catch (Exception e) {
-                            System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
-                        }
-                    }), 2, TimeUnit.SECONDS);
+                        } catch (Exception ignored) {}
+                        // After reload releases the lock, copy and re-enable
+                        SCHEDULER.schedule(() -> client.execute(() -> {
+                            applyCachedPack();
+                            SCHEDULER.schedule(() -> client.execute(() -> {
+                                try {
+                                    client.reloadResourcePacks();
+                                    System.out.println("[IslandTime] Resource pack reload triggered (after unload cycle)");
+                                } catch (Exception e) {
+                                    System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
+                                }
+                            }), 2, TimeUnit.SECONDS);
+                        }), 3, TimeUnit.SECONDS);
+                    }
                 });
 
             } catch (Exception e) {
