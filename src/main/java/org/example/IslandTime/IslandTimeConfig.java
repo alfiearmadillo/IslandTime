@@ -519,9 +519,8 @@ public class IslandTimeConfig extends Config {
                 ResourcePackManager.clearCache();
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.displayClientMessage(
-                        net.minecraft.network.chat.Component.literal("§a[IslandTime] Resource pack cache cleared. Rejoin Hypixel to re-download."),
-                        false
+                    client.player.sendSystemMessage(
+                        net.minecraft.network.chat.Component.literal("§a[IslandTime] Resource pack cache cleared. Rejoin Hypixel to re-download.")
                     );
                 }
             }
