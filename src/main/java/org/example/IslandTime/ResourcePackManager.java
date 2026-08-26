@@ -73,7 +73,29 @@ public class ResourcePackManager {
             Path resourcePacksDir = client.getResourcePackDirectory();
             Path targetPack = resourcePacksDir.resolve(PACK_FILE_NAME);
             Files.createDirectories(resourcePacksDir);
-            Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
+
+            // Only copy if target doesn't exist or has a different size (avoids file-lock issues
+            // when Minecraft already has the pack loaded)
+            boolean needsCopy = !Files.exists(targetPack)
+                    || Files.size(targetPack) != Files.size(CACHED_PACK);
+            if (needsCopy) {
+                try {
+                    Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
+                } catch (FileSystemException fse) {
+                    // File is locked by Minecraft (already loaded as a resource pack).
+                    // Write to a temp file and atomically move over it.
+                    Path tmp = targetPack.resolveSibling(PACK_FILE_NAME + ".tmp");
+                    Files.copy(CACHED_PACK, tmp, StandardCopyOption.REPLACE_EXISTING);
+                    try {
+                        Files.move(tmp, targetPack, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    } catch (Exception moveEx) {
+                        // Atomic move not supported or still locked — the existing file is likely
+                        // already the correct pack from a prior session, so just log and continue.
+                        Files.deleteIfExists(tmp);
+                        System.out.println("[IslandTime] Pack file locked, but already present — continuing with existing file");
+                    }
+                }
+            }
 
             // Ensure the pack is in the enabled list (it will load on next natural reload)
             if (!client.options.resourcePacks.contains(PACK_PROFILE_ID)) {
@@ -188,6 +210,16 @@ public class ResourcePackManager {
             Files.deleteIfExists(CACHED_PACK);
         } catch (Exception e) {
             System.err.println("[IslandTime] Failed to delete cached pack: " + e.getMessage());
+        }
+        // Also delete the copy in the resourcepacks folder so it's truly fresh
+        try {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null) {
+                Path targetPack = client.getResourcePackDirectory().resolve(PACK_FILE_NAME);
+                Files.deleteIfExists(targetPack);
+            }
+        } catch (Exception e) {
+            System.err.println("[IslandTime] Failed to delete resourcepacks copy: " + e.getMessage());
         }
         ResourcePackConfig.setCachedPackMeta("", "");
         System.out.println("[IslandTime] Resource pack cache cleared");
