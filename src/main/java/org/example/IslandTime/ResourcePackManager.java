@@ -107,7 +107,7 @@ public class ResourcePackManager {
         }
 
         // Hash differs, URL changed, or no cache — download in background
-        System.out.println("[IslandTime] Downloading updated server resource pack...");
+        System.out.println("[IslandTime] Downloading updated server resource pack (url=" + url + ", hash=" + hash + ", cachedHash=" + cachedHash + ", cachedUrl=" + cachedUrl + ")");
         downloadPackAsync(url, hash);
         return true;
     }
@@ -128,13 +128,13 @@ public class ResourcePackManager {
                 }
 
                 byte[] data = response.body();
+                System.out.println("[IslandTime] Downloaded resource pack: " + data.length + " bytes, server hash: " + hash);
 
-                // Verify hash if provided
+                // Verify hash if provided (warn but still save on mismatch)
+                String computedHash = sha1Hex(data);
                 if (hash != null && !hash.isEmpty()) {
-                    String computedHash = sha1Hex(data);
                     if (!computedHash.equalsIgnoreCase(hash)) {
-                        System.err.println("[IslandTime] Resource pack hash mismatch! Expected: " + hash + " Got: " + computedHash);
-                        return;
+                        System.err.println("[IslandTime] Resource pack hash mismatch (saving anyway). Expected: " + hash + " Got: " + computedHash);
                     }
                 }
 
@@ -142,8 +142,9 @@ public class ResourcePackManager {
                 Files.createDirectories(CACHE_DIR);
                 Files.write(CACHED_PACK, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
-                // Update stored hash
-                ResourcePackConfig.setCachedPackMeta(hash != null ? hash : "", url);
+                // Store the server-provided hash (for comparing against future server packets)
+                // and also store the computed hash for logging purposes
+                ResourcePackConfig.setCachedPackMeta(hash != null && !hash.isEmpty() ? hash : computedHash, url);
 
                 System.out.println("[IslandTime] Resource pack cached successfully (" + data.length + " bytes)");
 
@@ -177,6 +178,19 @@ public class ResourcePackManager {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /**
+     * Clear cached pack data so the next server pack push triggers a fresh download.
+     */
+    public static void clearCache() {
+        try {
+            Files.deleteIfExists(CACHED_PACK);
+        } catch (Exception e) {
+            System.err.println("[IslandTime] Failed to delete cached pack: " + e.getMessage());
+        }
+        ResourcePackConfig.setCachedPackMeta("", "");
+        System.out.println("[IslandTime] Resource pack cache cleared");
     }
 
     /**

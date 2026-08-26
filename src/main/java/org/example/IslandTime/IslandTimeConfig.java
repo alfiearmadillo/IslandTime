@@ -508,6 +508,26 @@ public class IslandTimeConfig extends Config {
         public boolean keepResourcePack = false;
 
         @ConfigAccordionId(id = 3)
+        @ConfigOption(
+            name = "Force Redownload Pack",
+            desc = "Click to clear the cached resource pack so it will be fully re-downloaded on next Hypixel login"
+        )
+        @ConfigEditorButton(buttonText = " Force Redownload ")
+        public Runnable forceRedownloadButton = new Runnable() {
+            @Override
+            public void run() {
+                ResourcePackManager.clearCache();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal("§a[IslandTime] Resource pack cache cleared. Rejoin Hypixel to re-download."),
+                        false
+                    );
+                }
+            }
+        };
+
+        @ConfigAccordionId(id = 3)
         @Expose
         @ConfigOption(
             name = "True Adaptive Color",
