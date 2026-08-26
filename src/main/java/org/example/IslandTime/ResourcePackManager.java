@@ -13,12 +13,13 @@ import java.util.HexFormat;
 import java.util.concurrent.*;
 
 /**
- * Manages caching the Hypixel SkyBlock resource pack for offline use.
+ * Manages caching the Hypixel SkyBlock resource pack.
  *
- * When on Hypixel: vanilla handles the server pack normally (full texture support).
- * We just download a copy in the background and save it to the resourcepacks folder.
- *
- * When off Hypixel: the cached copy in resourcepacks/ keeps SkyBlock textures active.
+ * Hybrid approach:
+ * - When cache is fresh (hash matches): mixin intercepts the server pack push,
+ *   avoiding reload delays when switching servers/instances.
+ * - When cache is stale or missing: vanilla handles the server pack normally
+ *   (full texture support), and we download a copy in the background for next time.
  */
 public class ResourcePackManager {
 
@@ -45,23 +46,26 @@ public class ResourcePackManager {
     }
 
     /**
-     * Called from the mixin when a Hypixel server resource pack push is received.
-     * Downloads a copy in the background for offline use.
-     * Does NOT interfere with vanilla's handling of the server pack.
+     * Returns true if the cached pack matches the given url and hash,
+     * meaning we can safely skip the server pack reload.
      */
-    public static void cacheServerPack(String url, String hash) {
+    public static boolean isCacheFresh(String url, String hash) {
+        if (!hasCachedPack()) return false;
+
         String cachedHash = ResourcePackConfig.getCachedPackHash();
         String cachedUrl = ResourcePackConfig.getCachedPackUrl();
 
-        // Skip if we already have this exact pack cached
-        if (!cachedHash.isEmpty() && !hash.isEmpty()
-                && cachedHash.equalsIgnoreCase(hash)
-                && url.equals(cachedUrl)
-                && hasCachedPack()) {
-            System.out.println("[IslandTime] Server resource pack hash matches cache, skipping background download");
-            return;
-        }
+        // Need non-empty hashes to compare
+        if (cachedHash.isEmpty() || hash == null || hash.isEmpty()) return false;
 
+        return cachedHash.equalsIgnoreCase(hash) && url.equals(cachedUrl);
+    }
+
+    /**
+     * Called when the server sends a new/updated pack that vanilla will handle.
+     * Downloads a copy in the background so next time we can intercept.
+     */
+    public static void cacheServerPack(String url, String hash) {
         System.out.println("[IslandTime] Caching server resource pack in background (url=" + url + ", hash=" + hash + ")");
         downloadPackAsync(url, hash);
     }
