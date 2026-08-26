@@ -10,19 +10,15 @@ import java.net.http.HttpResponse;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.HexFormat;
-import java.util.UUID;
 import java.util.concurrent.*;
 
 /**
- * Manages downloading, caching, and loading the Hypixel SkyBlock resource pack.
- * The cached pack is stored at config/IslandTime/resource_pack.zip and copied to
- * the resourcepacks folder as "IslandTime_SkyBlock.zip" so Minecraft can load it.
+ * Manages caching the Hypixel SkyBlock resource pack for offline use.
  *
- * When the feature is enabled:
- * - Intercepts Hypixel's resource pack send packet
- * - If hash matches cache, silently accepts without re-downloading
- * - If hash differs, downloads the new pack in the background and caches it
- * - On every server join, ensures the pack is enabled so it stays active everywhere
+ * When on Hypixel: vanilla handles the server pack normally (full texture support).
+ * We just download a copy in the background and save it to the resourcepacks folder.
+ *
+ * When off Hypixel: the cached copy in resourcepacks/ keeps SkyBlock textures active.
  */
 public class ResourcePackManager {
 
@@ -31,15 +27,8 @@ public class ResourcePackManager {
     private static final String PACK_FILE_NAME = "IslandTime_SkyBlock.zip";
     private static final String PACK_PROFILE_ID = "file/" + PACK_FILE_NAME;
 
-    // Use a daemon-thread executor so it won't prevent JVM shutdown
     private static final ExecutorService DAEMON_EXECUTOR = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "IslandTime-ResourcePack");
-        t.setDaemon(true);
-        return t;
-    });
-
-    private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "IslandTime-ResourcePack-Scheduler");
         t.setDaemon(true);
         return t;
     });
@@ -56,44 +45,31 @@ public class ResourcePackManager {
     }
 
     /**
-     * Try to copy the cached pack to resourcepacks/ and add it to enabled list.
-     * Returns true if copy succeeded (or was unnecessary), false if the file was locked.
+     * Called from the mixin when a Hypixel server resource pack push is received.
+     * Downloads a copy in the background for offline use.
+     * Does NOT interfere with vanilla's handling of the server pack.
      */
-    private static boolean applyCachedPackDirect() {
-        if (!hasCachedPack()) return false;
+    public static void cacheServerPack(String url, String hash) {
+        String cachedHash = ResourcePackConfig.getCachedPackHash();
+        String cachedUrl = ResourcePackConfig.getCachedPackUrl();
 
-        try {
-            Minecraft client = Minecraft.getInstance();
-            if (client == null) return false;
-
-            Path resourcePacksDir = client.getResourcePackDirectory();
-            Path targetPack = resourcePacksDir.resolve(PACK_FILE_NAME);
-            Files.createDirectories(resourcePacksDir);
-
-            boolean needsCopy = !Files.exists(targetPack)
-                    || Files.size(targetPack) != Files.size(CACHED_PACK);
-            if (needsCopy) {
-                Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            if (!client.options.resourcePacks.contains(PACK_PROFILE_ID)) {
-                client.options.resourcePacks.add(PACK_PROFILE_ID);
-                client.options.save();
-            }
-            return true;
-        } catch (FileSystemException fse) {
-            return false;
-        } catch (Exception e) {
-            System.err.println("[IslandTime] applyCachedPackDirect error: " + e.getMessage());
-            return false;
+        // Skip if we already have this exact pack cached
+        if (!cachedHash.isEmpty() && !hash.isEmpty()
+                && cachedHash.equalsIgnoreCase(hash)
+                && url.equals(cachedUrl)
+                && hasCachedPack()) {
+            System.out.println("[IslandTime] Server resource pack hash matches cache, skipping background download");
+            return;
         }
+
+        System.out.println("[IslandTime] Caching server resource pack in background (url=" + url + ", hash=" + hash + ")");
+        downloadPackAsync(url, hash);
     }
 
     /**
-     * Apply the cached resource pack to the client.
-     * Copies the cached pack into the resourcepacks folder and ensures it's in the
-     * enabled packs list. Does NOT force a resource reload — the pack will be loaded
-     * on the next natural reload (game start, or after a new download).
+     * Ensure the cached pack is available as a file resource pack.
+     * Called on server join — adds the pack to the enabled list so it persists
+     * when leaving Hypixel.
      */
     public static void applyCachedPack() {
         if (!ResourcePackConfig.isEnabled()) return;
@@ -103,35 +79,24 @@ public class ResourcePackManager {
             Minecraft client = Minecraft.getInstance();
             if (client == null) return;
 
-            // Copy cached pack to resourcepacks directory
             Path resourcePacksDir = client.getResourcePackDirectory();
             Path targetPack = resourcePacksDir.resolve(PACK_FILE_NAME);
             Files.createDirectories(resourcePacksDir);
 
-            // Only copy if target doesn't exist or has a different size (avoids file-lock issues
-            // when Minecraft already has the pack loaded)
+            // Copy cache to resourcepacks/ if needed
             boolean needsCopy = !Files.exists(targetPack)
                     || Files.size(targetPack) != Files.size(CACHED_PACK);
             if (needsCopy) {
                 try {
                     Files.copy(CACHED_PACK, targetPack, StandardCopyOption.REPLACE_EXISTING);
+                    System.out.println("[IslandTime] Copied cached pack to resourcepacks/");
                 } catch (FileSystemException fse) {
-                    // File is locked by Minecraft (already loaded as a resource pack).
-                    // Write to a temp file and atomically move over it.
-                    Path tmp = targetPack.resolveSibling(PACK_FILE_NAME + ".tmp");
-                    Files.copy(CACHED_PACK, tmp, StandardCopyOption.REPLACE_EXISTING);
-                    try {
-                        Files.move(tmp, targetPack, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                    } catch (Exception moveEx) {
-                        // Atomic move not supported or still locked — the existing file is likely
-                        // already the correct pack from a prior session, so just log and continue.
-                        Files.deleteIfExists(tmp);
-                        System.out.println("[IslandTime] Pack file locked, but already present — continuing with existing file");
-                    }
+                    // File locked by Minecraft — already loaded, skip
+                    System.out.println("[IslandTime] Pack file locked, already present — skipping copy");
                 }
             }
 
-            // Ensure the pack is in the enabled list (it will load on next natural reload)
+            // Ensure the pack is in the enabled list
             if (!client.options.resourcePacks.contains(PACK_PROFILE_ID)) {
                 client.options.resourcePacks.add(PACK_PROFILE_ID);
                 client.options.save();
@@ -139,33 +104,7 @@ public class ResourcePackManager {
             }
         } catch (Exception e) {
             System.err.println("[IslandTime] Failed to apply cached resource pack: " + e.getMessage());
-            e.printStackTrace();
         }
-    }
-
-    /**
-     * Handle an incoming server resource pack packet from Hypixel.
-     * Returns true if we handled it (caller should cancel vanilla handling).
-     */
-    public static boolean handleServerPack(String url, String hash, UUID packId) {
-        if (!ResourcePackConfig.isEnabled()) return false;
-
-        String cachedHash = ResourcePackConfig.getCachedPackHash();
-        String cachedUrl = ResourcePackConfig.getCachedPackUrl();
-
-        // Only use cache if: hash is non-empty, matches cached hash, URL matches, and file exists
-        if (!cachedHash.isEmpty() && !hash.isEmpty()
-                && cachedHash.equalsIgnoreCase(hash)
-                && url.equals(cachedUrl)
-                && hasCachedPack()) {
-            System.out.println("[IslandTime] Server resource pack hash matches cache, skipping download");
-            return true;
-        }
-
-        // Hash differs, URL changed, or no cache — download in background
-        System.out.println("[IslandTime] Downloading updated server resource pack (url=" + url + ", hash=" + hash + ", cachedHash=" + cachedHash + ", cachedUrl=" + cachedUrl + ")");
-        downloadPackAsync(url, hash);
-        return true;
     }
 
     private static void downloadPackAsync(String url, String hash) {
@@ -197,51 +136,12 @@ public class ResourcePackManager {
                 // Save to cache
                 Files.createDirectories(CACHE_DIR);
                 Files.write(CACHED_PACK, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-
-                // Store the server-provided hash (for comparing against future server packets)
-                // and also store the computed hash for logging purposes
                 ResourcePackConfig.setCachedPackMeta(hash != null && !hash.isEmpty() ? hash : computedHash, url);
-
                 System.out.println("[IslandTime] Resource pack cached successfully (" + data.length + " bytes)");
 
-                // Apply the pack on the render thread.
-                // If the file is locked, we first reload resources to release the lock,
-                // then copy, then reload again to load the new content.
+                // Also copy to resourcepacks/ for offline use
                 Minecraft client = Minecraft.getInstance();
-                client.execute(() -> {
-                    if (applyCachedPackDirect()) {
-                        // Copy succeeded — just reload to pick up new content
-                        SCHEDULER.schedule(() -> client.execute(() -> {
-                            try {
-                                client.reloadResourcePacks();
-                                System.out.println("[IslandTime] Resource pack reload triggered");
-                            } catch (Exception e) {
-                                System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
-                            }
-                        }), 2, TimeUnit.SECONDS);
-                    } else {
-                        // Copy failed (file locked) — remove pack from list, reload to release lock,
-                        // then copy and reload again
-                        System.out.println("[IslandTime] Pack locked, triggering unload-copy-reload cycle");
-                        client.options.resourcePacks.remove(PACK_PROFILE_ID);
-                        client.options.save();
-                        try {
-                            client.reloadResourcePacks();
-                        } catch (Exception ignored) {}
-                        // After reload releases the lock, copy and re-enable
-                        SCHEDULER.schedule(() -> client.execute(() -> {
-                            applyCachedPack();
-                            SCHEDULER.schedule(() -> client.execute(() -> {
-                                try {
-                                    client.reloadResourcePacks();
-                                    System.out.println("[IslandTime] Resource pack reload triggered (after unload cycle)");
-                                } catch (Exception e) {
-                                    System.err.println("[IslandTime] Failed to reload: " + e.getMessage());
-                                }
-                            }), 2, TimeUnit.SECONDS);
-                        }), 3, TimeUnit.SECONDS);
-                    }
-                });
+                client.execute(() -> applyCachedPack());
 
             } catch (Exception e) {
                 System.err.println("[IslandTime] Error downloading resource pack: " + e.getMessage());
@@ -268,7 +168,6 @@ public class ResourcePackManager {
         } catch (Exception e) {
             System.err.println("[IslandTime] Failed to delete cached pack: " + e.getMessage());
         }
-        // Also delete the copy in the resourcepacks folder so it's truly fresh
         try {
             Minecraft client = Minecraft.getInstance();
             if (client != null) {
@@ -286,7 +185,6 @@ public class ResourcePackManager {
      * Reset state when feature is disabled.
      */
     public static void reset() {
-        // Remove from enabled packs on next resource reload
         try {
             Minecraft client = Minecraft.getInstance();
             if (client != null) {
@@ -300,7 +198,6 @@ public class ResourcePackManager {
      */
     public static void shutdown() {
         DAEMON_EXECUTOR.shutdownNow();
-        SCHEDULER.shutdownNow();
         HTTP_CLIENT.close();
     }
 }
