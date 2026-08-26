@@ -95,14 +95,18 @@ public class ResourcePackManager {
         if (!ResourcePackConfig.isEnabled()) return false;
 
         String cachedHash = ResourcePackConfig.getCachedPackHash();
+        String cachedUrl = ResourcePackConfig.getCachedPackUrl();
 
-        // If hash matches cache, no download needed
-        if (!cachedHash.isEmpty() && cachedHash.equalsIgnoreCase(hash) && hasCachedPack()) {
+        // Only use cache if: hash is non-empty, matches cached hash, URL matches, and file exists
+        if (!cachedHash.isEmpty() && !hash.isEmpty()
+                && cachedHash.equalsIgnoreCase(hash)
+                && url.equals(cachedUrl)
+                && hasCachedPack()) {
             System.out.println("[IslandTime] Server resource pack hash matches cache, skipping download");
             return true;
         }
 
-        // Hash differs or no cache — download in background
+        // Hash differs, URL changed, or no cache — download in background
         System.out.println("[IslandTime] Downloading updated server resource pack...");
         downloadPackAsync(url, hash);
         return true;
@@ -139,7 +143,7 @@ public class ResourcePackManager {
                 Files.write(CACHED_PACK, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
                 // Update stored hash
-                ResourcePackConfig.setCachedPackHash(hash != null ? hash : "");
+                ResourcePackConfig.setCachedPackMeta(hash != null ? hash : "", url);
 
                 System.out.println("[IslandTime] Resource pack cached successfully (" + data.length + " bytes)");
 
