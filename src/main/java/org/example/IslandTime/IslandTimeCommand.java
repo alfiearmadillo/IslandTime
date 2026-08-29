@@ -87,9 +87,47 @@ public class IslandTimeCommand {
                         .then(literal("remove")
                                 .then(argument("blockid", StringArgumentType.greedyString())
                                         .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))))
-                .then(literal("afkMode")
+                .then(literal("savesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.save(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("loadsettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.load(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("deletesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.delete(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("listsettings")
                         .executes(ctx -> {
-                            AfkModeManager.toggle(ctx.getSource().getClient());
+                            SettingsLoadoutManager.list(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("groupsettings")
+                        .then(argument("names", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String[] parts = StringArgumentType.getString(ctx, "names").split("\\s+");
+                                    if (parts.length < 3) {
+                                        ctx.getSource().getClient().player.sendSystemMessage(
+                                                Component.literal("[IslandTime] Usage: /it groupsettings <groupName> <loadout1> <loadout2> [...]").withStyle(ChatFormatting.RED));
+                                        return 1;
+                                    }
+                                    String groupName = parts[0];
+                                    List<String> loadouts = new java.util.ArrayList<>();
+                                    for (int i = 1; i < parts.length; i++) loadouts.add(parts[i]);
+                                    SettingsLoadoutManager.setGroup(ctx.getSource().getClient(), groupName, loadouts);
+                                    return 1;
+                                })))
+                .then(literal("cyclesettings")
+                        .executes(ctx -> {
+                            SettingsLoadoutManager.cycle(ctx.getSource().getClient());
                             return 1;
                         }))
                 .then(literal("help")
@@ -224,15 +262,53 @@ public class IslandTimeCommand {
                             CookieProfitCommand.execute(ctx.getSource().getClient());
                             return 1;
                         }))
-                .then(literal("afkMode")
-                        .executes(ctx -> {
-                            AfkModeManager.toggle(ctx.getSource().getClient());
-                            return 1;
-                        }))
                 .then(literal("players")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
                             client.execute(() -> client.setScreen(new PlayerListScreen()));
+                            return 1;
+                        }))
+                .then(literal("savesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.save(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("loadsettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.load(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("deletesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.delete(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("listsettings")
+                        .executes(ctx -> {
+                            SettingsLoadoutManager.list(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("groupsettings")
+                        .then(argument("names", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String[] parts = StringArgumentType.getString(ctx, "names").split("\\s+");
+                                    if (parts.length < 3) {
+                                        ctx.getSource().getClient().player.sendSystemMessage(
+                                                Component.literal("[IslandTime] Usage: /it groupsettings <groupName> <loadout1> <loadout2> [...]").withStyle(ChatFormatting.RED));
+                                        return 1;
+                                    }
+                                    String groupName = parts[0];
+                                    List<String> loadouts = new java.util.ArrayList<>();
+                                    for (int i = 1; i < parts.length; i++) loadouts.add(parts[i]);
+                                    SettingsLoadoutManager.setGroup(ctx.getSource().getClient(), groupName, loadouts);
+                                    return 1;
+                                })))
+                .then(literal("cyclesettings")
+                        .executes(ctx -> {
+                            SettingsLoadoutManager.cycle(ctx.getSource().getClient());
                             return 1;
                         }))
                 .then(literal("help")
@@ -1261,7 +1337,7 @@ public class IslandTimeCommand {
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
-                {"/islandtime help [page]", "Show this help (pages 1-10)"},
+                {"/islandtime help [page]", "Show this help (pages 1-11)"},
 
                 // Page 9 - Aging Items
                 {"/it agingItems", "Compare profit/hour for all configured aging items using live Bazaar prices"},
@@ -1270,10 +1346,17 @@ public class IslandTimeCommand {
                 {"/it agingItems list", "List all configured aging item pairs"},
                 {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /islandtime GUI"},
 
-                // Page 10 - Cookie Profit & AFK Mode
+                // Page 10 - Cookie Profit & Settings Loadouts
                 {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
                 {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /islandtime GUI"},
-                {"/it afkMode", "Toggle AFK mode — minimises all client-side resource usage (FPS, render, graphics, sounds, particles, lighting, effects). Run again to restore."},
+                {"/it savesettings <name>", "Save current settings as a named loadout"},
+                {"/it loadsettings <name>", "Load a saved settings loadout (replaces current settings)"},
+                {"/it deletesettings <name>", "Delete a saved settings loadout"},
+
+                // Page 11 - Settings Loadouts (continued)
+                {"/it listsettings", "List all saved loadouts and settings groups"},
+                {"/it groupsettings <group> <n1> <n2> ...", "Create a settings group from named loadouts (a loadout can only be in one group)"},
+                {"/it cyclesettings", "Cycle to the next loadout in the current group"},
         };
 
         int commandsPerPage = 5;

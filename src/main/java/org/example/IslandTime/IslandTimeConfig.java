@@ -60,6 +60,10 @@ public class IslandTimeConfig extends Config {
     public PlayerList playerList = new PlayerList();
 
     @Expose
+    @Category(name = "Settings Loadouts", desc = "Save, load, and cycle between named settings profiles")
+    public SettingsLoadouts settingsLoadouts = new SettingsLoadouts();
+
+    @Expose
     @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
     public Misc misc = new Misc();
 
@@ -610,6 +614,46 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Island Leave Messages", desc = "Show a local chat message when a visitor leaves your island (e.g. '[IslandTime] [VIP] Steve left Your Island.'). Toggle with /islandleavemessages")
         @ConfigEditorBoolean
         public boolean islandLeaveMessages = true;
+    }
+
+    public static class SettingsLoadouts {
+        @ConfigOption(name = "Save Current Settings", desc = "Type a name and click to save your current settings as a loadout. You can also use /it savesettings <name>")
+        @ConfigEditorButton(buttonText = " Save Settings ")
+        public Runnable saveSettingsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.sendSystemMessage(
+                        net.minecraft.network.chat.Component.literal("§e[IslandTime] Use /it savesettings <name> to save your current settings as a loadout.")
+                    );
+                }
+            }
+        };
+
+        @ConfigOption(name = "List Loadouts & Groups", desc = "Click to list all saved loadouts and settings groups. You can also use /it listsettings")
+        @ConfigEditorButton(buttonText = " List Loadouts ")
+        public Runnable listSettingsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it listsettings");
+                }
+            }
+        };
+
+        @ConfigOption(name = "Cycle Settings", desc = "Click to cycle to the next loadout in the current settings group. You can also use /it cyclesettings")
+        @ConfigEditorButton(buttonText = " Cycle Settings ")
+        public Runnable cycleSettingsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it cyclesettings");
+                }
+            }
+        };
     }
 
     public static class PlayerList {
