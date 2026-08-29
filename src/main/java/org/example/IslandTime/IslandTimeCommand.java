@@ -262,11 +262,6 @@ public class IslandTimeCommand {
                             CookieProfitCommand.execute(ctx.getSource().getClient());
                             return 1;
                         }))
-                .then(literal("afkMode")
-                        .executes(ctx -> {
-                            AfkModeManager.toggle(ctx.getSource().getClient());
-                            return 1;
-                        }))
                 .then(literal("players")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
