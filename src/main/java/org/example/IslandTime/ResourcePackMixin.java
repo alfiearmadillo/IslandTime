@@ -16,8 +16,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.UUID;
 
 /**
- * Intercepts server resource pack packets to cache and persist them
- * when the "Keep Resource Pack" feature is enabled.
+ * Hybrid resource pack handling:
+ * - If we already have the pack cached (hash matches): intercept and cancel
+ *   to avoid reload delays when switching servers/instances.
+ * - If the pack is new/updated (hash differs): let vanilla handle it normally
+ *   so textures load correctly, and cache a copy in the background.
  */
 @Mixin(ClientCommonPacketListenerImpl.class)
 public class ResourcePackMixin {
@@ -33,15 +36,19 @@ public class ResourcePackMixin {
         String hash = packet.hash();
         UUID packId = packet.id();
 
-        // Only intercept Hypixel packs (the URL typically contains mc.hypixel.net or hypixel)
+        // Only handle Hypixel packs
         if (url == null || (!url.contains("hypixel") && !url.contains("Hypixel"))) return;
 
-        boolean handled = ResourcePackManager.handleServerPack(url, hash, packId);
-        if (handled) {
-            // Send acceptance responses back to the server so it doesn't wait forever
+        if (ResourcePackManager.isCacheFresh(url, hash)) {
+            // Cache is up-to-date — intercept to avoid reload delay
+            System.out.println("[IslandTime] Pack hash matches cache, skipping reload");
             connection.send(new ServerboundResourcePackPacket(packId, ServerboundResourcePackPacket.Action.ACCEPTED));
             connection.send(new ServerboundResourcePackPacket(packId, ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
             ci.cancel();
+        } else {
+            // Pack is new/updated — let vanilla handle it, cache a copy in background
+            System.out.println("[IslandTime] Pack hash differs from cache, letting vanilla load it");
+            ResourcePackManager.cacheServerPack(url, hash);
         }
     }
 }

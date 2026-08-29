@@ -506,6 +506,34 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean keepResourcePack = false;
+
+        @ConfigAccordionId(id = 3)
+        @ConfigOption(
+            name = "Force Redownload Pack",
+            desc = "Click to clear the cached resource pack so it will be fully re-downloaded on next Hypixel login"
+        )
+        @ConfigEditorButton(buttonText = " Force Redownload ")
+        public Runnable forceRedownloadButton = new Runnable() {
+            @Override
+            public void run() {
+                ResourcePackManager.clearCache();
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.sendSystemMessage(
+                        net.minecraft.network.chat.Component.literal("§a[IslandTime] Resource pack cache cleared. Rejoin Hypixel to re-download.")
+                    );
+                }
+            }
+        };
+
+        @ConfigAccordionId(id = 3)
+        @Expose
+        @ConfigOption(
+            name = "True Adaptive Color",
+            desc = "When enabled, Adaptive armor pieces (chest, legs, boots — starred and unstarred) are re-dyed client-side to the color stored in their custom_data color tag instead of the forced default."
+        )
+        @ConfigEditorBoolean
+        public boolean trueAdaptiveColor = false;
     }
 
     public static class Signs {

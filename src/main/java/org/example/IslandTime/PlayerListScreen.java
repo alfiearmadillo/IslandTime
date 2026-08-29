@@ -269,6 +269,7 @@ public class PlayerListScreen extends Screen {
         }
 
         int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
+        int effectiveListBottom = listTop + visibleRows * ROW_HEIGHT;
         int maxScroll = Math.max(0, players.size() - visibleRows);
         scrollOffset = Math.min(scrollOffset, maxScroll);
         scrollOffset = Math.max(0, scrollOffset);
@@ -277,7 +278,7 @@ public class PlayerListScreen extends Screen {
             int drawIndex = i - scrollOffset;
             int rowY = listTop + drawIndex * ROW_HEIGHT;
 
-            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+            if (rowY < listTop || rowY + ROW_HEIGHT > listBottom) continue;
 
             PlayerListManager.PlayerEntry entry = players.get(i);
 
@@ -329,10 +330,10 @@ public class PlayerListScreen extends Screen {
         if (players.size() > visibleRows) {
             int scrollbarX = listLeft + listWidth + 2;
             int scrollbarW = 4;
-            int trackHeight = listBottom - listTop;
+            int trackHeight = effectiveListBottom - listTop;
 
             // Track background
-            context.fill(scrollbarX, listTop, scrollbarX + scrollbarW, listBottom, 0x40FFFFFF);
+            context.fill(scrollbarX, listTop, scrollbarX + scrollbarW, effectiveListBottom, 0x40FFFFFF);
 
             // Thumb
             float thumbRatio = (float) visibleRows / players.size();
@@ -347,7 +348,7 @@ public class PlayerListScreen extends Screen {
         for (int i = 0; i < players.size(); i++) {
             int drawIndex = i - scrollOffset;
             int rowY = listTop + drawIndex * ROW_HEIGHT;
-            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+            if (rowY < listTop || rowY + ROW_HEIGHT > listBottom) continue;
 
             PlayerListManager.PlayerEntry entry = players.get(i);
             if (entry.lastInteracted > 0) {
@@ -516,7 +517,7 @@ public class PlayerListScreen extends Screen {
         for (int i = 0; i < players.size(); i++) {
             int drawIndex = i - scrollOffset;
             int rowY = listTop + drawIndex * ROW_HEIGHT;
-            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+            if (rowY < listTop || rowY + ROW_HEIGHT > listBottom) continue;
 
             // Left area is from listLeft to the start of action buttons
             int buttonsStartX = listLeft + listWidth - (BUTTON_SIZE + 2) * 4;
@@ -682,7 +683,7 @@ public class PlayerListScreen extends Screen {
         for (int i = 0; i < players.size(); i++) {
             int drawIndex = i - scrollOffset;
             int rowY = listTop + drawIndex * ROW_HEIGHT;
-            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+            if (rowY < listTop || rowY + ROW_HEIGHT > listBottom) continue;
 
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 4;
             int btnY = rowY + (ROW_HEIGHT - BUTTON_SIZE) / 2;

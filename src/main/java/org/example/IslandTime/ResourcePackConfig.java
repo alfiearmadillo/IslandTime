@@ -16,6 +16,7 @@ public class ResourcePackConfig {
 
     private static boolean enabled = false;
     private static String cachedPackHash = "";
+    private static String cachedPackUrl = "";
 
     public static boolean isEnabled() {
         return enabled;
@@ -30,8 +31,13 @@ public class ResourcePackConfig {
         return cachedPackHash;
     }
 
-    public static void setCachedPackHash(String hash) {
+    public static String getCachedPackUrl() {
+        return cachedPackUrl;
+    }
+
+    public static void setCachedPackMeta(String hash, String url) {
         cachedPackHash = hash != null ? hash : "";
+        cachedPackUrl = url != null ? url : "";
         save();
     }
 
@@ -42,6 +48,7 @@ public class ResourcePackConfig {
             if (data != null) {
                 enabled = data.enabled;
                 cachedPackHash = data.cachedPackHash != null ? data.cachedPackHash : "";
+                cachedPackUrl = data.cachedPackUrl != null ? data.cachedPackUrl : "";
             }
         } catch (Exception e) {
             System.err.println("[IslandTime] Failed to load resource_pack.json: " + e.getMessage());
@@ -55,6 +62,7 @@ public class ResourcePackConfig {
                 Data data = new Data();
                 data.enabled = enabled;
                 data.cachedPackHash = cachedPackHash;
+                data.cachedPackUrl = cachedPackUrl;
                 GSON.toJson(data, writer);
             }
         } catch (Exception e) {
@@ -65,5 +73,6 @@ public class ResourcePackConfig {
     private static class Data {
         @Expose boolean enabled = false;
         @Expose String cachedPackHash = "";
+        @Expose String cachedPackUrl = "";
     }
 }
