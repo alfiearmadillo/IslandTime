@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
 /**
  * Manages named settings loadouts and settings groups.
  *
- * Loadouts are stored as {@code config/IslandTime/loadouts/<name>.json}.
+ * Each loadout is a snapshot of Minecraft's {@code options.txt} stored as
+ * {@code config/IslandTime/loadouts/<name>.txt}.
  * Groups are stored in {@code config/IslandTime/loadouts/groups.json}.
  *
  * A loadout can belong to at most one group. {@code /it cyclesettings}
@@ -30,7 +31,6 @@ import java.util.stream.Collectors;
 public class SettingsLoadoutManager {
 
     private static final File LOADOUTS_DIR = new File("config/IslandTime/loadouts");
-    private static final File CONFIG_FILE = new File("config/IslandTime/moulconfig.json");
     private static final File GROUPS_FILE = new File("config/IslandTime/loadouts/groups.json");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Type GROUPS_TYPE = new TypeToken<Map<String, List<String>>>() {}.getType();
@@ -46,17 +46,13 @@ public class SettingsLoadoutManager {
     // ── Loadout CRUD ────────────────────────────────────────────────────────
 
     public static void save(Minecraft client, String name) {
-        // Persist current Minecraft options to disk
+        // Persist current Minecraft options to disk first
         client.options.save();
-        ConfigManager.syncFromExistingConfigs();
-        ConfigManager.saveToFile();
 
         LOADOUTS_DIR.mkdirs();
-        File destConfig = new File(LOADOUTS_DIR, name + ".json");
-        File destOptions = new File(LOADOUTS_DIR, name + ".options.txt");
+        File dest = new File(LOADOUTS_DIR, name + ".txt");
         try {
-            Files.copy(CONFIG_FILE.toPath(), destConfig.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            Files.copy(getOptionsFile().toPath(), destOptions.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(getOptionsFile().toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
             currentLoadout = name;
             sendMessage(client, Component.literal("[IslandTime] Saved settings loadout: ").withStyle(ChatFormatting.GOLD)
                     .append(Component.literal(name).withStyle(ChatFormatting.GREEN)));
@@ -66,26 +62,16 @@ public class SettingsLoadoutManager {
     }
 
     public static void load(Minecraft client, String name) {
-        File srcConfig = new File(LOADOUTS_DIR, name + ".json");
-        if (!srcConfig.exists()) {
+        File src = new File(LOADOUTS_DIR, name + ".txt");
+        if (!src.exists()) {
             sendMessage(client, Component.literal("[IslandTime] No loadout found with name: ").withStyle(ChatFormatting.RED)
                     .append(Component.literal(name).withStyle(ChatFormatting.YELLOW)));
             return;
         }
 
         try {
-            // Restore mod config
-            Files.copy(srcConfig.toPath(), CONFIG_FILE.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            ConfigManager.initialize();
-            ConfigManager.syncToExistingConfigs();
-
-            // Restore Minecraft options (render distance, FPS cap, etc.) if saved
-            File srcOptions = new File(LOADOUTS_DIR, name + ".options.txt");
-            if (srcOptions.exists()) {
-                Files.copy(srcOptions.toPath(), getOptionsFile().toPath(), StandardCopyOption.REPLACE_EXISTING);
-                client.options.load();
-            }
-
+            Files.copy(src.toPath(), getOptionsFile().toPath(), StandardCopyOption.REPLACE_EXISTING);
+            client.options.load();
             currentLoadout = name;
             sendMessage(client, Component.literal("[IslandTime] Loaded settings loadout: ").withStyle(ChatFormatting.GOLD)
                     .append(Component.literal(name).withStyle(ChatFormatting.GREEN)));
@@ -95,7 +81,7 @@ public class SettingsLoadoutManager {
     }
 
     public static void delete(Minecraft client, String name) {
-        File file = new File(LOADOUTS_DIR, name + ".json");
+        File file = new File(LOADOUTS_DIR, name + ".txt");
         if (!file.exists()) {
             sendMessage(client, Component.literal("[IslandTime] No loadout found with name: ").withStyle(ChatFormatting.RED)
                     .append(Component.literal(name).withStyle(ChatFormatting.YELLOW)));
@@ -103,8 +89,6 @@ public class SettingsLoadoutManager {
         }
 
         if (file.delete()) {
-            // Also delete the options file if it exists
-            new File(LOADOUTS_DIR, name + ".options.txt").delete();
             // Remove from any group it belongs to
             Map<String, List<String>> groups = loadGroups();
             boolean changed = false;
@@ -167,7 +151,7 @@ public class SettingsLoadoutManager {
         // Validate all loadouts exist
         List<String> missing = new ArrayList<>();
         for (String n : loadoutNames) {
-            if (!new File(LOADOUTS_DIR, n + ".json").exists()) {
+            if (!new File(LOADOUTS_DIR, n + ".txt").exists()) {
                 missing.add(n);
             }
         }
@@ -232,10 +216,10 @@ public class SettingsLoadoutManager {
 
     private static List<String> getLoadoutNames() {
         if (!LOADOUTS_DIR.exists()) return Collections.emptyList();
-        File[] files = LOADOUTS_DIR.listFiles((dir, n) -> n.endsWith(".json") && !n.equals("groups.json"));
+        File[] files = LOADOUTS_DIR.listFiles((dir, n) -> n.endsWith(".txt"));
         if (files == null || files.length == 0) return Collections.emptyList();
         return Arrays.stream(files)
-                .map(f -> f.getName().replace(".json", ""))
+                .map(f -> f.getName().replace(".txt", ""))
                 .sorted()
                 .collect(Collectors.toList());
     }
