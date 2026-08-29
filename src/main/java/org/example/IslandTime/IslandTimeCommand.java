@@ -92,6 +92,29 @@ public class IslandTimeCommand {
                             AfkModeManager.toggle(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("savesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.save(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("loadsettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.load(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("deletesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.delete(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("listsettings")
+                        .executes(ctx -> {
+                            SettingsLoadoutManager.list(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
@@ -233,6 +256,29 @@ public class IslandTimeCommand {
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
                             client.execute(() -> client.setScreen(new PlayerListScreen()));
+                            return 1;
+                        }))
+                .then(literal("savesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.save(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("loadsettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.load(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("deletesettings")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    SettingsLoadoutManager.delete(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
+                                    return 1;
+                                })))
+                .then(literal("listsettings")
+                        .executes(ctx -> {
+                            SettingsLoadoutManager.list(ctx.getSource().getClient());
                             return 1;
                         }))
                 .then(literal("help")
