@@ -38,16 +38,25 @@ public class SettingsLoadoutManager {
     /** Tracks the most recently loaded loadout name so cyclesettings knows where we are. */
     private static String currentLoadout = null;
 
+    /** Returns Minecraft's options.txt file. */
+    private static File getOptionsFile() {
+        return new File(Minecraft.getInstance().gameDirectory, "options.txt");
+    }
+
     // ── Loadout CRUD ────────────────────────────────────────────────────────
 
     public static void save(Minecraft client, String name) {
+        // Persist current Minecraft options to disk
+        client.options.save();
         ConfigManager.syncFromExistingConfigs();
         ConfigManager.saveToFile();
 
         LOADOUTS_DIR.mkdirs();
-        File dest = new File(LOADOUTS_DIR, name + ".json");
+        File destConfig = new File(LOADOUTS_DIR, name + ".json");
+        File destOptions = new File(LOADOUTS_DIR, name + ".options.txt");
         try {
-            Files.copy(CONFIG_FILE.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(CONFIG_FILE.toPath(), destConfig.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(getOptionsFile().toPath(), destOptions.toPath(), StandardCopyOption.REPLACE_EXISTING);
             currentLoadout = name;
             sendMessage(client, Component.literal("[IslandTime] Saved settings loadout: ").withStyle(ChatFormatting.GOLD)
                     .append(Component.literal(name).withStyle(ChatFormatting.GREEN)));
@@ -57,17 +66,26 @@ public class SettingsLoadoutManager {
     }
 
     public static void load(Minecraft client, String name) {
-        File src = new File(LOADOUTS_DIR, name + ".json");
-        if (!src.exists()) {
+        File srcConfig = new File(LOADOUTS_DIR, name + ".json");
+        if (!srcConfig.exists()) {
             sendMessage(client, Component.literal("[IslandTime] No loadout found with name: ").withStyle(ChatFormatting.RED)
                     .append(Component.literal(name).withStyle(ChatFormatting.YELLOW)));
             return;
         }
 
         try {
-            Files.copy(src.toPath(), CONFIG_FILE.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            // Restore mod config
+            Files.copy(srcConfig.toPath(), CONFIG_FILE.toPath(), StandardCopyOption.REPLACE_EXISTING);
             ConfigManager.initialize();
             ConfigManager.syncToExistingConfigs();
+
+            // Restore Minecraft options (render distance, FPS cap, etc.) if saved
+            File srcOptions = new File(LOADOUTS_DIR, name + ".options.txt");
+            if (srcOptions.exists()) {
+                Files.copy(srcOptions.toPath(), getOptionsFile().toPath(), StandardCopyOption.REPLACE_EXISTING);
+                client.options.load();
+            }
+
             currentLoadout = name;
             sendMessage(client, Component.literal("[IslandTime] Loaded settings loadout: ").withStyle(ChatFormatting.GOLD)
                     .append(Component.literal(name).withStyle(ChatFormatting.GREEN)));
@@ -85,6 +103,8 @@ public class SettingsLoadoutManager {
         }
 
         if (file.delete()) {
+            // Also delete the options file if it exists
+            new File(LOADOUTS_DIR, name + ".options.txt").delete();
             // Remove from any group it belongs to
             Map<String, List<String>> groups = loadGroups();
             boolean changed = false;
