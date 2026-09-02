@@ -4,7 +4,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 
-import java.time.LocalDate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -76,7 +75,7 @@ public class SackIncomeTracker {
         }
 
         if (gained > 0) {
-            FuelCycleTracker.addAutoGabagoolAmount(LocalDate.now().toString(), gained);
+            FuelCycleTracker.addAutoGabagoolAmount(FuelCycleTracker.getCurrentCycleDateKey(), gained);
         }
         if (removed) {
             FuelExpiredAlertTracker.onSackEmptied();

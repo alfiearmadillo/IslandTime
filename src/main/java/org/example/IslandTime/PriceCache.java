@@ -114,8 +114,9 @@ public class PriceCache {
     // ── Formatting ─────────────────────────────────────────────────────────
 
     public static String formatCoins(double coins) {
-        if (Math.abs(coins) >= 1_000_000) return String.format("%.1fM", coins / 1_000_000);
-        if (Math.abs(coins) >= 1_000)     return String.format("%.1fk", coins / 1_000);
+        if (Math.abs(coins) >= 1_000_000_000) return String.format("%.3fB", coins / 1_000_000_000);
+        if (Math.abs(coins) >= 1_000_000)     return String.format("%.1fM", coins / 1_000_000);
+        if (Math.abs(coins) >= 1_000)         return String.format("%.1fk", coins / 1_000);
         return String.format("%.1f", coins);
     }
 

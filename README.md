@@ -1,11 +1,11 @@
 # IslandTime
 
-A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, minion fuel/profit per fuel cycle, item stats, and more. Includes Discord alerts and a configuration GUI.
+A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, minion fuel/profit per fuel day, item stats, and more. Includes Discord alerts and a configuration GUI.
 
 ## Features
 
 - **Island Time Tracking** — Tracks time spent on your private island with daily history
-- **Fuel Day Tracker** — Tracks minion fuel and profit per fuel cycle via a dedicated GUI (`/it fueldays` or `/it fueltime`). Each record spans one real ~24h+ fuel cycle (from when a cohort of minions starts fueling from empty until every one of them runs dry) rather than a calendar date — a cycle that happens to cross midnight isn't split into two entries. Each row/entry is titled with its cycle's actual start and end time (`DD/MM/YY HH:mm - DD/MM/YY HH:mm`), and a "Total Profit" widget in the top-right corner sums the final profit of every tracked cycle. Supports placing full stacks of fuel at once (each unit queues an additional 24h burn period), auto-estimates fuel cost from live Bazaar prices (cheapest of the 5 Epic Inferno Minion Fuel distillates), tracks mob-kill coins/cycle from a configurable 100%-AFK baseline scaled by that cycle's AFK%, and auto-tracks Crude Gabagool collected via Hypixel's in-game "[Sacks]" chat messages (with a manual override, and a manually-entered sell price, for full profit-per-cycle tracking). Rows are color-graded red→yellow→green by AFK% and every field — including a manual minion-count override for when lag desyncs auto-detection — is directly editable
+- **Fuel Day Tracker** — Tracks minion fuel and profit per real 24h fuel-day via a dedicated GUI (`/it fueldays` or `/it fueltime`). Placing a stack of fuel across a batch of minions (e.g. 4 each) creates that many entries immediately — one currently ticking down, the rest future/queued days already carrying their share of the auto-detected minion count and estimated fuel cost — bucketed purely by elapsed time since the batch started, not by live calendar date, so a day that happens to cross midnight is never split across two records. Each fuel-day gets its own "fuel day up" Discord alert the moment IT runs out (not just once, when the entire queued batch finally finishes), so the next queued day is already ticking by the time you're pinged about the one that just ended. Each row/entry is titled with its day's actual start and end time (`DD/MM/YY HH:mm - DD/MM/YY HH:mm`), and a "Total Profit" widget in the top-right corner sums the final profit of every tracked day (supports up to the billions, e.g. `1.234B`). Supports placing full stacks of fuel at once (each unit queues an additional 24h fuel-day), auto-estimates each day's fuel cost from live Bazaar prices (cheapest of the 5 Epic Inferno Minion Fuel distillates), tracks mob-kill coins/day from a configurable 100%-AFK baseline scaled by that day's AFK%, and auto-tracks Crude Gabagool collected via Hypixel's in-game "[Sacks]" chat messages (with a manual override, and a manually-entered sell price, for full profit-per-day tracking). Rows are color-graded red→yellow→green by AFK% and every field — including a manual minion-count override for when lag desyncs auto-detection — is directly editable
 - **Item Stat Tracking** — Monitors a tracked item's `stats_book` value and alerts if it stops increasing or goes missing
 - **Discord Webhook Alerts** — Sends notifications for island absence, tracked item issues, disconnects, and when a minion's queued fuel-days run out (repeats until you empty your sacks, since sack storage caps mean AFKing further gains nothing)
 - **Chat Relay** — Bridges island chat to/from Discord via a companion bot (outbound webhook + inbound localhost polling)
@@ -41,7 +41,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it` | Open the config GUI |
 | `/it recent` | Show last 7 days of island time |
 | `/it trackedIslandTime <date>` | Show a specific date (DD-MM-YY) |
-| `/it fueltime` | Open the fuel day tracker GUI (per-fuel-cycle fuel/profit stats). Same as `/it fueldays` |
+| `/it fueltime` | Open the fuel day tracker GUI (per-fuel-day fuel/profit stats). Same as `/it fueldays` |
 | `/it fueltime <YYYY-MM-DD>` | Show a quick chat summary for a specific day |
 | `/it fueltime debug` | Inject a fake day record and attempt a save (diagnostics) |
 | `/it trackitem set\|clear` | Track/untrack the held item |
