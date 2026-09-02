@@ -4,6 +4,1656 @@
   "minionsCountedTodayDate": "",
   "mobKillCoinsAt100Baseline": 0.0,
   "days": {
+    "2025-08-28": {
+      "date": "2025-08-28",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81302400,
+      "fuelCost": 17400000.0,
+      "mobKillCoinsAt100": 5100956.4293305,
+      "gabagoolPrice": 312.4,
+      "gabagoolAmountAuto": 372900.0,
+      "notes": "Imported from spreadsheet (Day 1)"
+    },
+    "2025-08-29": {
+      "date": "2025-08-29",
+      "minionsRefueledAuto": 32,
+      "activeMs": 80179200,
+      "fuelCost": 18300000.0,
+      "mobKillCoinsAt100": 5064655.172413793,
+      "gabagoolPrice": 310.0,
+      "gabagoolAmountAuto": 362000.0,
+      "notes": "Imported from spreadsheet (Day 2)"
+    },
+    "2025-08-30": {
+      "date": "2025-08-30",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84585600,
+      "fuelCost": 18300000.0,
+      "mobKillCoinsAt100": 5107252.298263534,
+      "gabagoolPrice": 324.3,
+      "gabagoolAmountAuto": 382800.0,
+      "notes": "Imported from spreadsheet (Day 3)"
+    },
+    "2025-08-31": {
+      "date": "2025-08-31",
+      "minionsRefueledAuto": 32,
+      "activeMs": 68774400,
+      "fuelCost": 14700000.0,
+      "mobKillCoinsAt100": 5150753.768844221,
+      "gabagoolPrice": 324.8,
+      "gabagoolAmountAuto": 311500.0,
+      "notes": "Imported from spreadsheet (Day 4)"
+    },
+    "2025-09-01": {
+      "date": "2025-09-01",
+      "minionsRefueledAuto": 32,
+      "activeMs": 74563200,
+      "fuelCost": 14000000.0,
+      "mobKillCoinsAt100": 5098493.626882967,
+      "gabagoolPrice": 351.6,
+      "gabagoolAmountAuto": 340800.0,
+      "notes": "Imported from spreadsheet (Day 5)"
+    },
+    "2025-09-02": {
+      "date": "2025-09-02",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81561600,
+      "fuelCost": 12700000.0,
+      "mobKillCoinsAt100": 5084745.762711864,
+      "gabagoolPrice": 314.0,
+      "gabagoolAmountAuto": 370600.0,
+      "notes": "Imported from spreadsheet (Day 6)"
+    },
+    "2025-09-03": {
+      "date": "2025-09-03",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84585600,
+      "fuelCost": 12200000.0,
+      "mobKillCoinsAt100": 5107252.298263534,
+      "gabagoolPrice": 330.3,
+      "gabagoolAmountAuto": 376000.0,
+      "notes": "Imported from spreadsheet (Day 7)"
+    },
+    "2025-09-04": {
+      "date": "2025-09-04",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81993600,
+      "fuelCost": 12100000.0,
+      "mobKillCoinsAt100": 5163329.820864067,
+      "gabagoolPrice": 286.2,
+      "gabagoolAmountAuto": 377400.0,
+      "notes": "Imported from spreadsheet (Day 8)"
+    },
+    "2025-09-05": {
+      "date": "2025-09-05",
+      "minionsRefueledAuto": 32,
+      "activeMs": 71452800,
+      "fuelCost": 13300000.0,
+      "mobKillCoinsAt100": 5078597.339782345,
+      "gabagoolPrice": 289.0,
+      "gabagoolAmountAuto": 324400.0,
+      "notes": "Imported from spreadsheet (Day 9)"
+    },
+    "2025-09-06": {
+      "date": "2025-09-06",
+      "minionsRefueledAuto": 32,
+      "activeMs": 80524800,
+      "fuelCost": 13200000.0,
+      "mobKillCoinsAt100": 5150214.592274678,
+      "gabagoolPrice": 280.5,
+      "gabagoolAmountAuto": 366200.0,
+      "notes": "Imported from spreadsheet (Day 10)"
+    },
+    "2025-09-07": {
+      "date": "2025-09-07",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83808000,
+      "fuelCost": 16000000.0,
+      "mobKillCoinsAt100": 5154639.175257732,
+      "gabagoolPrice": 283.9,
+      "gabagoolAmountAuto": 380300.0,
+      "notes": "Imported from spreadsheet (Day 11)"
+    },
+    "2025-09-08": {
+      "date": "2025-09-08",
+      "minionsRefueledAuto": 32,
+      "activeMs": 49852800,
+      "fuelCost": 16200000.0,
+      "mobKillCoinsAt100": 5025996.533795494,
+      "gabagoolPrice": 287.0,
+      "gabagoolAmountAuto": 273200.0,
+      "notes": "Imported from spreadsheet (Day 12)"
+    },
+    "2025-09-09": {
+      "date": "2025-09-09",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84153600,
+      "fuelCost": 16399999.999999998,
+      "mobKillCoinsAt100": 5133470.22587269,
+      "gabagoolPrice": 291.8,
+      "gabagoolAmountAuto": 381800.0,
+      "notes": "Imported from spreadsheet (Day 13)"
+    },
+    "2025-09-10": {
+      "date": "2025-09-10",
+      "minionsRefueledAuto": 32,
+      "activeMs": 82944000,
+      "fuelCost": 18100000.0,
+      "mobKillCoinsAt100": 5104166.666666667,
+      "gabagoolPrice": 296.0,
+      "gabagoolAmountAuto": 373500.0,
+      "notes": "Imported from spreadsheet (Day 14)"
+    },
+    "2025-09-11": {
+      "date": "2025-09-11",
+      "minionsRefueledAuto": 32,
+      "activeMs": 51494400,
+      "fuelCost": 18300000.0,
+      "mobKillCoinsAt100": 5033557.046979866,
+      "gabagoolPrice": 295.8,
+      "gabagoolAmountAuto": 278700.0,
+      "notes": "Imported from spreadsheet (Day 15)"
+    },
+    "2025-09-12": {
+      "date": "2025-09-12",
+      "minionsRefueledAuto": 32,
+      "activeMs": 71452800,
+      "fuelCost": 18000000.0,
+      "mobKillCoinsAt100": 5078597.339782345,
+      "gabagoolPrice": 287.0,
+      "gabagoolAmountAuto": 344500.0,
+      "notes": "Imported from spreadsheet (Day 16)"
+    },
+    "2025-09-13": {
+      "date": "2025-09-13",
+      "minionsRefueledAuto": 32,
+      "activeMs": 85104000,
+      "fuelCost": 17100000.0,
+      "mobKillCoinsAt100": 5076142.1319796955,
+      "gabagoolPrice": 288.2,
+      "gabagoolAmountAuto": 390800.0,
+      "notes": "Imported from spreadsheet (Day 17)"
+    },
+    "2025-09-14": {
+      "date": "2025-09-14",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67046400,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5154639.175257732,
+      "gabagoolPrice": 307.8,
+      "gabagoolAmountAuto": 330200.0,
+      "notes": "Imported from spreadsheet (Day 18)"
+    },
+    "2025-09-15": {
+      "date": "2025-09-15",
+      "minionsRefueledAuto": 32,
+      "activeMs": 56764800,
+      "fuelCost": 17100000.0,
+      "mobKillCoinsAt100": 5175038.051750381,
+      "gabagoolPrice": 287.6,
+      "gabagoolAmountAuto": 293800.0,
+      "notes": "Imported from spreadsheet (Day 19)"
+    },
+    "2025-09-16": {
+      "date": "2025-09-16",
+      "minionsRefueledAuto": 32,
+      "activeMs": 58492800,
+      "fuelCost": 16900000.0,
+      "mobKillCoinsAt100": 5169867.060561299,
+      "gabagoolPrice": 281.4,
+      "gabagoolAmountAuto": 289900.0,
+      "notes": "Imported from spreadsheet (Day 20)"
+    },
+    "2025-09-17": {
+      "date": "2025-09-17",
+      "minionsRefueledAuto": 32,
+      "activeMs": 63331200,
+      "fuelCost": 16900000.0,
+      "mobKillCoinsAt100": 5047748.97680764,
+      "gabagoolPrice": 279.0,
+      "gabagoolAmountAuto": 289000.0,
+      "notes": "Imported from spreadsheet (Day 21)"
+    },
+    "2025-09-18": {
+      "date": "2025-09-18",
+      "minionsRefueledAuto": 32,
+      "activeMs": 70156800,
+      "fuelCost": 15100000.0,
+      "mobKillCoinsAt100": 5172413.793103448,
+      "gabagoolPrice": 258.7,
+      "gabagoolAmountAuto": 320700.0,
+      "notes": "Imported from spreadsheet (Day 22)"
+    },
+    "2025-09-19": {
+      "date": "2025-09-19",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81475200,
+      "fuelCost": 18100000.0,
+      "mobKillCoinsAt100": 5090137.857900319,
+      "gabagoolPrice": 259.5,
+      "gabagoolAmountAuto": 373200.0,
+      "notes": "Imported from spreadsheet (Day 23)"
+    },
+    "2025-09-20": {
+      "date": "2025-09-20",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78969600,
+      "fuelCost": 19200000.0,
+      "mobKillCoinsAt100": 5142231.947483588,
+      "gabagoolPrice": 257.3,
+      "gabagoolAmountAuto": 358500.0,
+      "notes": "Imported from spreadsheet (Day 24)"
+    },
+    "2025-09-21": {
+      "date": "2025-09-21",
+      "minionsRefueledAuto": 32,
+      "activeMs": 53222400,
+      "fuelCost": 14500000.0,
+      "mobKillCoinsAt100": 5032467.532467533,
+      "gabagoolPrice": 249.6,
+      "gabagoolAmountAuto": 240000.0,
+      "notes": "Imported from spreadsheet (Day 25)"
+    },
+    "2025-09-22": {
+      "date": "2025-09-22",
+      "minionsRefueledAuto": 32,
+      "activeMs": 77846400,
+      "fuelCost": 17200000.0,
+      "mobKillCoinsAt100": 5105438.401775805,
+      "gabagoolPrice": 250.9,
+      "gabagoolAmountAuto": 315900.0,
+      "notes": "Imported from spreadsheet (Day 26)"
+    },
+    "2025-09-23": {
+      "date": "2025-09-23",
+      "minionsRefueledAuto": 32,
+      "activeMs": 80697600,
+      "fuelCost": 17200000.0,
+      "mobKillCoinsAt100": 5139186.295503212,
+      "gabagoolPrice": 250.9,
+      "gabagoolAmountAuto": 371700.0,
+      "notes": "Imported from spreadsheet (Day 27)"
+    },
+    "2025-09-24": {
+      "date": "2025-09-24",
+      "minionsRefueledAuto": 32,
+      "activeMs": 74390400,
+      "fuelCost": 17900000.0,
+      "mobKillCoinsAt100": 5110336.817653891,
+      "gabagoolPrice": 272.3,
+      "gabagoolAmountAuto": 341900.0,
+      "notes": "Imported from spreadsheet (Day 28)"
+    },
+    "2025-09-25": {
+      "date": "2025-09-25",
+      "minionsRefueledAuto": 32,
+      "activeMs": 54345600,
+      "fuelCost": 18800000.0,
+      "mobKillCoinsAt100": 5087440.381558029,
+      "gabagoolPrice": 263.5,
+      "gabagoolAmountAuto": 254800.0,
+      "notes": "Imported from spreadsheet (Day 29)"
+    },
+    "2025-09-26": {
+      "date": "2025-09-26",
+      "minionsRefueledAuto": 32,
+      "activeMs": 66355200,
+      "fuelCost": 18500000.0,
+      "mobKillCoinsAt100": 5078125.0,
+      "gabagoolPrice": 261.9,
+      "gabagoolAmountAuto": 310000.0,
+      "notes": "Imported from spreadsheet (Day 30)"
+    },
+    "2025-09-27": {
+      "date": "2025-09-27",
+      "minionsRefueledAuto": 32,
+      "activeMs": 70329600,
+      "fuelCost": 17100000.0,
+      "mobKillCoinsAt100": 5159705.159705159,
+      "gabagoolPrice": 255.1,
+      "gabagoolAmountAuto": 323900.0,
+      "notes": "Imported from spreadsheet (Day 31)"
+    },
+    "2025-09-28": {
+      "date": "2025-09-28",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81388800,
+      "fuelCost": 17100000.0,
+      "mobKillCoinsAt100": 5095541.401273885,
+      "gabagoolPrice": 251.0,
+      "gabagoolAmountAuto": 375700.0,
+      "notes": "Imported from spreadsheet (Day 32)"
+    },
+    "2025-09-29": {
+      "date": "2025-09-29",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84585600,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5107252.298263534,
+      "gabagoolPrice": 245.6,
+      "gabagoolAmountAuto": 387100.0,
+      "notes": "Imported from spreadsheet (Day 33)"
+    },
+    "2025-09-30": {
+      "date": "2025-09-30",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84931200,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5086469.98982706,
+      "gabagoolPrice": 251.1,
+      "gabagoolAmountAuto": 385600.0,
+      "notes": "Imported from spreadsheet (Day 34)"
+    },
+    "2025-10-01": {
+      "date": "2025-10-01",
+      "minionsRefueledAuto": 32,
+      "activeMs": 82857600,
+      "fuelCost": 17100000.0,
+      "mobKillCoinsAt100": 5109489.051094891,
+      "gabagoolPrice": 255.7,
+      "gabagoolAmountAuto": 377500.0,
+      "notes": "Imported from spreadsheet (Day 35)"
+    },
+    "2025-10-02": {
+      "date": "2025-10-02",
+      "minionsRefueledAuto": 32,
+      "activeMs": 85449600,
+      "fuelCost": 17100000.0,
+      "mobKillCoinsAt100": 5156723.963599595,
+      "gabagoolPrice": 261.9,
+      "gabagoolAmountAuto": 389900.0,
+      "notes": "Imported from spreadsheet (Day 36)"
+    },
+    "2025-10-03": {
+      "date": "2025-10-03",
+      "minionsRefueledAuto": 32,
+      "activeMs": 85795200,
+      "fuelCost": 17100000.0,
+      "mobKillCoinsAt100": 5135951.66163142,
+      "gabagoolPrice": 275.9,
+      "gabagoolAmountAuto": 390000.0,
+      "notes": "Imported from spreadsheet (Day 37)"
+    },
+    "2025-10-04": {
+      "date": "2025-10-04",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78105600,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5088495.575221239,
+      "gabagoolPrice": 284.8,
+      "gabagoolAmountAuto": 354600.0,
+      "notes": "Imported from spreadsheet (Day 38)"
+    },
+    "2025-10-05": {
+      "date": "2025-10-05",
+      "minionsRefueledAuto": 32,
+      "activeMs": 75427200,
+      "fuelCost": 18100000.0,
+      "mobKillCoinsAt100": 5154639.175257732,
+      "gabagoolPrice": 280.0,
+      "gabagoolAmountAuto": 345700.0,
+      "notes": "Imported from spreadsheet (Day 39)"
+    },
+    "2025-10-06": {
+      "date": "2025-10-06",
+      "minionsRefueledAuto": 32,
+      "activeMs": 77414400,
+      "fuelCost": 17900000.0,
+      "mobKillCoinsAt100": 5133928.571428572,
+      "gabagoolPrice": 259.1,
+      "gabagoolAmountAuto": 354500.0,
+      "notes": "Imported from spreadsheet (Day 40)"
+    },
+    "2025-10-07": {
+      "date": "2025-10-07",
+      "minionsRefueledAuto": 32,
+      "activeMs": 80870400,
+      "fuelCost": 13700000.0,
+      "mobKillCoinsAt100": 5128205.128205129,
+      "gabagoolPrice": 253.5,
+      "gabagoolAmountAuto": 371800.0,
+      "notes": "Imported from spreadsheet (Day 41)"
+    },
+    "2025-10-08": {
+      "date": "2025-10-08",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83980800,
+      "fuelCost": 13900000.0,
+      "mobKillCoinsAt100": 5144032.9218107,
+      "gabagoolPrice": 262.8,
+      "gabagoolAmountAuto": 382700.0,
+      "notes": "Imported from spreadsheet (Day 42)"
+    },
+    "2025-10-09": {
+      "date": "2025-10-09",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78192000,
+      "fuelCost": 13900000.0,
+      "mobKillCoinsAt100": 5082872.928176795,
+      "gabagoolPrice": 250.4,
+      "gabagoolAmountAuto": 355200.0,
+      "notes": "Imported from spreadsheet (Day 43)"
+    },
+    "2025-10-10": {
+      "date": "2025-10-10",
+      "minionsRefueledAuto": 32,
+      "activeMs": 61776000,
+      "fuelCost": 14000000.0,
+      "mobKillCoinsAt100": 5174825.174825175,
+      "gabagoolPrice": 254.6,
+      "gabagoolAmountAuto": 293000.0,
+      "notes": "Imported from spreadsheet (Day 44)"
+    },
+    "2025-10-11": {
+      "date": "2025-10-11",
+      "minionsRefueledAuto": 32,
+      "activeMs": 23587200,
+      "fuelCost": 12800000.0,
+      "mobKillCoinsAt100": 5128205.128205128,
+      "gabagoolPrice": 257.8,
+      "gabagoolAmountAuto": 110500.0,
+      "notes": "Imported from spreadsheet (Day 45)"
+    },
+    "2025-10-12": {
+      "date": "2025-10-12",
+      "minionsRefueledAuto": 32,
+      "activeMs": 51840000,
+      "fuelCost": 13300000.0,
+      "mobKillCoinsAt100": 5166666.666666667,
+      "gabagoolPrice": 253.5,
+      "gabagoolAmountAuto": 242000.0,
+      "notes": "Imported from spreadsheet (Day 46)"
+    },
+    "2025-10-13": {
+      "date": "2025-10-13",
+      "minionsRefueledAuto": 32,
+      "activeMs": 59788800,
+      "fuelCost": 13300000.0,
+      "mobKillCoinsAt100": 5057803.468208092,
+      "gabagoolPrice": 251.4,
+      "gabagoolAmountAuto": 276800.0,
+      "notes": "Imported from spreadsheet (Day 47)"
+    },
+    "2025-10-14": {
+      "date": "2025-10-14",
+      "minionsRefueledAuto": 32,
+      "activeMs": 66787200,
+      "fuelCost": 13700000.0,
+      "mobKillCoinsAt100": 5174644.243208279,
+      "gabagoolPrice": 251.4,
+      "gabagoolAmountAuto": 310000.0,
+      "notes": "Imported from spreadsheet (Day 48)"
+    },
+    "2025-10-15": {
+      "date": "2025-10-15",
+      "minionsRefueledAuto": 32,
+      "activeMs": 44323200,
+      "fuelCost": 13900000.0,
+      "mobKillCoinsAt100": 5068226.1208577,
+      "gabagoolPrice": 250.5,
+      "gabagoolAmountAuto": 171100.0,
+      "notes": "Imported from spreadsheet (Day 49)"
+    },
+    "2025-10-16": {
+      "date": "2025-10-16",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78451200,
+      "fuelCost": 14400000.0,
+      "mobKillCoinsAt100": 5066079.295154185,
+      "gabagoolPrice": 253.1,
+      "gabagoolAmountAuto": 365400.0,
+      "notes": "Imported from spreadsheet (Day 50)"
+    },
+    "2025-10-17": {
+      "date": "2025-10-17",
+      "minionsRefueledAuto": 32,
+      "activeMs": 76464000,
+      "fuelCost": 14200000.0,
+      "mobKillCoinsAt100": 5084745.762711864,
+      "gabagoolPrice": 254.9,
+      "gabagoolAmountAuto": 349300.0,
+      "notes": "Imported from spreadsheet (Day 51)"
+    },
+    "2025-10-18": {
+      "date": "2025-10-18",
+      "minionsRefueledAuto": 32,
+      "activeMs": 61948800,
+      "fuelCost": 14400000.0,
+      "mobKillCoinsAt100": 5160390.516039051,
+      "gabagoolPrice": 270.1,
+      "gabagoolAmountAuto": 277700.0,
+      "notes": "Imported from spreadsheet (Day 52)"
+    },
+    "2025-10-19": {
+      "date": "2025-10-19",
+      "minionsRefueledAuto": 32,
+      "activeMs": 59097600,
+      "fuelCost": 13800000.0,
+      "mobKillCoinsAt100": 5116959.064327485,
+      "gabagoolPrice": 263.9,
+      "gabagoolAmountAuto": 267100.0,
+      "notes": "Imported from spreadsheet (Day 53)"
+    },
+    "2025-10-20": {
+      "date": "2025-10-20",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84672000,
+      "fuelCost": 14900000.0,
+      "mobKillCoinsAt100": 5102040.816326531,
+      "gabagoolPrice": 272.0,
+      "gabagoolAmountAuto": 392500.0,
+      "notes": "Imported from spreadsheet (Day 54)"
+    },
+    "2025-10-21": {
+      "date": "2025-10-21",
+      "minionsRefueledAuto": 32,
+      "activeMs": 66700800,
+      "fuelCost": 13800000.0,
+      "mobKillCoinsAt100": 5051813.471502591,
+      "gabagoolPrice": 267.9,
+      "gabagoolAmountAuto": 309400.0,
+      "notes": "Imported from spreadsheet (Day 55)"
+    },
+    "2025-10-22": {
+      "date": "2025-10-22",
+      "minionsRefueledAuto": 32,
+      "activeMs": 70761600,
+      "fuelCost": 13800000.0,
+      "mobKillCoinsAt100": 5128205.128205128,
+      "gabagoolPrice": 289.5,
+      "gabagoolAmountAuto": 355000.0,
+      "notes": "Imported from spreadsheet (Day 56)"
+    },
+    "2025-10-23": {
+      "date": "2025-10-23",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81388800,
+      "fuelCost": 14500000.0,
+      "mobKillCoinsAt100": 5095541.401273885,
+      "gabagoolPrice": 310.9,
+      "gabagoolAmountAuto": 369300.0,
+      "notes": "Imported from spreadsheet (Day 57)"
+    },
+    "2025-10-24": {
+      "date": "2025-10-24",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84240000,
+      "fuelCost": 15800000.0,
+      "mobKillCoinsAt100": 5128205.128205128,
+      "gabagoolPrice": 321.5,
+      "gabagoolAmountAuto": 381800.0,
+      "notes": "Imported from spreadsheet (Day 58)"
+    },
+    "2025-10-25": {
+      "date": "2025-10-25",
+      "minionsRefueledAuto": 32,
+      "activeMs": 66096000,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5098039.215686275,
+      "gabagoolPrice": 325.6,
+      "gabagoolAmountAuto": 300800.0,
+      "notes": "Imported from spreadsheet (Day 59)"
+    },
+    "2025-10-26": {
+      "date": "2025-10-26",
+      "minionsRefueledAuto": 32,
+      "activeMs": 85017600,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5081300.81300813,
+      "gabagoolPrice": 322.4,
+      "gabagoolAmountAuto": 386100.0,
+      "notes": "Imported from spreadsheet (Day 60)"
+    },
+    "2025-10-27": {
+      "date": "2025-10-27",
+      "minionsRefueledAuto": 32,
+      "activeMs": 82771200,
+      "fuelCost": 14800000.0,
+      "mobKillCoinsAt100": 5114822.546972861,
+      "gabagoolPrice": 318.8,
+      "gabagoolAmountAuto": 374200.0,
+      "notes": "Imported from spreadsheet (Day 61)"
+    },
+    "2025-10-28": {
+      "date": "2025-10-28",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83548800,
+      "fuelCost": 14600000.0,
+      "mobKillCoinsAt100": 5067218.200620475,
+      "gabagoolPrice": 315.5,
+      "gabagoolAmountAuto": 384600.0,
+      "notes": "Imported from spreadsheet (Day 62)"
+    },
+    "2025-10-29": {
+      "date": "2025-10-29",
+      "minionsRefueledAuto": 32,
+      "activeMs": 56419200,
+      "fuelCost": 14500000.0,
+      "mobKillCoinsAt100": 5053598.774885145,
+      "gabagoolPrice": 328.9,
+      "gabagoolAmountAuto": 259899.99999999997,
+      "notes": "Imported from spreadsheet (Day 63)"
+    },
+    "2025-10-30": {
+      "date": "2025-10-30",
+      "minionsRefueledAuto": 32,
+      "activeMs": 49075200,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5105633.802816902,
+      "gabagoolPrice": 340.9,
+      "gabagoolAmountAuto": 222500.0,
+      "notes": "Imported from spreadsheet (Day 64)"
+    },
+    "2025-10-31": {
+      "date": "2025-10-31",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67046400,
+      "fuelCost": 16399999.999999998,
+      "mobKillCoinsAt100": 5154639.175257732,
+      "gabagoolPrice": 340.0,
+      "gabagoolAmountAuto": 343300.0,
+      "notes": "Imported from spreadsheet (Day 65)"
+    },
+    "2025-11-01": {
+      "date": "2025-11-01",
+      "minionsRefueledAuto": 32,
+      "activeMs": 20736000,
+      "fuelCost": 16500000.0,
+      "mobKillCoinsAt100": 5000000.0,
+      "gabagoolPrice": 370.2,
+      "gabagoolAmountAuto": 91000.0,
+      "notes": "Imported from spreadsheet (Day 66)"
+    },
+    "2025-11-02": {
+      "date": "2025-11-02",
+      "minionsRefueledAuto": 32,
+      "activeMs": 48816000,
+      "fuelCost": 15700000.0,
+      "mobKillCoinsAt100": 5132743.362831859,
+      "gabagoolPrice": 346.1,
+      "gabagoolAmountAuto": 230000.0,
+      "notes": "Imported from spreadsheet (Day 67)"
+    },
+    "2025-11-03": {
+      "date": "2025-11-03",
+      "minionsRefueledAuto": 32,
+      "activeMs": 57542400,
+      "fuelCost": 15800000.0,
+      "mobKillCoinsAt100": 5105105.105105106,
+      "gabagoolPrice": 343.1,
+      "gabagoolAmountAuto": 303300.0,
+      "notes": "Imported from spreadsheet (Day 68)"
+    },
+    "2025-11-04": {
+      "date": "2025-11-04",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67824000,
+      "fuelCost": 15800000.0,
+      "mobKillCoinsAt100": 5095541.401273885,
+      "gabagoolPrice": 341.8,
+      "gabagoolAmountAuto": 299800.0,
+      "notes": "Imported from spreadsheet (Day 69)"
+    },
+    "2025-11-05": {
+      "date": "2025-11-05",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81475200,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5090137.857900319,
+      "gabagoolPrice": 342.8,
+      "gabagoolAmountAuto": 381200.0,
+      "notes": "Imported from spreadsheet (Day 70)"
+    },
+    "2025-11-06": {
+      "date": "2025-11-06",
+      "minionsRefueledAuto": 32,
+      "activeMs": 76464000,
+      "fuelCost": 15300000.0,
+      "mobKillCoinsAt100": 5084745.762711864,
+      "gabagoolPrice": 343.1,
+      "gabagoolAmountAuto": 344800.0,
+      "notes": "Imported from spreadsheet (Day 71)"
+    },
+    "2025-11-07": {
+      "date": "2025-11-07",
+      "minionsRefueledAuto": 32,
+      "activeMs": 60652800,
+      "fuelCost": 15900000.0,
+      "mobKillCoinsAt100": 5128205.128205128,
+      "gabagoolPrice": 328.7,
+      "gabagoolAmountAuto": 281700.0,
+      "notes": "Imported from spreadsheet (Day 72)"
+    },
+    "2025-11-08": {
+      "date": "2025-11-08",
+      "minionsRefueledAuto": 32,
+      "activeMs": 41385600,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5010438.413361169,
+      "gabagoolPrice": 329.5,
+      "gabagoolAmountAuto": 221100.0,
+      "notes": "Imported from spreadsheet (Day 73)"
+    },
+    "2025-11-09": {
+      "date": "2025-11-09",
+      "minionsRefueledAuto": 32,
+      "activeMs": 60739200,
+      "fuelCost": 14800000.0,
+      "mobKillCoinsAt100": 5120910.3840682795,
+      "gabagoolPrice": 337.9,
+      "gabagoolAmountAuto": 334000.0,
+      "notes": "Imported from spreadsheet (Day 74)"
+    },
+    "2025-11-10": {
+      "date": "2025-11-10",
+      "minionsRefueledAuto": 32,
+      "activeMs": 82771200,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5114822.546972861,
+      "gabagoolPrice": 366.9,
+      "gabagoolAmountAuto": 379200.0,
+      "notes": "Imported from spreadsheet (Day 75)"
+    },
+    "2025-11-11": {
+      "date": "2025-11-11",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84326400,
+      "fuelCost": 14300000.0,
+      "mobKillCoinsAt100": 5122950.819672131,
+      "gabagoolPrice": 228.3,
+      "gabagoolAmountAuto": 360500.0,
+      "notes": "Imported from spreadsheet (Day 76)"
+    },
+    "2025-11-12": {
+      "date": "2025-11-12",
+      "minionsRefueledAuto": 32,
+      "activeMs": 76550400,
+      "fuelCost": 14500000.0,
+      "mobKillCoinsAt100": 5079006.77200903,
+      "gabagoolPrice": 226.0,
+      "gabagoolAmountAuto": 346300.0,
+      "notes": "Imported from spreadsheet (Day 77)"
+    },
+    "2025-11-13": {
+      "date": "2025-11-13",
+      "minionsRefueledAuto": 32,
+      "activeMs": 51926400,
+      "fuelCost": 14800000.0,
+      "mobKillCoinsAt100": 5158069.883527454,
+      "gabagoolPrice": 247.9,
+      "gabagoolAmountAuto": 241700.0,
+      "notes": "Imported from spreadsheet (Day 78)"
+    },
+    "2025-11-14": {
+      "date": "2025-11-14",
+      "minionsRefueledAuto": 32,
+      "activeMs": 32572800,
+      "fuelCost": 15100000.0,
+      "mobKillCoinsAt100": 5039787.798408488,
+      "gabagoolPrice": 248.2,
+      "gabagoolAmountAuto": 153800.0,
+      "notes": "Imported from spreadsheet (Day 79)"
+    },
+    "2025-11-15": {
+      "date": "2025-11-15",
+      "minionsRefueledAuto": 32,
+      "activeMs": 69033600,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5131414.267834793,
+      "gabagoolPrice": 241.1,
+      "gabagoolAmountAuto": 317400.0,
+      "notes": "Imported from spreadsheet (Day 80)"
+    },
+    "2025-11-16": {
+      "date": "2025-11-16",
+      "minionsRefueledAuto": 32,
+      "activeMs": 46742400,
+      "fuelCost": 15100000.0,
+      "mobKillCoinsAt100": 5175600.7393715335,
+      "gabagoolPrice": 247.5,
+      "gabagoolAmountAuto": 232800.0,
+      "notes": "Imported from spreadsheet (Day 81)"
+    },
+    "2025-11-17": {
+      "date": "2025-11-17",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78192000,
+      "fuelCost": 14900000.0,
+      "mobKillCoinsAt100": 5082872.928176795,
+      "gabagoolPrice": 262.1,
+      "gabagoolAmountAuto": 368300.0,
+      "notes": "Imported from spreadsheet (Day 82)"
+    },
+    "2025-11-18": {
+      "date": "2025-11-18",
+      "minionsRefueledAuto": 32,
+      "activeMs": 77587200,
+      "fuelCost": 14900000.0,
+      "mobKillCoinsAt100": 5122494.4320712695,
+      "gabagoolPrice": 250.5,
+      "gabagoolAmountAuto": 352200.0,
+      "notes": "Imported from spreadsheet (Day 83)"
+    },
+    "2025-11-19": {
+      "date": "2025-11-19",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81907200,
+      "fuelCost": 13600000.0,
+      "mobKillCoinsAt100": 5063291.139240507,
+      "gabagoolPrice": 251.6,
+      "gabagoolAmountAuto": 375400.0,
+      "notes": "Imported from spreadsheet (Day 84)"
+    },
+    "2025-11-20": {
+      "date": "2025-11-20",
+      "minionsRefueledAuto": 32,
+      "activeMs": 56332800,
+      "fuelCost": 13700000.0,
+      "mobKillCoinsAt100": 5061349.693251533,
+      "gabagoolPrice": 251.7,
+      "gabagoolAmountAuto": 255200.0,
+      "notes": "Imported from spreadsheet (Day 85)"
+    },
+    "2025-11-21": {
+      "date": "2025-11-21",
+      "minionsRefueledAuto": 32,
+      "activeMs": 60393600,
+      "fuelCost": 13100000.0,
+      "mobKillCoinsAt100": 5150214.592274678,
+      "gabagoolPrice": 313.3,
+      "gabagoolAmountAuto": 282300.0,
+      "notes": "Imported from spreadsheet (Day 86)"
+    },
+    "2025-11-22": {
+      "date": "2025-11-22",
+      "minionsRefueledAuto": 32,
+      "activeMs": 70416000,
+      "fuelCost": 14000000.0,
+      "mobKillCoinsAt100": 5153374.2331288345,
+      "gabagoolPrice": 241.4,
+      "gabagoolAmountAuto": 329400.0,
+      "notes": "Imported from spreadsheet (Day 87)"
+    },
+    "2025-11-23": {
+      "date": "2025-11-23",
+      "minionsRefueledAuto": 32,
+      "activeMs": 59875200,
+      "fuelCost": 13800000.0,
+      "mobKillCoinsAt100": 5050505.05050505,
+      "gabagoolPrice": 249.5,
+      "gabagoolAmountAuto": 272700.0,
+      "notes": "Imported from spreadsheet (Day 88)"
+    },
+    "2025-11-24": {
+      "date": "2025-11-24",
+      "minionsRefueledAuto": 32,
+      "activeMs": 64022400,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5128205.128205128,
+      "gabagoolPrice": 253.3,
+      "gabagoolAmountAuto": 297300.0,
+      "notes": "Imported from spreadsheet (Day 89)"
+    },
+    "2025-11-25": {
+      "date": "2025-11-25",
+      "minionsRefueledAuto": 32,
+      "activeMs": 76636800,
+      "fuelCost": 13800000.0,
+      "mobKillCoinsAt100": 5073280.721533258,
+      "gabagoolPrice": 240.0,
+      "gabagoolAmountAuto": 353200.0,
+      "notes": "Imported from spreadsheet (Day 90)"
+    },
+    "2025-11-26": {
+      "date": "2025-11-26",
+      "minionsRefueledAuto": 32,
+      "activeMs": 65923200,
+      "fuelCost": 14000000.0,
+      "mobKillCoinsAt100": 5111402.359108781,
+      "gabagoolPrice": 239.8,
+      "gabagoolAmountAuto": 300600.0,
+      "notes": "Imported from spreadsheet (Day 91)"
+    },
+    "2025-11-27": {
+      "date": "2025-11-27",
+      "minionsRefueledAuto": 32,
+      "activeMs": 55814400,
+      "fuelCost": 14000000.0,
+      "mobKillCoinsAt100": 5108359.133126936,
+      "gabagoolPrice": 240.5,
+      "gabagoolAmountAuto": 256899.99999999997,
+      "notes": "Imported from spreadsheet (Day 92)"
+    },
+    "2025-11-28": {
+      "date": "2025-11-28",
+      "minionsRefueledAuto": 32,
+      "activeMs": 66182400,
+      "fuelCost": 14000000.0,
+      "mobKillCoinsAt100": 5091383.812010445,
+      "gabagoolPrice": 240.5,
+      "gabagoolAmountAuto": 318900.0,
+      "notes": "Imported from spreadsheet (Day 93)"
+    },
+    "2025-11-29": {
+      "date": "2025-11-29",
+      "minionsRefueledAuto": 32,
+      "activeMs": 58233600,
+      "fuelCost": 12000000.0,
+      "mobKillCoinsAt100": 5044510.385756676,
+      "gabagoolPrice": 327.7,
+      "gabagoolAmountAuto": 273100.0,
+      "notes": "Imported from spreadsheet (Day 94)"
+    },
+    "2025-11-30": {
+      "date": "2025-11-30",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67996800,
+      "fuelCost": 15300000.0,
+      "mobKillCoinsAt100": 5082592.12198221,
+      "gabagoolPrice": 272.9,
+      "gabagoolAmountAuto": 303700.0,
+      "notes": "Imported from spreadsheet (Day 95)"
+    },
+    "2025-12-01": {
+      "date": "2025-12-01",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67305600,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5134788.189987163,
+      "gabagoolPrice": 298.5,
+      "gabagoolAmountAuto": 306400.0,
+      "notes": "Imported from spreadsheet (Day 96)"
+    },
+    "2025-12-02": {
+      "date": "2025-12-02",
+      "minionsRefueledAuto": 32,
+      "activeMs": 55555200,
+      "fuelCost": 14300000.0,
+      "mobKillCoinsAt100": 5132192.846034215,
+      "gabagoolPrice": 291.1,
+      "gabagoolAmountAuto": 250300.0,
+      "notes": "Imported from spreadsheet (Day 97)"
+    },
+    "2025-12-03": {
+      "date": "2025-12-03",
+      "minionsRefueledAuto": 32,
+      "activeMs": 71712000,
+      "fuelCost": 14500000.0,
+      "mobKillCoinsAt100": 5060240.963855422,
+      "gabagoolPrice": 291.1,
+      "gabagoolAmountAuto": 329100.0,
+      "notes": "Imported from spreadsheet (Day 98)"
+    },
+    "2025-12-04": {
+      "date": "2025-12-04",
+      "minionsRefueledAuto": 32,
+      "activeMs": 61430400,
+      "fuelCost": 14700000.0,
+      "mobKillCoinsAt100": 5063291.139240507,
+      "gabagoolPrice": 295.1,
+      "gabagoolAmountAuto": 280700.0,
+      "notes": "Imported from spreadsheet (Day 99)"
+    },
+    "2025-12-05": {
+      "date": "2025-12-05",
+      "minionsRefueledAuto": 32,
+      "activeMs": 80611200,
+      "fuelCost": 14600000.0,
+      "mobKillCoinsAt100": 5144694.533762058,
+      "gabagoolPrice": 285.1,
+      "gabagoolAmountAuto": 370000.0,
+      "notes": "Imported from spreadsheet (Day 100)"
+    },
+    "2025-12-06": {
+      "date": "2025-12-06",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78710400,
+      "fuelCost": 14700000.0,
+      "mobKillCoinsAt100": 5159165.751920966,
+      "gabagoolPrice": 271.3,
+      "gabagoolAmountAuto": 355100.0,
+      "notes": "Imported from spreadsheet (Day 101)"
+    },
+    "2025-12-07": {
+      "date": "2025-12-07",
+      "minionsRefueledAuto": 32,
+      "activeMs": 72403200,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5131264.91646778,
+      "gabagoolPrice": 270.5,
+      "gabagoolAmountAuto": 327700.0,
+      "notes": "Imported from spreadsheet (Day 102)"
+    },
+    "2025-12-08": {
+      "date": "2025-12-08",
+      "minionsRefueledAuto": 32,
+      "activeMs": 73094400,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5082742.31678487,
+      "gabagoolPrice": 286.5,
+      "gabagoolAmountAuto": 334800.0,
+      "notes": "Imported from spreadsheet (Day 103)"
+    },
+    "2025-12-09": {
+      "date": "2025-12-09",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83203200,
+      "fuelCost": 13700000.0,
+      "mobKillCoinsAt100": 5088265.835929387,
+      "gabagoolPrice": 331.9,
+      "gabagoolAmountAuto": 378500.0,
+      "notes": "Imported from spreadsheet (Day 104)"
+    },
+    "2025-12-10": {
+      "date": "2025-12-10",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81648000,
+      "fuelCost": 13900000.0,
+      "mobKillCoinsAt100": 5079365.079365079,
+      "gabagoolPrice": 334.2,
+      "gabagoolAmountAuto": 373200.0,
+      "notes": "Imported from spreadsheet (Day 105)"
+    },
+    "2025-12-11": {
+      "date": "2025-12-11",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83030400,
+      "fuelCost": 14400000.0,
+      "mobKillCoinsAt100": 5098855.35900104,
+      "gabagoolPrice": 289.4,
+      "gabagoolAmountAuto": 376900.0,
+      "notes": "Imported from spreadsheet (Day 106)"
+    },
+    "2025-12-12": {
+      "date": "2025-12-12",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67651200,
+      "fuelCost": 14300000.0,
+      "mobKillCoinsAt100": 5108556.832694764,
+      "gabagoolPrice": 294.4,
+      "gabagoolAmountAuto": 313100.0,
+      "notes": "Imported from spreadsheet (Day 107)"
+    },
+    "2025-12-13": {
+      "date": "2025-12-13",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83289600,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5082987.55186722,
+      "gabagoolPrice": 299.6,
+      "gabagoolAmountAuto": 373900.0,
+      "notes": "Imported from spreadsheet (Day 108)"
+    },
+    "2025-12-14": {
+      "date": "2025-12-14",
+      "minionsRefueledAuto": 32,
+      "activeMs": 82512000,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5130890.0523560215,
+      "gabagoolPrice": 299.6,
+      "gabagoolAmountAuto": 374500.0,
+      "notes": "Imported from spreadsheet (Day 109)"
+    },
+    "2025-12-15": {
+      "date": "2025-12-15",
+      "minionsRefueledAuto": 32,
+      "activeMs": 85104000,
+      "fuelCost": 14800000.0,
+      "mobKillCoinsAt100": 5076142.1319796955,
+      "gabagoolPrice": 291.5,
+      "gabagoolAmountAuto": 388500.0,
+      "notes": "Imported from spreadsheet (Day 110)"
+    },
+    "2025-12-16": {
+      "date": "2025-12-16",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67478400,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5121638.924455826,
+      "gabagoolPrice": 300.4,
+      "gabagoolAmountAuto": 307600.0,
+      "notes": "Imported from spreadsheet (Day 111)"
+    },
+    "2025-12-17": {
+      "date": "2025-12-17",
+      "minionsRefueledAuto": 32,
+      "activeMs": 49248000,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5087719.298245614,
+      "gabagoolPrice": 308.2,
+      "gabagoolAmountAuto": 228400.0,
+      "notes": "Imported from spreadsheet (Day 112)"
+    },
+    "2025-12-18": {
+      "date": "2025-12-18",
+      "minionsRefueledAuto": 32,
+      "activeMs": 57801600,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5082212.257100149,
+      "gabagoolPrice": 307.1,
+      "gabagoolAmountAuto": 265300.0,
+      "notes": "Imported from spreadsheet (Day 113)"
+    },
+    "2025-12-19": {
+      "date": "2025-12-19",
+      "minionsRefueledAuto": 32,
+      "activeMs": 29462400,
+      "fuelCost": 16300000.0,
+      "mobKillCoinsAt100": 4985337.243401759,
+      "gabagoolPrice": 336.1,
+      "gabagoolAmountAuto": 139800.0,
+      "notes": "Imported from spreadsheet (Day 114)"
+    },
+    "2025-12-20": {
+      "date": "2025-12-20",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84758400,
+      "fuelCost": 15800000.0,
+      "mobKillCoinsAt100": 5096839.95922528,
+      "gabagoolPrice": 336.1,
+      "gabagoolAmountAuto": 392800.0,
+      "notes": "Imported from spreadsheet (Day 115)"
+    },
+    "2025-12-21": {
+      "date": "2025-12-21",
+      "minionsRefueledAuto": 32,
+      "activeMs": 65404800,
+      "fuelCost": 16700000.0,
+      "mobKillCoinsAt100": 5151915.455746368,
+      "gabagoolPrice": 332.9,
+      "gabagoolAmountAuto": 297300.0,
+      "notes": "Imported from spreadsheet (Day 116)"
+    },
+    "2025-12-22": {
+      "date": "2025-12-22",
+      "minionsRefueledAuto": 32,
+      "activeMs": 72403200,
+      "fuelCost": 13300000.0,
+      "mobKillCoinsAt100": 5131264.91646778,
+      "gabagoolPrice": 318.9,
+      "gabagoolAmountAuto": 329000.0,
+      "notes": "Imported from spreadsheet (Day 117)"
+    },
+    "2025-12-23": {
+      "date": "2025-12-23",
+      "minionsRefueledAuto": 32,
+      "activeMs": 51148800,
+      "fuelCost": 13700000.0,
+      "mobKillCoinsAt100": 5067567.567567566,
+      "gabagoolPrice": 305.9,
+      "gabagoolAmountAuto": 245400.0,
+      "notes": "Imported from spreadsheet (Day 118)"
+    },
+    "2025-12-24": {
+      "date": "2025-12-24",
+      "minionsRefueledAuto": 32,
+      "activeMs": 74476800,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5104408.352668214,
+      "gabagoolPrice": 301.4,
+      "gabagoolAmountAuto": 339400.0,
+      "notes": "Imported from spreadsheet (Day 119)"
+    },
+    "2025-12-25": {
+      "date": "2025-12-25",
+      "minionsRefueledAuto": 32,
+      "activeMs": 69465600,
+      "fuelCost": 14800000.0,
+      "mobKillCoinsAt100": 5099502.487562188,
+      "gabagoolPrice": 286.8,
+      "gabagoolAmountAuto": 317100.0,
+      "notes": "Imported from spreadsheet (Day 120)"
+    },
+    "2025-12-26": {
+      "date": "2025-12-26",
+      "minionsRefueledAuto": 32,
+      "activeMs": 74736000,
+      "fuelCost": 13600000.0,
+      "mobKillCoinsAt100": 5086705.202312139,
+      "gabagoolPrice": 278.3,
+      "gabagoolAmountAuto": 339700.0,
+      "notes": "Imported from spreadsheet (Day 121)"
+    },
+    "2025-12-27": {
+      "date": "2025-12-27",
+      "minionsRefueledAuto": 32,
+      "activeMs": 70329600,
+      "fuelCost": 13400000.0,
+      "mobKillCoinsAt100": 5159705.159705159,
+      "gabagoolPrice": 279.0,
+      "gabagoolAmountAuto": 319900.0,
+      "notes": "Imported from spreadsheet (Day 122)"
+    },
+    "2025-12-28": {
+      "date": "2025-12-28",
+      "minionsRefueledAuto": 32,
+      "activeMs": 65318400,
+      "fuelCost": 13800000.0,
+      "mobKillCoinsAt100": 5158730.1587301595,
+      "gabagoolPrice": 281.3,
+      "gabagoolAmountAuto": 299500.0,
+      "notes": "Imported from spreadsheet (Day 123)"
+    },
+    "2025-12-29": {
+      "date": "2025-12-29",
+      "minionsRefueledAuto": 32,
+      "activeMs": 60739200,
+      "fuelCost": 14600000.0,
+      "mobKillCoinsAt100": 5120910.3840682795,
+      "gabagoolPrice": 264.1,
+      "gabagoolAmountAuto": 279600.0,
+      "notes": "Imported from spreadsheet (Day 124)"
+    },
+    "2025-12-30": {
+      "date": "2025-12-30",
+      "minionsRefueledAuto": 32,
+      "activeMs": 52358400,
+      "fuelCost": 14200000.0,
+      "mobKillCoinsAt100": 5115511.5511551155,
+      "gabagoolPrice": 305.2,
+      "gabagoolAmountAuto": 255200.0,
+      "notes": "Imported from spreadsheet (Day 125)"
+    },
+    "2025-12-31": {
+      "date": "2025-12-31",
+      "minionsRefueledAuto": 32,
+      "activeMs": 59097600,
+      "fuelCost": 13600000.0,
+      "mobKillCoinsAt100": 5116959.064327485,
+      "gabagoolPrice": 305.1,
+      "gabagoolAmountAuto": 272500.0,
+      "notes": "Imported from spreadsheet (Day 126)"
+    },
+    "2026-01-01": {
+      "date": "2026-01-01",
+      "minionsRefueledAuto": 32,
+      "activeMs": 75945600,
+      "fuelCost": 14400000.0,
+      "mobKillCoinsAt100": 5119453.924914676,
+      "gabagoolPrice": 392.1,
+      "gabagoolAmountAuto": 356500.0,
+      "notes": "Imported from spreadsheet (Day 127)"
+    },
+    "2026-01-02": {
+      "date": "2026-01-02",
+      "minionsRefueledAuto": 32,
+      "activeMs": 82598400,
+      "fuelCost": 16800000.0,
+      "mobKillCoinsAt100": 5125523.012552301,
+      "gabagoolPrice": 421.6,
+      "gabagoolAmountAuto": 413900.0,
+      "notes": "Imported from spreadsheet (Day 128)"
+    },
+    "2026-01-03": {
+      "date": "2026-01-03",
+      "minionsRefueledAuto": 32,
+      "activeMs": 74995200,
+      "fuelCost": 17400000.0,
+      "mobKillCoinsAt100": 5069124.423963133,
+      "gabagoolPrice": 422.5,
+      "gabagoolAmountAuto": 340900.0,
+      "notes": "Imported from spreadsheet (Day 129)"
+    },
+    "2026-01-04": {
+      "date": "2026-01-04",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84499200,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5112474.437627812,
+      "gabagoolPrice": 406.9,
+      "gabagoolAmountAuto": 394000.0,
+      "notes": "Imported from spreadsheet (Day 130)"
+    },
+    "2026-01-05": {
+      "date": "2026-01-05",
+      "minionsRefueledAuto": 32,
+      "activeMs": 62121600,
+      "fuelCost": 16300000.0,
+      "mobKillCoinsAt100": 5146036.161335187,
+      "gabagoolPrice": 408.3,
+      "gabagoolAmountAuto": 281600.0,
+      "notes": "Imported from spreadsheet (Day 131)"
+    },
+    "2026-01-06": {
+      "date": "2026-01-06",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83203200,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5088265.835929387,
+      "gabagoolPrice": 421.8,
+      "gabagoolAmountAuto": 386000.0,
+      "notes": "Imported from spreadsheet (Day 132)"
+    },
+    "2026-01-07": {
+      "date": "2026-01-07",
+      "minionsRefueledAuto": 32,
+      "activeMs": 75513600,
+      "fuelCost": 17600000.0,
+      "mobKillCoinsAt100": 5148741.418764302,
+      "gabagoolPrice": 450.3,
+      "gabagoolAmountAuto": 344800.0,
+      "notes": "Imported from spreadsheet (Day 133)"
+    },
+    "2026-01-08": {
+      "date": "2026-01-08",
+      "minionsRefueledAuto": 32,
+      "activeMs": 70588800,
+      "fuelCost": 17500000.0,
+      "mobKillCoinsAt100": 5140758.873929008,
+      "gabagoolPrice": 495.0,
+      "gabagoolAmountAuto": 339900.0,
+      "notes": "Imported from spreadsheet (Day 134)"
+    },
+    "2026-01-09": {
+      "date": "2026-01-09",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83289600,
+      "fuelCost": 17700000.0,
+      "mobKillCoinsAt100": 5082987.55186722,
+      "gabagoolPrice": 450.5,
+      "gabagoolAmountAuto": 382000.0,
+      "notes": "Imported from spreadsheet (Day 135)"
+    },
+    "2026-01-10": {
+      "date": "2026-01-10",
+      "minionsRefueledAuto": 32,
+      "activeMs": 72230400,
+      "fuelCost": 16200000.0,
+      "mobKillCoinsAt100": 5143540.66985646,
+      "gabagoolPrice": 421.6,
+      "gabagoolAmountAuto": 329500.0,
+      "notes": "Imported from spreadsheet (Day 136)"
+    },
+    "2026-01-11": {
+      "date": "2026-01-11",
+      "minionsRefueledAuto": 32,
+      "activeMs": 71280000,
+      "fuelCost": 16700000.0,
+      "mobKillCoinsAt100": 5090909.090909091,
+      "gabagoolPrice": 409.4,
+      "gabagoolAmountAuto": 324900.0,
+      "notes": "Imported from spreadsheet (Day 137)"
+    },
+    "2026-01-12": {
+      "date": "2026-01-12",
+      "minionsRefueledAuto": 32,
+      "activeMs": 76550400,
+      "fuelCost": 16800000.0,
+      "mobKillCoinsAt100": 5079006.77200903,
+      "gabagoolPrice": 405.5,
+      "gabagoolAmountAuto": 351900.0,
+      "notes": "Imported from spreadsheet (Day 138)"
+    },
+    "2026-01-13": {
+      "date": "2026-01-13",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67996800,
+      "fuelCost": 16900000.0,
+      "mobKillCoinsAt100": 5082592.12198221,
+      "gabagoolPrice": 395.8,
+      "gabagoolAmountAuto": 315600.0,
+      "notes": "Imported from spreadsheet (Day 139)"
+    },
+    "2026-01-14": {
+      "date": "2026-01-14",
+      "minionsRefueledAuto": 32,
+      "activeMs": 57974400,
+      "fuelCost": 14800000.0,
+      "mobKillCoinsAt100": 5067064.083457527,
+      "gabagoolPrice": 325.4,
+      "gabagoolAmountAuto": 269200.0,
+      "notes": "Imported from spreadsheet (Day 140)"
+    },
+    "2026-01-15": {
+      "date": "2026-01-15",
+      "minionsRefueledAuto": 32,
+      "activeMs": 66009600,
+      "fuelCost": 14300000.0,
+      "mobKillCoinsAt100": 5104712.041884816,
+      "gabagoolPrice": 344.8,
+      "gabagoolAmountAuto": 312600.0,
+      "notes": "Imported from spreadsheet (Day 141)"
+    },
+    "2026-01-16": {
+      "date": "2026-01-16",
+      "minionsRefueledAuto": 32,
+      "activeMs": 68515200,
+      "fuelCost": 15000000.0,
+      "mobKillCoinsAt100": 5170239.596469104,
+      "gabagoolPrice": 353.5,
+      "gabagoolAmountAuto": 314500.0,
+      "notes": "Imported from spreadsheet (Day 142)"
+    },
+    "2026-01-17": {
+      "date": "2026-01-17",
+      "minionsRefueledAuto": 32,
+      "activeMs": 69552000,
+      "fuelCost": 15200000.0,
+      "mobKillCoinsAt100": 5093167.701863353,
+      "gabagoolPrice": 345.6,
+      "gabagoolAmountAuto": 322300.0,
+      "notes": "Imported from spreadsheet (Day 143)"
+    },
+    "2026-01-18": {
+      "date": "2026-01-18",
+      "minionsRefueledAuto": 32,
+      "activeMs": 51753600,
+      "fuelCost": 15900000.0,
+      "mobKillCoinsAt100": 5175292.153589316,
+      "gabagoolPrice": 345.6,
+      "gabagoolAmountAuto": 239200.0,
+      "notes": "Imported from spreadsheet (Day 144)"
+    },
+    "2026-01-19": {
+      "date": "2026-01-19",
+      "minionsRefueledAuto": 32,
+      "activeMs": 76377600,
+      "fuelCost": 15800000.0,
+      "mobKillCoinsAt100": 5090497.737556561,
+      "gabagoolPrice": 365.7,
+      "gabagoolAmountAuto": 356500.0,
+      "notes": "Imported from spreadsheet (Day 145)"
+    },
+    "2026-01-20": {
+      "date": "2026-01-20",
+      "minionsRefueledAuto": 32,
+      "activeMs": 85449600,
+      "fuelCost": 15400000.0,
+      "mobKillCoinsAt100": 5156723.963599595,
+      "gabagoolPrice": 363.4,
+      "gabagoolAmountAuto": 390900.0,
+      "notes": "Imported from spreadsheet (Day 146)"
+    },
+    "2026-01-21": {
+      "date": "2026-01-21",
+      "minionsRefueledAuto": 32,
+      "activeMs": 69206400,
+      "fuelCost": 15600000.0,
+      "mobKillCoinsAt100": 5118601.747815231,
+      "gabagoolPrice": 358.6,
+      "gabagoolAmountAuto": 317900.0,
+      "notes": "Imported from spreadsheet (Day 147)"
+    },
+    "2026-01-22": {
+      "date": "2026-01-22",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78710400,
+      "fuelCost": 15700000.0,
+      "mobKillCoinsAt100": 5159165.751920966,
+      "gabagoolPrice": 368.3,
+      "gabagoolAmountAuto": 361700.0,
+      "notes": "Imported from spreadsheet (Day 148)"
+    },
+    "2026-01-23": {
+      "date": "2026-01-23",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83462400,
+      "fuelCost": 14900000.0,
+      "mobKillCoinsAt100": 5072463.768115942,
+      "gabagoolPrice": 379.3,
+      "gabagoolAmountAuto": 384900.0,
+      "notes": "Imported from spreadsheet (Day 149)"
+    },
+    "2026-01-24": {
+      "date": "2026-01-24",
+      "minionsRefueledAuto": 32,
+      "activeMs": 80697600,
+      "fuelCost": 15900000.0,
+      "mobKillCoinsAt100": 5139186.295503212,
+      "gabagoolPrice": 437.2,
+      "gabagoolAmountAuto": 363800.0,
+      "notes": "Imported from spreadsheet (Day 150)"
+    },
+    "2026-01-25": {
+      "date": "2026-01-25",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84326400,
+      "fuelCost": 17700000.0,
+      "mobKillCoinsAt100": 5122950.819672131,
+      "gabagoolPrice": 430.7,
+      "gabagoolAmountAuto": 384600.0,
+      "notes": "Imported from spreadsheet (Day 151)"
+    },
+    "2026-01-26": {
+      "date": "2026-01-26",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83462400,
+      "fuelCost": 17500000.0,
+      "mobKillCoinsAt100": 5072463.768115942,
+      "gabagoolPrice": 414.0,
+      "gabagoolAmountAuto": 382300.0,
+      "notes": "Imported from spreadsheet (Day 152)"
+    },
+    "2026-01-27": {
+      "date": "2026-01-27",
+      "minionsRefueledAuto": 32,
+      "activeMs": 84758400,
+      "fuelCost": 16900000.0,
+      "mobKillCoinsAt100": 5096839.95922528,
+      "gabagoolPrice": 414.8,
+      "gabagoolAmountAuto": 385300.0,
+      "notes": "Imported from spreadsheet (Day 153)"
+    },
+    "2026-01-28": {
+      "date": "2026-01-28",
+      "minionsRefueledAuto": 32,
+      "activeMs": 75168000,
+      "fuelCost": 16900000.0,
+      "mobKillCoinsAt100": 5057471.264367816,
+      "gabagoolPrice": 409.7,
+      "gabagoolAmountAuto": 340500.0,
+      "notes": "Imported from spreadsheet (Day 154)"
+    },
+    "2026-01-29": {
+      "date": "2026-01-29",
+      "minionsRefueledAuto": 32,
+      "activeMs": 81388800,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5095541.401273885,
+      "gabagoolPrice": 405.3,
+      "gabagoolAmountAuto": 373300.0,
+      "notes": "Imported from spreadsheet (Day 155)"
+    },
+    "2026-01-30": {
+      "date": "2026-01-30",
+      "minionsRefueledAuto": 32,
+      "activeMs": 79228800,
+      "fuelCost": 17400000.0,
+      "mobKillCoinsAt100": 5125408.942202835,
+      "gabagoolPrice": 463.3,
+      "gabagoolAmountAuto": 355100.0,
+      "notes": "Imported from spreadsheet (Day 156)"
+    },
+    "2026-01-31": {
+      "date": "2026-01-31",
+      "minionsRefueledAuto": 32,
+      "activeMs": 67478400,
+      "fuelCost": 17700000.0,
+      "mobKillCoinsAt100": 5121638.924455826,
+      "gabagoolPrice": 496.7,
+      "gabagoolAmountAuto": 306500.0,
+      "notes": "Imported from spreadsheet (Day 157)"
+    },
+    "2026-02-01": {
+      "date": "2026-02-01",
+      "minionsRefueledAuto": 32,
+      "activeMs": 76982400,
+      "fuelCost": 21400000.0,
+      "mobKillCoinsAt100": 5162738.49607183,
+      "gabagoolPrice": 398.7,
+      "gabagoolAmountAuto": 353300.0,
+      "notes": "Imported from spreadsheet (Day 158)"
+    },
+    "2026-02-02": {
+      "date": "2026-02-02",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78451200,
+      "fuelCost": 21500000.0,
+      "mobKillCoinsAt100": 5066079.295154185,
+      "gabagoolPrice": 399.9,
+      "gabagoolAmountAuto": 359300.0,
+      "notes": "Imported from spreadsheet (Day 159)"
+    },
+    "2026-02-03": {
+      "date": "2026-02-03",
+      "minionsRefueledAuto": 32,
+      "activeMs": 83030400,
+      "fuelCost": 17000000.0,
+      "mobKillCoinsAt100": 5098855.35900104,
+      "gabagoolPrice": 397.6,
+      "gabagoolAmountAuto": 378600.0,
+      "notes": "Imported from spreadsheet (Day 160)"
+    },
+    "2026-02-04": {
+      "date": "2026-02-04",
+      "minionsRefueledAuto": 32,
+      "activeMs": 78537600,
+      "fuelCost": 17300000.0,
+      "mobKillCoinsAt100": 5060506.0506050605,
+      "gabagoolPrice": 400.7,
+      "gabagoolAmountAuto": 356800.0,
+      "notes": "Imported from spreadsheet (Day 161)"
+    },
+    "2026-02-05": {
+      "date": "2026-02-05",
+      "minionsRefueledAuto": 32,
+      "activeMs": 65059200,
+      "fuelCost": 19400000.0,
+      "mobKillCoinsAt100": 5046480.743691899,
+      "gabagoolPrice": 425.1,
+      "gabagoolAmountAuto": 296600.0,
+      "notes": "Imported from spreadsheet (Day 162)"
+    },
+    "2026-02-06": {
+      "date": "2026-02-06",
+      "minionsRefueledAuto": 32,
+      "activeMs": 85276800,
+      "fuelCost": 19500000.0,
+      "mobKillCoinsAt100": 5065856.129685917,
+      "gabagoolPrice": 417.2,
+      "gabagoolAmountAuto": 396800.0,
+      "notes": "Imported from spreadsheet (Day 163)"
+    },
+    "2026-02-07": {
+      "date": "2026-02-07",
+      "minionsRefueledAuto": 32,
+      "activeMs": 0,
+      "fuelCost": 16700000.0,
+      "mobKillCoinsAt100": 0.0,
+      "gabagoolPrice": 417.5,
+      "gabagoolAmountAuto": 371800.0,
+      "notes": "Imported from spreadsheet (Day 164)"
+    },
+    "2026-02-08": {
+      "date": "2026-02-08",
+      "minionsRefueledAuto": 32,
+      "activeMs": 0,
+      "fuelCost": 16900000.0,
+      "mobKillCoinsAt100": 0.0,
+      "gabagoolPrice": 0.0,
+      "gabagoolAmountAuto": 0.0,
+      "notes": "Imported from spreadsheet (Day 165)"
+    },
     "2026-02-09": {
       "date": "2026-02-09",
       "minionsRefueledAuto": 32,

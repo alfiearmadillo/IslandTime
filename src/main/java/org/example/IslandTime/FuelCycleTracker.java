@@ -117,6 +117,14 @@ public class FuelCycleTracker {
     private static final long SAVE_INTERVAL_MS = 30_000L;
     private static long lastSaveTime = 0;
 
+    // Rolling backups of the day-record data, taken whenever new fuel data is added
+    // (not on every save) provided at least BACKUP_INTERVAL_MS has passed since the
+    // last one. Only the most recent MAX_BACKUPS are kept.
+    private static final Path BACKUP_DIR = Paths.get("config/IslandTime/backups");
+    private static final long BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000L;
+    private static final int MAX_BACKUPS = 7;
+    private static long lastBackupTime = 0;
+
     // Active per-minion fuel state: minion GUI title (the same key MinionFuelTracker
     // uses to distinguish minions) -> that minion's own fuel expiry time. Each minion
     // tracks its own remaining fuel independently, so fueling 32 minions doesn't
@@ -433,6 +441,7 @@ public class FuelCycleTracker {
             }
         });
 
+        maybeBackupData();
         save();
     }
 
@@ -573,15 +582,22 @@ public class FuelCycleTracker {
         String minionsCountedTodayDate;
         double mobKillCoinsAt100Baseline;
         Map<String, DayRecord> days;
+        long lastBackupTime;
     }
 
-    public static void save() {
+    private static SaveData buildSaveData() {
         SaveData data = new SaveData();
         data.minionExpiries             = new java.util.HashMap<>(minionExpiries);
         data.minionsCountedToday        = new java.util.HashSet<>(minionsCountedToday);
         data.minionsCountedTodayDate    = minionsCountedTodayDate;
         data.mobKillCoinsAt100Baseline  = mobKillCoinsAt100Baseline;
         data.days                       = new TreeMap<>(dayRecords);
+        data.lastBackupTime             = lastBackupTime;
+        return data;
+    }
+
+    public static void save() {
+        SaveData data = buildSaveData();
 
         // Snapshot the target file at submit-time (not inside the async lambda) so a
         // save queued just before a test-mode toggle still writes to the file it was
@@ -604,6 +620,54 @@ public class FuelCycleTracker {
                 try { Files.deleteIfExists(tmp); } catch (IOException ignored) {}
             }
         });
+    }
+
+    /**
+     * Takes a rolling backup of the current day-record data, but only if at least
+     * BACKUP_INTERVAL_MS has passed since the last backup. Called whenever new fuel
+     * data is added (rather than on every save), so a busy session doesn't spam
+     * backups. Keeps only the most recent MAX_BACKUPS files.
+     */
+    private static void maybeBackupData() {
+        long now = System.currentTimeMillis();
+        if (lastBackupTime != 0 && now - lastBackupTime < BACKUP_INTERVAL_MS) return;
+        lastBackupTime = now;
+
+        SaveData data = buildSaveData();
+        String prefix = testModeEnabled ? "fuel_days_test_backup-" : "fuel_days_backup-";
+        Path backupFile = BACKUP_DIR.resolve(prefix + now + ".json");
+
+        saveExecutor.submit(() -> {
+            try {
+                Files.createDirectories(BACKUP_DIR);
+                Files.writeString(backupFile, GSON.toJson(data));
+                pruneOldBackups(prefix);
+            } catch (IOException e) {
+                System.err.println("[FuelCycleTracker] Backup failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+    }
+
+    /** Deletes the oldest backups beyond MAX_BACKUPS for the given file-name prefix. */
+    private static void pruneOldBackups(String prefix) {
+        try {
+            if (!Files.isDirectory(BACKUP_DIR)) return;
+            List<Path> backups;
+            try (var stream = Files.list(BACKUP_DIR)) {
+                backups = stream
+                        .filter(p -> p.getFileName().toString().startsWith(prefix)
+                                  && p.getFileName().toString().endsWith(".json"))
+                        .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                        .collect(java.util.stream.Collectors.toList());
+            }
+            while (backups.size() > MAX_BACKUPS) {
+                Path oldest = backups.remove(0);
+                Files.deleteIfExists(oldest);
+            }
+        } catch (IOException e) {
+            System.err.println("[FuelCycleTracker] Failed to prune old backups: " + e.getMessage());
+        }
     }
 
     public static void load() {
@@ -636,6 +700,7 @@ public class FuelCycleTracker {
                         dayRecords.clear();
                         dayRecords.putAll(data.days);
                     }
+                    lastBackupTime = data.lastBackupTime;
                     lastTickTime = System.currentTimeMillis();
 
                     // Drop any per-minion fuel that already ran out while the game was closed —
