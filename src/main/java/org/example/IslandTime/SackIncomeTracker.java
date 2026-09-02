@@ -50,37 +50,43 @@ public class SackIncomeTracker {
         if (!plain.startsWith("[Sacks]")) return;
 
         // Hypixel's "[Sacks]" line is built from several sibling components (e.g. one per
-        // word/segment of the visible text) that all carry an IDENTICAL copy of the same
-        // full hover tooltip — not one hover event split across siblings. Recursing through
-        // every sibling and blindly concatenating each one's hover text therefore reads the
-        // same "+145 Crude Gabagool (Slayer Sack)" line once per sibling that carries it
-        // (observed 4x in practice), silently quadrupling the tracked amount. Deduplicating
-        // identical hover-text blocks — keeping only the first occurrence of each exact
-        // block of text — before parsing fixes this without needing to know how many
-        // siblings a given server/message happens to use.
+        // word/segment of the visible text), and more than one of those siblings can carry
+        // its own copy of the "Added"/"Removed" hover tooltip — not always a byte-identical
+        // copy (e.g. one sibling's hover may include extra surrounding lines/whitespace that
+        // another doesn't), so deduplicating whole hover-text blocks isn't fully reliable and
+        // duplicate "+145 Crude Gabagool (Slayer Sack)" entries can still slip through under
+        // slightly different block text. Instead, every individual regex match (a single
+        // "<delta> <item> (<source>)" entry) is deduped by its own exact matched text — the
+        // same delta+item+source triple genuinely appearing twice within one single message
+        // isn't a real scenario Hypixel produces (deltas for the same item are always
+        // combined into one line per message), so this is safe regardless of how many
+        // siblings/blocks the entry happened to be read from.
         java.util.LinkedHashSet<String> hoverBlocks = new java.util.LinkedHashSet<>();
         collectHoverText(message, hoverBlocks);
         if (hoverBlocks.isEmpty()) return;
 
-        String text = String.join("\n", hoverBlocks);
-        Matcher matcher = SACK_CHANGE_PATTERN.matcher(text);
+        java.util.Set<String> seenEntries = new java.util.HashSet<>();
         double gained = 0;
         boolean removed = false;
-        while (matcher.find()) {
-            String item = matcher.group(2).trim();
-            if (!item.equalsIgnoreCase(TRACKED_ITEM_NAME)) continue;
-            try {
-                double delta = Double.parseDouble(matcher.group(1).replace(",", ""));
-                if (delta > 0) {
-                    gained += delta;
-                } else if (delta < 0) {
-                    // Taking gabagool out of the sack (e.g. to sell) means it's been emptied —
-                    // stop any active "fuel day up" alert. This intentionally does NOT subtract
-                    // from the day's tracked amount: you're just withdrawing what was already
-                    // counted, not losing it.
-                    removed = true;
-                }
-            } catch (NumberFormatException ignored) {}
+        for (String block : hoverBlocks) {
+            Matcher matcher = SACK_CHANGE_PATTERN.matcher(block);
+            while (matcher.find()) {
+                if (!seenEntries.add(matcher.group())) continue; // already counted this exact entry
+                String item = matcher.group(2).trim();
+                if (!item.equalsIgnoreCase(TRACKED_ITEM_NAME)) continue;
+                try {
+                    double delta = Double.parseDouble(matcher.group(1).replace(",", ""));
+                    if (delta > 0) {
+                        gained += delta;
+                    } else if (delta < 0) {
+                        // Taking gabagool out of the sack (e.g. to sell) means it's been emptied —
+                        // stop any active "fuel day up" alert. This intentionally does NOT subtract
+                        // from the day's tracked amount: you're just withdrawing what was already
+                        // counted, not losing it.
+                        removed = true;
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
         }
 
         if (gained > 0) {
