@@ -247,6 +247,18 @@ public class MinionFuelTracker {
                 }
             }
 
+            // Diagnostic logging (console only, not chat) for every detected fuel-slot
+            // change, regardless of whether it resulted in any counted fuel units — this
+            // is intentionally always-on (not gated behind a debug flag) since it only
+            // writes to the log file, not chat, and is the only way to retroactively
+            // diagnose a placement that silently failed to register (e.g. topping up an
+            // already-active minion whose remaining fuel item's count/hover-name
+            // comparison didn't behave as expected).
+            System.out.println("[MinionFuelTracker] Fuel slot changed for \"" + currentMinionKey + "\": "
+                    + "initial=[" + (initialFuelSlotItem.isEmpty() ? "empty" : initialFuelSlotItem.getCount() + "x " + initialFuelSlotItem.getHoverName().getString()) + "]"
+                    + " -> current=[" + (currentItem.isEmpty() ? "empty" : currentItem.getCount() + "x " + currentItem.getHoverName().getString()) + "]"
+                    + " sameFuelType=" + sameFuelType + " newFuelUnits=" + newFuelUnits);
+
             if (newFuelUnits > 0) {
                 // The fuel was placed! Send the message (if enabled)
                 if (showFuelMessages) {
