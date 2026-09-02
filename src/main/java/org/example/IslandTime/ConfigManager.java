@@ -117,7 +117,7 @@ public class ConfigManager {
         config.fuelCycles.enabled = TrackingToggleConfig.isFuelCycleEnabled();
         config.fuelCycles.useTestDataFile = FuelCycleTracker.isTestModeEnabled();
         config.fuelCycles.mobKillCoinsAt100PercentString = String.valueOf(FuelCycleTracker.getMobKillCoinsAt100Baseline());
-        FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(java.time.LocalDate.now().toString());
+        FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(FuelCycleTracker.getCurrentCycleDateKey());
         config.fuelCycles.todayGabagoolPriceString = today != null ? String.valueOf(today.gabagoolPrice) : "0";
         // Blank = "use the auto-tracked value from sack chat messages" (see SackIncomeTracker).
         config.fuelCycles.todayGabagoolAmountString = (today != null && today.manualGabagoolAmount != null)
@@ -188,7 +188,7 @@ public class ConfigManager {
         } catch (NumberFormatException ignored) {
             // Invalid number, keep existing value
         }
-        String todayDate = java.time.LocalDate.now().toString();
+        String todayDate = FuelCycleTracker.getCurrentCycleDateKey();
         try {
             double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
             FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);

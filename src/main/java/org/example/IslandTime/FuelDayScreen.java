@@ -16,9 +16,10 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 
 /**
- * GUI screen for the fuel day tracker. Displays a scrollable list of per-day fuel/profit
- * records, one row per calendar day. Rows are colored on a red → yellow → green gradient
- * based on that day's AFK percentage. Every value is directly editable, similar to the
+ * GUI screen for the fuel day tracker. Displays a scrollable list of per-fuel-cycle
+ * fuel/profit records, one row per real ~24h+ fuel cycle (see FuelCycleTracker) rather
+ * than one row per calendar date. Rows are colored on a red → yellow → green gradient
+ * based on that cycle's AFK percentage. Every value is directly editable, similar to the
  * Block Highlights and Player List GUIs.
  */
 public class FuelDayScreen extends Screen {

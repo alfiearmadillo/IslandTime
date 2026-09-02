@@ -20,7 +20,7 @@ public class IslandTimeConfig extends Config {
     public IslandTime islandTime = new IslandTime();
 
     @Expose
-    @Category(name = "Fuel Cycles", desc = "Track minion fuel and profit per day")
+    @Category(name = "Fuel Cycles", desc = "Track minion fuel and profit per fuel cycle")
     public FuelCycles fuelCycles = new FuelCycles();
 
     @Expose
@@ -89,7 +89,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing day-by-day fuel and profit stats. Each entry is titled with its cycle's actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm), and a Total Profit widget beside the scrollbar sums every tracked day. You can also use /it fueldays or /it fueltime")
+        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing per-fuel-cycle fuel and profit stats. Each entry spans one real ~24h+ fuel cycle (not necessarily a calendar day) and is titled with its actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm), and a Total Profit widget beside the scrollbar sums every tracked cycle. You can also use /it fueldays or /it fueltime")
         @ConfigEditorButton(buttonText = " Open Fuel Day Tracker ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
@@ -100,7 +100,7 @@ public class IslandTimeConfig extends Config {
         };
 
         @Expose
-        @ConfigOption(name = "Enable Tracking", desc = "Track minion fuel and profit per day")
+        @ConfigOption(name = "Enable Tracking", desc = "Track minion fuel and profit per fuel cycle")
         @ConfigEditorBoolean
         public boolean enabled = true;
 
@@ -117,29 +117,30 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(
-                name = "Coins/Day @ 100% AFK",
-                desc = "Baseline coins/day from mob kills at 100% AFK time, used to estimate each day's mob-kill profit " +
-                        "based on that day's actual AFK%. Snapshotted per-day when recorded, so changing this later " +
-                        "(e.g. after a game update) doesn't affect past days. Edit past days individually in the Fuel Day Tracker GUI."
+                name = "Coins/Cycle @ 100% AFK",
+                desc = "Baseline coins/cycle from mob kills at 100% AFK time, used to estimate each fuel cycle's mob-kill " +
+                        "profit based on that cycle's actual AFK%. Snapshotted per-cycle when recorded, so changing this " +
+                        "later (e.g. after a game update) doesn't affect past cycles. Edit past cycles individually in the Fuel Day Tracker GUI."
         )
         @ConfigEditorText
         public String mobKillCoinsAt100PercentString = "0";
 
         @Expose
         @ConfigOption(
-                name = "Today's Gabagool Price",
-                desc = "Manually entered sell price for a single Crude Gabagool today (sacks can't be read automatically). " +
-                        "Edit past days individually in the Fuel Day Tracker GUI."
+                name = "Current Cycle's Gabagool Price",
+                desc = "Manually entered sell price for a single Crude Gabagool during the currently active fuel cycle " +
+                        "(sacks can't be read automatically). Applies to whichever cycle is currently in progress — " +
+                        "not necessarily today's calendar date, if the cycle is still running past midnight. Edit past cycles individually in the Fuel Day Tracker GUI."
         )
         @ConfigEditorText
         public String todayGabagoolPriceString = "0";
 
         @Expose
         @ConfigOption(
-                name = "Today's Gabagool Amount Override",
-                desc = "Manual override for the amount of Crude Gabagool collected today. Leave blank to use the " +
-                        "amount auto-tracked from Hypixel's '[Sacks]' chat messages (requires sack messages enabled " +
-                        "in-game). Edit past days individually in the Fuel Day Tracker GUI."
+                name = "Current Cycle's Gabagool Amount Override",
+                desc = "Manual override for the amount of Crude Gabagool collected during the currently active fuel " +
+                        "cycle. Leave blank to use the amount auto-tracked from Hypixel's '[Sacks]' chat messages " +
+                        "(requires sack messages enabled in-game). Edit past cycles individually in the Fuel Day Tracker GUI."
         )
         @ConfigEditorText
         public String todayGabagoolAmountString = "";
