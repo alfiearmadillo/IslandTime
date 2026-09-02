@@ -89,7 +89,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing day-by-day fuel and profit stats. Each entry is titled with its cycle's actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm). You can also use /it fueldays or /it fueltime")
+        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing day-by-day fuel and profit stats. Each entry is titled with its cycle's actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm), and a Total Profit widget beside the scrollbar sums every tracked day. You can also use /it fueldays or /it fueltime")
         @ConfigEditorButton(buttonText = " Open Fuel Day Tracker ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override

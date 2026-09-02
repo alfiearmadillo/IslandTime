@@ -27,6 +27,8 @@ public class FuelDayScreen extends Screen {
     private static final int HEADER_HEIGHT = 40;
     private static final int BUTTON_SIZE = 20;
     private static final int PADDING = 4;
+    private static final int TOTAL_PROFIT_WIDGET_GAP = 12;
+    private static final int TOTAL_PROFIT_WIDGET_WIDTH = 110;
 
     private int scrollOffset = 0;
     private int listTop;
@@ -320,6 +322,34 @@ public class FuelDayScreen extends Screen {
             int thumbY = listTop + (int) ((trackHeight - thumbHeight) * scrollRatio);
             context.fill(scrollbarX, thumbY, scrollbarX + scrollbarW, thumbY + thumbHeight, 0xAAFFFFFF);
         }
+
+        renderTotalProfitWidget(context, records);
+    }
+
+    /**
+     * Small standalone box off to the right of the scrollbar summing the final profit of
+     * every tracked day (not just the ones currently scrolled into view).
+     */
+    private void renderTotalProfitWidget(GuiGraphicsExtractor context, List<FuelCycleTracker.DayRecord> records) {
+        double totalProfit = 0.0;
+        for (FuelCycleTracker.DayRecord record : records) {
+            totalProfit += record.getProfit();
+        }
+
+        int widgetX = listLeft + listWidth + TOTAL_PROFIT_WIDGET_GAP;
+        int widgetY = listTop;
+        int widgetW = TOTAL_PROFIT_WIDGET_WIDTH;
+        int widgetH = 36;
+
+        context.fill(widgetX, widgetY, widgetX + widgetW, widgetY + widgetH, 0x80000000);
+
+        Component label = Component.literal("Total Profit").withStyle(ChatFormatting.GRAY);
+        context.text(font, label, widgetX + PADDING, widgetY + 4, 0xFFAAAAAA, true);
+
+        ChatFormatting totalStyle = totalProfit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
+        Component totalComp = Component.literal(PriceCache.formatCoins(totalProfit)).withStyle(totalStyle);
+        context.text(font, totalComp, widgetX + PADDING, widgetY + 18,
+                totalProfit >= 0 ? 0xFF55FF55 : 0xFFFF5555, true);
     }
 
     /**
