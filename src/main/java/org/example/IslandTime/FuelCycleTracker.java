@@ -327,12 +327,25 @@ public class FuelCycleTracker {
             return Math.min(100.0, (activeMs * 100.0) / elapsed);
         }
 
+        /**
+         * AFK percentage of the full 24h day, regardless of whether the day is still in
+         * progress. Unlike {@link #getAfkPercent(long)} (which uses elapsed-time-so-far as
+         * the denominator for a live/in-progress day, purely for a more meaningful live
+         * display), mob-kill coins must always be computed against the full day so they
+         * accumulate smoothly as the day goes on instead of jumping around based on how much
+         * of the day has elapsed.
+         */
+        private double getFullDayAfkPercent() {
+            if (activeMs <= 0) return 0.0;
+            return Math.min(100.0, (activeMs * 100.0) / DAY_MS);
+        }
+
         public double getMobKillCoins() {
             return getMobKillCoins(System.currentTimeMillis());
         }
 
         public double getMobKillCoins(long now) {
-            return mobKillCoinsAt100 * (getAfkPercent(now) / 100.0);
+            return mobKillCoinsAt100 * (getFullDayAfkPercent() / 100.0);
         }
 
         /** Effective gabagool amount used for profit calc: manual override if set, else auto-tracked. */
