@@ -79,3 +79,6 @@ All commands can also be configured from the GUI (`/islandtime`).
 ## Configuration
 
 Settings are saved in the `config` folder as `islandtime*.txt` files (and `fuel_days.json` for the fuel day tracker). Never share these publicly — they contain your Discord webhook URL.
+
+The Fuel Day Tracker has a "Use Test Data File" toggle (in the Fuel Cycles config category) that redirects all fuel/profit tracking to a separate `fuel_days_test.json` file instead of your real `fuel_days.json`, so you can safely experiment without risking your actual tracked history. Toggling it reloads the Fuel Day Tracker GUI's data from whichever file is now active.
+

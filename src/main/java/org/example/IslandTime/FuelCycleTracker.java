@@ -44,11 +44,72 @@ import java.util.concurrent.TimeUnit;
  */
 public class FuelCycleTracker {
 
-    private static final Path SAVE_FILE     = Paths.get("config/IslandTime/fuel_days.json");
-    private static final Path SAVE_FILE_TMP = Paths.get("config/IslandTime/fuel_days.tmp");
+    private static final Path LIVE_SAVE_FILE     = Paths.get("config/IslandTime/fuel_days.json");
+    private static final Path LIVE_SAVE_FILE_TMP = Paths.get("config/IslandTime/fuel_days.tmp");
+
+    // Separate save location used while "test mode" is enabled, so experimenting with
+    // the tracker (e.g. testing this session's changes) never touches real minion data.
+    private static final Path TEST_SAVE_FILE     = Paths.get("config/IslandTime/fuel_days_test.json");
+    private static final Path TEST_SAVE_FILE_TMP = Paths.get("config/IslandTime/fuel_days_test.tmp");
 
     // Legacy per-cycle save file, kept only so existing data can be migrated once.
+    // Test mode never touches or migrates this — it's real historical data.
     private static final Path LEGACY_SAVE_FILE = Paths.get("config/IslandTime/fuel_cycles.txt");
+
+    // The test-mode toggle itself is always persisted at a fixed path (never one of the
+    // two data files above), so switching modes doesn't depend on whichever data file
+    // happens to be active.
+    private static final Path TEST_MODE_FLAG_FILE = Paths.get("config/IslandTime/fuel_test_mode.txt");
+
+    /** When true, save()/load() read/write TEST_SAVE_FILE instead of LIVE_SAVE_FILE, so
+     *  testing the tracker never risks corrupting real tracked fuel/profit data. */
+    private static volatile boolean testModeEnabled = false;
+
+    private static Path saveFile()    { return testModeEnabled ? TEST_SAVE_FILE    : LIVE_SAVE_FILE; }
+    private static Path saveFileTmp() { return testModeEnabled ? TEST_SAVE_FILE_TMP : LIVE_SAVE_FILE_TMP; }
+
+    public static boolean isTestModeEnabled() { return testModeEnabled; }
+
+    /**
+     * Switches between the live and test data files, persisting the toggle itself and
+     * reloading all in-memory state (day records, per-minion expiries, etc.) from
+     * whichever file is now active. Any active fuel-cycle state before the switch is
+     * discarded in memory (it's still safely saved in the previous mode's file).
+     */
+    public static void setTestModeEnabled(boolean enabled) {
+        if (testModeEnabled == enabled) return;
+        testModeEnabled = enabled;
+        saveTestModeFlag();
+
+        // Reset in-memory state before reloading, so switching mid-session never bleeds
+        // live data into the test file (or vice versa).
+        dayRecords.clear();
+        minionExpiries.clear();
+        minionsCountedToday.clear();
+        minionsCountedTodayDate = "";
+        mobKillCoinsAt100Baseline = 0.0;
+
+        load();
+    }
+
+    private static void saveTestModeFlag() {
+        try {
+            Files.createDirectories(TEST_MODE_FLAG_FILE.getParent());
+            Files.writeString(TEST_MODE_FLAG_FILE, String.valueOf(testModeEnabled));
+        } catch (IOException e) {
+            System.err.println("[FuelCycleTracker] Failed to save test-mode flag: " + e.getMessage());
+        }
+    }
+
+    private static void loadTestModeFlag() {
+        if (Files.exists(TEST_MODE_FLAG_FILE)) {
+            try {
+                testModeEnabled = Boolean.parseBoolean(Files.readString(TEST_MODE_FLAG_FILE).trim());
+            } catch (IOException e) {
+                System.err.println("[FuelCycleTracker] Failed to load test-mode flag: " + e.getMessage());
+            }
+        }
+    }
 
     private static final long DAY_MS = 24 * 60 * 60 * 1000L;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -444,7 +505,7 @@ public class FuelCycleTracker {
 
         save();
 
-        return Files.exists(SAVE_FILE);
+        return Files.exists(saveFile());
     }
 
     // -------------------------------------------------------------------------
@@ -522,35 +583,47 @@ public class FuelCycleTracker {
         data.mobKillCoinsAt100Baseline  = mobKillCoinsAt100Baseline;
         data.days                       = new TreeMap<>(dayRecords);
 
+        // Snapshot the target file at submit-time (not inside the async lambda) so a
+        // save queued just before a test-mode toggle still writes to the file it was
+        // meant for, instead of racing the mode switch and writing live data into the
+        // test file (or vice versa).
+        Path file = saveFile();
+        Path tmp  = saveFileTmp();
+
         saveExecutor.submit(() -> {
             try {
-                Files.createDirectories(SAVE_FILE.getParent());
-                Files.writeString(SAVE_FILE_TMP, GSON.toJson(data));
-                Files.move(SAVE_FILE_TMP, SAVE_FILE,
+                Files.createDirectories(file.getParent());
+                Files.writeString(tmp, GSON.toJson(data));
+                Files.move(tmp, file,
                         StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.ATOMIC_MOVE);
             } catch (IOException e) {
                 System.err.println("[FuelCycleTracker] Save failed: " + e.getMessage());
-                System.err.println("[FuelCycleTracker] Attempted path: " + SAVE_FILE.toAbsolutePath());
+                System.err.println("[FuelCycleTracker] Attempted path: " + file.toAbsolutePath());
                 e.printStackTrace();
-                try { Files.deleteIfExists(SAVE_FILE_TMP); } catch (IOException ignored) {}
+                try { Files.deleteIfExists(tmp); } catch (IOException ignored) {}
             }
         });
     }
 
     public static void load() {
-        if (!Files.exists(SAVE_FILE) && Files.exists(SAVE_FILE_TMP)) {
+        loadTestModeFlag();
+
+        Path file = saveFile();
+        Path tmp  = saveFileTmp();
+
+        if (!Files.exists(file) && Files.exists(tmp)) {
             try {
-                Files.move(SAVE_FILE_TMP, SAVE_FILE, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
                 System.out.println("[FuelCycleTracker] Recovered from .tmp after crash.");
             } catch (IOException e) {
                 System.err.println("[FuelCycleTracker] Could not promote .tmp: " + e.getMessage());
             }
         }
 
-        if (Files.exists(SAVE_FILE)) {
+        if (Files.exists(file)) {
             try {
-                String json = Files.readString(SAVE_FILE);
+                String json = Files.readString(file);
                 SaveData data = GSON.fromJson(json, SaveData.class);
                 if (data != null) {
                     mobKillCoinsAt100Baseline = data.mobKillCoinsAt100Baseline;
@@ -577,10 +650,12 @@ public class FuelCycleTracker {
             return;
         }
 
-        // No new-format file yet — attempt a one-time migration from the legacy
-        // per-cycle text format, bucketing each completed cycle's data into the
-        // calendar day it started on.
-        migrateLegacyFile();
+        // No new-format file yet for the active mode. Legacy migration only ever applies
+        // to real (live) data — test mode simply starts empty instead of pulling in the
+        // legacy live history.
+        if (!testModeEnabled) {
+            migrateLegacyFile();
+        }
     }
 
     private static void migrateLegacyFile() {

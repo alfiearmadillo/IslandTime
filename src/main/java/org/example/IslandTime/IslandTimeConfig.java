@@ -106,6 +106,17 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(
+                name = "Use Test Data File",
+                desc = "When enabled, fuel/profit tracking reads and writes to a separate test data file " +
+                        "(fuel_days_test.json) instead of your real tracked data (fuel_days.json), so you can " +
+                        "safely try things out without risking your actual minion history. Toggling this reloads " +
+                        "the Fuel Day Tracker GUI's data from whichever file is now active."
+        )
+        @ConfigEditorBoolean
+        public boolean useTestDataFile = false;
+
+        @Expose
+        @ConfigOption(
                 name = "Mob-Kill Coins/Day @ 100% AFK",
                 desc = "Baseline coins/day from mob kills at 100% AFK time, used to estimate each day's mob-kill profit " +
                         "based on that day's actual AFK%. Snapshotted per-day when recorded, so changing this later " +
