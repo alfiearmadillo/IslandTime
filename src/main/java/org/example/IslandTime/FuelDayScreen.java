@@ -327,42 +327,55 @@ public class FuelDayScreen extends Screen {
             if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
 
             FuelCycleTracker.DayRecord record = records.get(i);
+            boolean isFutureDay = record.cycleStartMs > displayNowMs;
 
-            int bgColor = afkGradientColor(record.getAfkPercent(displayNowMs), 0x50);
+            int bgColor = isFutureDay ? 0x50404040 : afkGradientColor(record.getAfkPercent(displayNowMs), 0x50);
             context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
 
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 2;
 
-            // Line 1: date + profit
+            // Line 1: date + profit (queued/future days don't have a profit yet — they
+            // haven't started, so nothing has actually happened on them to profit from)
             context.text(font, Component.literal(FuelCycleTracker.formatCycleRange(record)).withStyle(ChatFormatting.BOLD, ChatFormatting.WHITE),
                     listLeft + PADDING, rowY + 3, 0xFFFFFFFF, true);
-            double profit = record.getProfit(displayNowMs);
-            ChatFormatting profitStyle = profit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
-            String profitStr = "Profit: " + PriceCache.formatCoins(profit);
-            int profitW = font.width(profitStr);
-            context.text(font, Component.literal(profitStr).withStyle(profitStyle), btnX - profitW - 8, rowY + 3,
-                    profit >= 0 ? 0xFF55FF55 : 0xFFFF5555, true);
+            if (isFutureDay) {
+                String queuedStr = "Queued";
+                int queuedW = font.width(queuedStr);
+                context.text(font, Component.literal(queuedStr).withStyle(ChatFormatting.YELLOW), btnX - queuedW - 8, rowY + 3,
+                        0xFFFFFF55, true);
+            } else {
+                double profit = record.getProfit(displayNowMs);
+                ChatFormatting profitStyle = profit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
+                String profitStr = "Profit: " + PriceCache.formatCoins(profit);
+                int profitW = font.width(profitStr);
+                context.text(font, Component.literal(profitStr).withStyle(profitStyle), btnX - profitW - 8, rowY + 3,
+                        profit >= 0 ? 0xFF55FF55 : 0xFFFF5555, true);
+            }
 
-            // Line 2: minions, AFK%, fuel cost
+            // Line 2: minions, fuel cost — and AFK% too, once this day has actually started
             String line2 = "Minions: " + record.getEffectiveMinionCount()
                     + (record.manualMinionCount != null ? " (manual)" : "")
-                    + "  AFK: " + String.format("%.1f%%", record.getAfkPercent(displayNowMs))
+                    + (isFutureDay ? "" : "  AFK: " + String.format("%.1f%%", record.getAfkPercent(displayNowMs)))
                     + "  Fuel Cost: " + PriceCache.formatCoins(record.getEffectiveFuelCost())
                     + (record.manualFuelCost != null ? " (manual)" : "");
             context.text(font, Component.literal(line2).withStyle(ChatFormatting.GRAY),
                     listLeft + PADDING, rowY + 18, 0xFFCCCCCC, true);
 
-            // Line 3: mob-kill coins, gabagool revenue, notes
-            String line3 = "Coins: " + PriceCache.formatCoins(record.getMobKillCoins(displayNowMs))
-                    + "  Gabagool: " + PriceCache.formatCoins(record.getGabagoolRevenue())
-                    + " (" + record.getEffectiveGabagoolAmount() + (record.manualGabagoolAmount != null ? " manual" : " auto") + ")"
-                    + (record.notes != null && !record.notes.isBlank() ? "  \"" + record.notes + "\"" : "");
-            int maxW = listWidth - (BUTTON_SIZE + 2) * 2 - PADDING * 2;
-            if (font.width(line3) > maxW) {
-                line3 = font.plainSubstrByWidth(line3, maxW - font.width("...")) + "...";
+            // Line 3: mob-kill coins, gabagool revenue, notes — not applicable yet for a
+            // day that hasn't started, so it's skipped entirely rather than showing a
+            // row of misleading zeroes
+            if (!isFutureDay) {
+                String line3 = "Coins: " + PriceCache.formatCoins(record.getMobKillCoins(displayNowMs))
+                        + "  Gabagool: " + PriceCache.formatCoins(record.getGabagoolRevenue())
+                        + " (" + record.getEffectiveGabagoolAmount() + (record.manualGabagoolAmount != null ? " manual" : " auto") + ")"
+                        + (record.notes != null && !record.notes.isBlank() ? "  \"" + record.notes + "\"" : "");
+                int maxW = listWidth - (BUTTON_SIZE + 2) * 2 - PADDING * 2;
+                if (font.width(line3) > maxW) {
+                    line3 = font.plainSubstrByWidth(line3, maxW - font.width("...")) + "...";
+                }
+                context.text(font, Component.literal(line3).withStyle(ChatFormatting.DARK_GRAY),
+                        listLeft + PADDING, rowY + 33, 0xFF999999, true);
             }
-            context.text(font, Component.literal(line3).withStyle(ChatFormatting.DARK_GRAY),
-                    listLeft + PADDING, rowY + 33, 0xFF999999, true);
 
             // Buttons
             int btnY = rowY + (ROW_HEIGHT - BUTTON_SIZE) / 2;

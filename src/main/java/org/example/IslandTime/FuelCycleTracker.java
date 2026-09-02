@@ -184,6 +184,15 @@ public class FuelCycleTracker {
     private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick  = false;
 
+    // The bazaar unit price snapshotted the FIRST time it was needed for the currently
+    // active cohort (whichever cohortStartMs it was captured for), so every fuel unit
+    // placed anywhere within the same cohort — even in separate onMinionFueled() calls
+    // minutes or hours apart — is costed at the same price, instead of drifting with
+    // the live bazaar between fuelings. Naturally invalidates itself once a new cohort
+    // starts (cohortStartMs changes), since the guard below compares against it.
+    private static volatile long   cachedFuelUnitCostCohortStart = -1;
+    private static volatile double cachedFuelUnitCost           = -1;
+
     /** Default mob-kill coins/day at 100% AFK, used as the snapshot baseline for newly created days. */
     private static double mobKillCoinsAt100Baseline = 0.0;
 
@@ -674,13 +683,15 @@ public class FuelCycleTracker {
         // Estimate fuel cost from the bazaar in the background so we never
         // block the client thread while a container screen is open. Each unit's cost
         // lands on the same day-record it was attributed to above, splitting a
-        // multi-day placement's cost across the days it actually covers.
+        // multi-day placement's cost across the days it actually covers. The unit price
+        // itself is snapshotted once per cohort (see getCohortFuelUnitCost()) so
+        // re-fueling the same cohort later doesn't cost different days at different
+        // live prices — nothing about an already-recorded day changes after the fact.
         final long unitsStartFinal  = unitsStart;
         final long cohortStartFinal = cohortStartMs;
         saveExecutor.submit(() -> {
             try {
-                JsonObject bazaar = PriceCache.getBazaar();
-                double unitCost = PriceCache.getCheapestInfernoFuelDistillatePrice(bazaar);
+                double unitCost = getCohortFuelUnitCost(cohortStartFinal);
                 if (unitCost > 0) {
                     for (int u = 0; u < fuelCount; u++) {
                         long slotStart = unitsStartFinal + (long) u * DAY_MS;
@@ -697,6 +708,29 @@ public class FuelCycleTracker {
 
         maybeBackupData();
         save();
+    }
+
+    /**
+     * Returns the bazaar unit price to use for every fuel-cost calculation within the
+     * cohort that started at {@code cohortStart}, fetching and caching it from the live
+     * bazaar the first time it's needed for that cohort and simply returning the cached
+     * value for every later call (from the same or a different fueling event) within
+     * that same cohort — so a day's recorded fuel cost is never affected by however the
+     * live bazaar price happens to move later in the cohort's lifetime. A new cohort
+     * (different {@code cohortStart}) always re-fetches a fresh price. If the live fetch
+     * fails (returns <= 0, e.g. no network), nothing is cached, so the next call retries.
+     */
+    private static synchronized double getCohortFuelUnitCost(long cohortStart) {
+        if (cachedFuelUnitCostCohortStart == cohortStart && cachedFuelUnitCost > 0) {
+            return cachedFuelUnitCost;
+        }
+        JsonObject bazaar = PriceCache.getBazaar();
+        double unitCost = PriceCache.getCheapestInfernoFuelDistillatePrice(bazaar);
+        if (unitCost > 0) {
+            cachedFuelUnitCost = unitCost;
+            cachedFuelUnitCostCohortStart = cohortStart;
+        }
+        return unitCost;
     }
 
     /**
