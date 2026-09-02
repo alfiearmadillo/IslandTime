@@ -17,7 +17,7 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, minion fuel
 - **Ghost Command** — Client-side block removal with `/it ghost`
 - **Keep Resource Pack** — Caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel), skipping re-download if unchanged
 - **Component Display** — Shows specified item components (e.g. `id`, `color`) at the bottom of tooltips in dark gray
-- **Player List** — Scrollable GUI (`/it players`) to manage a list of players with quick party/invite buttons, editable notes, and head skin display
+- **Player List** — Scrollable GUI (`/it players`) to manage a list of players with quick party/invite buttons, editable notes, and head skin display. Also mirrors recent chat to the left of the list; shift + right-click a mirrored line to copy its full raw component structure (text and hover text, including every sibling) to the clipboard — a diagnostic aid for reporting chat-parsing bugs
 - **Sign Helpers** — Adds paste buttons to the sign edit screen with configurable pre-set text per line
 - **WAILA (What Am I Looking At)** — Inspect any targeted block with `/it waila` to see block ID, position, state properties, tile entity data, skull textures, and SkyBlock custom IDs
 - **Block Highlight** — Multi-entry block highlight system with a dedicated GUI (`/it highlights`). Each entry has its own target (block ID, `sb:` SkyBlock ID, or `skull:` texture hash), color, range, intensity, through-walls toggle, and optional area filter. Quickly add highlights from WAILA results or via `/it highlight add`

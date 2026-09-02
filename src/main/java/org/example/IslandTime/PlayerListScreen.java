@@ -8,6 +8,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.ChatFormatting;
 import org.lwjgl.glfw.GLFW;
 
@@ -402,6 +404,74 @@ public class PlayerListScreen extends Screen {
     }
 
     /**
+     * Returns the {@link Component} of the chat-mirror line under (mouseX, mouseY) in real
+     * (unscaled) screen coordinates, or {@code null} if the point isn't over any rendered line.
+     * Geometry here must exactly mirror {@link #renderChatMirror(GuiGraphicsExtractor)}.
+     */
+    private Component chatMirrorMessageAt(double mouseX, double mouseY) {
+        List<Component> messages = ChatMessageStore.getMessages();
+        if (messages.isEmpty()) return null;
+
+        float scale = 0.5f;
+        int chatX = 4;
+        int chatMaxWidth = (int) ((listLeft - 10) / scale);
+        int lineHeight = 9;
+        int bottomY = height - 40;
+        int topY = 4;
+        int maxLines = (int) ((bottomY - topY) / (lineHeight * scale));
+        int count = Math.min(messages.size(), maxLines);
+
+        double realChatX = chatX;
+        double realChatWidth = chatMaxWidth * scale;
+        double realLineHeight = lineHeight * scale;
+
+        if (mouseX < realChatX || mouseX > realChatX + realChatWidth) return null;
+
+        for (int i = 0; i < count; i++) {
+            double realY = bottomY - (i * realLineHeight);
+            if (mouseY >= realY && mouseY < realY + realLineHeight) {
+                return messages.get(i);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Diagnostic-only dump of a chat {@link Component}'s full raw structure: its own plain text
+     * and hover text (if any), followed by every direct sibling's plain text and hover text.
+     * Unlike {@code SackIncomeTracker}'s parsing logic (which deliberately reads only specific
+     * first-match hover blocks), this is deliberately exhaustive — it exists purely so a user can
+     * copy exactly what a message's component tree contains and report it back for debugging
+     * chat-parsing bugs (e.g. the "[Sacks]" gabagool over-counting investigation).
+     */
+    private static String dumpComponentFull(Component message) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== Chat component dump ===\n");
+        appendComponentDump(sb, message, "root", 0);
+        int i = 0;
+        for (Component sibling : message.getSiblings()) {
+            appendComponentDump(sb, sibling, "sibling[" + i + "]", 0);
+            i++;
+        }
+        return sb.toString();
+    }
+
+    private static void appendComponentDump(StringBuilder sb, Component component, String label, int depth) {
+        String indent = "  ".repeat(depth);
+        sb.append(indent).append(label).append(" text: \"").append(component.getString()).append("\"\n");
+        Style style = component.getStyle();
+        HoverEvent hover = style == null ? null : style.getHoverEvent();
+        if (hover instanceof HoverEvent.ShowText showText) {
+            sb.append(indent).append(label).append(" hover: \"").append(showText.value().getString()).append("\"\n");
+        }
+        int i = 0;
+        for (Component nested : component.getSiblings()) {
+            appendComponentDump(sb, nested, label + ".sibling[" + i + "]", depth + 1);
+            i++;
+        }
+    }
+
+    /**
      * Renders the color picker dialog — a grid of color swatches.
      */
     private void renderColorPicker(GuiGraphicsExtractor context, int mouseX, int mouseY) {
@@ -634,6 +704,18 @@ public class PlayerListScreen extends Screen {
         Minecraft client = Minecraft.getInstance();
         double mouseX = client.mouseHandler.xpos() * (double) client.getWindow().getGuiScaledWidth() / (double) client.getWindow().getScreenWidth();
         double mouseY = client.mouseHandler.ypos() * (double) client.getWindow().getGuiScaledHeight() / (double) client.getWindow().getScreenHeight();
+
+        // Diagnostic feature: shift + right-click a mirrored chat line copies its full raw
+        // component structure (plain text + hover text, own and every sibling's) to the
+        // clipboard, so chat-parsing bugs (e.g. "[Sacks]" messages) can be reported with exact
+        // data instead of guesswork.
+        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && hasShiftDown()) {
+            Component clicked = chatMirrorMessageAt(mouseX, mouseY);
+            if (clicked != null) {
+                client.keyboardHandler.setClipboard(dumpComponentFull(clicked));
+                return true;
+            }
+        }
 
         // Handle color picker clicks
         if (colorPickerOpen) {
