@@ -162,10 +162,10 @@ public class MinionFuelTracker {
                     client.player.sendSystemMessage(message);
                 }
 
-                // Notify FuelCycleTracker - this additively extends the existing
-                // cycle (preserving prior minionsRefueled/expiry) rather than
-                // resetting it, so topping up mid-cycle just queues more fuel-days.
-                FuelCycleTracker.onMinionFueled(newFuelUnits);
+                // Notify FuelCycleTracker - this extends this specific minion's own
+                // fuel expiry (preserving prior cycle info) rather than resetting it,
+                // so topping up mid-cycle just queues more fuel-days for this minion.
+                FuelCycleTracker.onMinionFueled(currentMinionName, newFuelUnits);
             }
 
             // Update the initial state to the current state

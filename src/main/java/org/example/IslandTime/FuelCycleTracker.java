@@ -18,7 +18,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,11 +29,18 @@ import java.util.concurrent.TimeUnit;
 /**
  * Tracks minion fuel usage per calendar day for profit-per-day tracking.
  *
- * A "fuel cycle" starts when you fuel a minion and normally lasts 24 hours per
- * unit of fuel placed — placing a full stack of, say, 10 fuel queues up 10
- * consecutive 24h burn periods instead of just one. Time is bucketed into
- * per-calendar-day records (rather than per-cycle) so day-by-day profit
- * tracking (mob-kill coins, gabagool sack income, fuel cost) is possible.
+ * Each minion (keyed by its GUI title) tracks its own fuel expiry independently —
+ * fueling one minion never affects another's timer. A unit of fuel extends that
+ * specific minion's own expiry by 24h, so placing a full stack of, say, 10 fuel
+ * queues up 10 consecutive 24h burn periods for that minion. This per-minion state
+ * is purely internal bookkeeping though: nothing about it is ever surfaced per
+ * minion — day-level data (minionsRefueledAuto, AFK%, etc.) stays one aggregate
+ * number per day, same as before. The shared "fuel day up" alert (see
+ * FuelExpiredAlertTracker) fires once all currently-tracked minions' fuel has run
+ * out — i.e. when the last (latest-expiring) minion in the batch finishes — not
+ * when the first one does. Time is bucketed into per-calendar-day records (rather
+ * than per-cycle) so day-by-day profit tracking (mob-kill coins, gabagool sack
+ * income, fuel cost) is possible.
  */
 public class FuelCycleTracker {
 
@@ -47,10 +56,18 @@ public class FuelCycleTracker {
     private static final long SAVE_INTERVAL_MS = 30_000L;
     private static long lastSaveTime = 0;
 
-    // Active (in-progress) cycle state. currentCycleStartTime == 0 means no active cycle.
-    private static long currentCycleStartTime  = 0;
-    private static long currentCycleExpiryTime = 0;
-    private static int  currentCycleMinions    = 0;
+    // Active per-minion fuel state: minion GUI title (the same key MinionFuelTracker
+    // uses to distinguish minions) -> that minion's own fuel expiry time. Each minion
+    // tracks its own remaining fuel independently, so fueling 32 minions doesn't
+    // serialize their fuel-days onto one shared timeline. An empty map means no
+    // minion currently has active fuel.
+    private static final ConcurrentHashMap<String, Long> minionExpiries = new ConcurrentHashMap<>();
+
+    // Distinct minion keys already counted toward today's minionsRefueledAuto total,
+    // so topping up the same minion again later the same day doesn't double-count it.
+    // Reset whenever the calendar day rolls over.
+    private static final Set<String> minionsCountedToday = ConcurrentHashMap.newKeySet();
+    private static String minionsCountedTodayDate = "";
 
     private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick  = false;
@@ -274,42 +291,70 @@ public class FuelCycleTracker {
     // Public API — fueling
     // -------------------------------------------------------------------------
 
-    /** Kept for backwards compatibility — treats it as a single unit of fuel. */
+    /** Kept for backwards compatibility — treats it as a single unit of fuel for an unspecified minion. */
     public static void onMinionFueled() {
-        onMinionFueled(1);
+        onMinionFueled("unknown", 1);
+    }
+
+    /** Kept for backwards compatibility — attributes the fuel to an unspecified minion key. */
+    public static void onMinionFueled(int fuelCount) {
+        onMinionFueled("unknown", fuelCount);
     }
 
     /**
-     * Called when a minion is fueled with {@code fuelCount} units of fuel (e.g. placing
-     * a stack of 10 fuel at once). Each unit extends the active cycle by 24h, queued
-     * back-to-back, rather than just resetting a single 24h timer.
+     * Called when the minion identified by {@code minionKey} (its GUI title, e.g.
+     * "Cobblestone Minion V" — the same string {@link MinionFuelTracker} uses to tell
+     * minions apart) is fueled with {@code fuelCount} units of fuel (e.g. placing a
+     * stack of 10 at once). Each unit extends that specific minion's own fuel expiry
+     * by 24h, queued back-to-back — other minions' timers are untouched, so fueling a
+     * batch of minions never serializes their fuel-days onto one shared timeline.
      *
-     * If tracking is disabled, fueling is ignored for cycle purposes when no cycle is
-     * currently active. An already-active cycle is unaffected by the toggle.
+     * Per-minion data is only ever used internally for this expiry bookkeeping — the
+     * day-level aggregate (minionsRefueledAuto, AFK%, etc.) stays a single number, not
+     * a breakdown per minion.
+     *
+     * If tracking is disabled, fueling is ignored for cycle purposes when this minion
+     * has no fuel currently active. A minion whose fuel is already active keeps
+     * running/extending regardless of the toggle — we never abandon data mid-cycle.
      */
-    public static void onMinionFueled(int fuelCount) {
+    public static void onMinionFueled(String minionKey, int fuelCount) {
         if (fuelCount <= 0) return;
+        if (minionKey == null || minionKey.isEmpty()) minionKey = "unknown";
         long now = System.currentTimeMillis();
 
-        if (currentCycleStartTime == 0) {
-            // No active cycle — only start one if tracking is enabled
-            if (!trackingEnabled) return;
-            currentCycleStartTime  = now;
-            currentCycleExpiryTime = now + fuelCount * DAY_MS;
-            currentCycleMinions    = fuelCount;
-            lastTickTime            = now;
+        Long existingExpiry = minionExpiries.get(minionKey);
+        boolean hasActiveFuel = existingExpiry != null && now < existingExpiry;
+
+        if (!hasActiveFuel) {
+            // Fresh start for this minion (no fuel currently tracked for it, or its
+            // previous fuel already ran out) — only begin tracking it if enabled.
+            if (!trackingEnabled) {
+                minionExpiries.remove(minionKey);
+                return;
+            }
+            minionExpiries.put(minionKey, now + fuelCount * DAY_MS);
         } else {
-            // Active cycle — always increment the minion counter and queue up the
-            // extra fuel-days, even if tracking was disabled after the cycle started.
-            currentCycleMinions += fuelCount;
-            long base = Math.max(now, currentCycleExpiryTime);
-            currentCycleExpiryTime = base + fuelCount * DAY_MS;
+            // This minion already has active fuel — top up just its own timer from
+            // its own current expiry, rather than stacking onto any other minion's
+            // timeline. Always applies even if tracking was disabled after this
+            // minion's fuel started, since an in-progress cycle keeps running.
+            minionExpiries.put(minionKey, existingExpiry + fuelCount * DAY_MS);
         }
 
-        // Record the fuel placement against today's day record.
+        if (lastTickTime == 0) lastTickTime = now;
+
+        // Record the fuel placement against today's day record. Count this minion
+        // once per calendar day (topping it up again later the same day doesn't
+        // double-count it), independent of how many fuel units were placed.
         String today = LocalDate.now().toString();
+        if (!today.equals(minionsCountedTodayDate)) {
+            minionsCountedToday.clear();
+            minionsCountedTodayDate = today;
+        }
         DayRecord record = getOrCreateDayRecord(today);
-        record.minionsRefueledAuto += fuelCount;
+        if (minionsCountedToday.add(minionKey)) {
+            record.minionsRefueledAuto += 1;
+        }
 
         // Estimate fuel cost from the bazaar in the background so we never
         // block the client thread while a container screen is open.
@@ -335,27 +380,36 @@ public class FuelCycleTracker {
      * @param isStatsIncreasing whether the tracked item's stats are currently increasing
      */
     public static void tick(boolean isStatsIncreasing) {
-        if (currentCycleStartTime == 0) {
+        if (minionExpiries.isEmpty()) {
             wasOnIslandLastTick = false;
             return;
         }
 
         long now = System.currentTimeMillis();
 
-        // Check cycle expiry — always runs, regardless of toggle
-        if (now >= currentCycleExpiryTime) {
-            int minionsAtExpiry = currentCycleMinions;
-            currentCycleStartTime  = 0;
-            currentCycleExpiryTime = 0;
-            currentCycleMinions    = 0;
-            wasOnIslandLastTick     = false;
+        // The shared "fuel day up" alert fires when the LAST (latest-expiring) minion's
+        // own fuel runs out, not when the first one does — mirroring how the alert
+        // conceptually worked before, just computed correctly per-minion now.
+        long maxExpiry = 0;
+        for (long expiry : minionExpiries.values()) {
+            if (expiry > maxExpiry) maxExpiry = expiry;
+        }
+
+        if (now >= maxExpiry) {
+            int minionsAtExpiry = minionExpiries.size();
+            minionExpiries.clear();
+            wasOnIslandLastTick = false;
             FuelExpiredAlertTracker.onFuelDayUp(minionsAtExpiry);
             save();
             return;
         }
 
-        // Accumulate active time against today's bucket — still runs for an
-        // in-progress cycle even if tracking was disabled after it started
+        // Individual minions whose own fuel already ran out (but weren't the last to)
+        // silently drop out here — no separate alert for them, only the shared one above.
+        minionExpiries.values().removeIf(expiry -> now >= expiry);
+
+        // Accumulate active time against today's bucket — still runs while any minion
+        // has active fuel, even if tracking was disabled after cycles started
         if (wasOnIslandLastTick && isStatsIncreasing && lastTickTime > 0) {
             long delta = now - lastTickTime;
             if (delta < 5000) {
@@ -400,7 +454,7 @@ public class FuelCycleTracker {
     public static void displayStats(Minecraft client, String date) {
         if (client.player == null) return;
 
-        if (dayRecords.isEmpty() && currentCycleStartTime == 0) {
+        if (dayRecords.isEmpty() && minionExpiries.isEmpty()) {
             client.player.sendSystemMessage(
                     Component.literal("No fuel tracking data yet. Fuel a minion to start tracking!")
                             .withStyle(ChatFormatting.YELLOW));
@@ -453,18 +507,18 @@ public class FuelCycleTracker {
     // -------------------------------------------------------------------------
 
     private static class SaveData {
-        long currentCycleStartTime;
-        long currentCycleExpiryTime;
-        int  currentCycleMinions;
+        Map<String, Long> minionExpiries;
+        Set<String> minionsCountedToday;
+        String minionsCountedTodayDate;
         double mobKillCoinsAt100Baseline;
         Map<String, DayRecord> days;
     }
 
     public static void save() {
         SaveData data = new SaveData();
-        data.currentCycleStartTime      = currentCycleStartTime;
-        data.currentCycleExpiryTime     = currentCycleExpiryTime;
-        data.currentCycleMinions        = currentCycleMinions;
+        data.minionExpiries             = new java.util.HashMap<>(minionExpiries);
+        data.minionsCountedToday        = new java.util.HashSet<>(minionsCountedToday);
+        data.minionsCountedTodayDate    = minionsCountedTodayDate;
         data.mobKillCoinsAt100Baseline  = mobKillCoinsAt100Baseline;
         data.days                       = new TreeMap<>(dayRecords);
 
@@ -499,23 +553,22 @@ public class FuelCycleTracker {
                 String json = Files.readString(SAVE_FILE);
                 SaveData data = GSON.fromJson(json, SaveData.class);
                 if (data != null) {
-                    currentCycleStartTime     = data.currentCycleStartTime;
-                    currentCycleExpiryTime    = data.currentCycleExpiryTime;
-                    currentCycleMinions       = data.currentCycleMinions;
                     mobKillCoinsAt100Baseline = data.mobKillCoinsAt100Baseline;
+                    minionExpiries.clear();
+                    if (data.minionExpiries != null) minionExpiries.putAll(data.minionExpiries);
+                    minionsCountedToday.clear();
+                    if (data.minionsCountedToday != null) minionsCountedToday.addAll(data.minionsCountedToday);
+                    minionsCountedTodayDate = data.minionsCountedTodayDate != null ? data.minionsCountedTodayDate : "";
                     if (data.days != null) {
                         dayRecords.clear();
                         dayRecords.putAll(data.days);
                     }
                     lastTickTime = System.currentTimeMillis();
 
-                    // Expire any cycle that finished while the game was closed.
+                    // Drop any per-minion fuel that already ran out while the game was closed —
+                    // each survivor is re-checked individually rather than as one shared cycle.
                     long now = System.currentTimeMillis();
-                    if (currentCycleStartTime > 0 && now >= currentCycleExpiryTime) {
-                        currentCycleStartTime  = 0;
-                        currentCycleExpiryTime = 0;
-                        currentCycleMinions    = 0;
-                    }
+                    minionExpiries.values().removeIf(expiry -> now >= expiry);
                 }
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Load failed: " + e.getMessage());
@@ -573,18 +626,12 @@ public class FuelCycleTracker {
                 }
             }
 
-            if (hasCurrentSection && currentSnapshot[0] > 0) {
-                currentCycleStartTime  = currentSnapshot[0];
-                currentCycleMinions    = (int) currentSnapshot[2];
-                // Legacy format only stored a single 24h window from the last fuel time.
-                currentCycleExpiryTime = currentSnapshot[1] + DAY_MS;
-
-                long now = System.currentTimeMillis();
-                if (now >= currentCycleExpiryTime) {
-                    currentCycleStartTime  = 0;
-                    currentCycleExpiryTime = 0;
-                    currentCycleMinions    = 0;
-                }
+            // Note: the legacy CURRENT section (an in-progress single shared cycle,
+            // with no per-minion breakdown) is intentionally not restored — it isn't
+            // meaningfully portable to the new per-minion expiry model, so any
+            // in-progress fuel simply starts fresh from the next fueling event.
+            if (hasCurrentSection) {
+                System.out.println("[FuelCycleTracker] Skipping legacy in-progress cycle (not portable to per-minion tracking); historical day records were still migrated.");
             }
 
             System.out.println("[FuelCycleTracker] Migrated legacy fuel_cycles.txt into per-day records.");
