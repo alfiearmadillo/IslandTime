@@ -328,8 +328,12 @@ public class FuelDayScreen extends Screen {
     }
 
     /**
-     * Small standalone box off to the right of the scrollbar summing the final profit of
-     * every tracked day (not just the ones currently scrolled into view).
+     * Small standalone box summing the final profit of every tracked day (not just the
+     * ones currently scrolled into view). Anchored to the top-right corner of the screen
+     * (rather than requiring extra space to the right of the centered, fixed-width list)
+     * so it stays visible at any window size/GUI scale — the list is 400px wide and
+     * always centered, so at narrower GUI scales there may not be any room left of the
+     * screen edge to the right of it.
      */
     private void renderTotalProfitWidget(GuiGraphicsExtractor context, List<FuelCycleTracker.DayRecord> records) {
         double totalProfit = 0.0;
@@ -337,9 +341,9 @@ public class FuelDayScreen extends Screen {
             totalProfit += record.getProfit();
         }
 
-        int widgetX = listLeft + listWidth + TOTAL_PROFIT_WIDGET_GAP;
-        int widgetY = listTop;
         int widgetW = TOTAL_PROFIT_WIDGET_WIDTH;
+        int widgetX = width - widgetW - TOTAL_PROFIT_WIDGET_GAP;
+        int widgetY = HEADER_HEIGHT - 32;
         int widgetH = 36;
 
         context.fill(widgetX, widgetY, widgetX + widgetW, widgetY + widgetH, 0x80000000);
