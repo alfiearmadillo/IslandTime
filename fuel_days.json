@@ -2,7 +2,7 @@
   "minionExpiries": {},
   "minionsCountedToday": [],
   "minionsCountedTodayDate": "",
-  "mobKillCoinsAt100Baseline": 0.0,
+  "mobKillCoinsAt100Baseline": 5112360.0,
   "days": {
     "2026-02-09": {
       "date": "2026-02-09",
@@ -1823,7 +1823,7 @@
       "minionsRefueledAuto": 32,
       "activeMs": 80830311,
       "fuelCost": 1.67E7,
-      "mobKillCoinsAt100": 0.0,
+      "mobKillCoinsAt100": 5112360.0,
       "gabagoolPrice": 417.5,
       "gabagoolAmountAuto": 0.0,
       "manualGabagoolAmount": 371800.0,
@@ -1834,10 +1834,21 @@
       "minionsRefueledAuto": 32,
       "activeMs": 61758888,
       "fuelCost": 1.69E7,
-      "mobKillCoinsAt100": 0.0,
+      "mobKillCoinsAt100": 5112360.0,
+      "gabagoolPrice": 491.0,
+      "gabagoolAmountAuto": 0.0,
+      "manualGabagoolAmount": 297000.0,
+      "notes": ""
+    },
+    "2026-09-02": {
+      "date": "2026-09-02",
+      "minionsRefueledAuto": 0,
+      "activeMs": 0,
+      "fuelCost": 0.0,
+      "mobKillCoinsAt100": 5112360.0,
       "gabagoolPrice": 0.0,
       "gabagoolAmountAuto": 0.0,
-      "notes": "Fueling data recovered from spreadsheet (Day 165)"
+      "notes": ""
     }
   },
   "lastBackupTime": 0
