@@ -436,6 +436,57 @@ public class FuelCycleTracker {
         return LocalDate.ofInstant(Instant.ofEpochMilli(slotStartMs), ZoneId.systemDefault()).toString();
     }
 
+    /** Matches a modern armor-stand key from {@code MinionFuelTracker.buildArmorStandKey()}: a
+     *  block position followed by '|'-separated equipment slots, e.g. "-39,213,10|...". */
+    private static final java.util.regex.Pattern ARMOR_STAND_KEY_PATTERN =
+            java.util.regex.Pattern.compile("^-?\\d+,-?\\d+,-?\\d+\\|.*");
+
+    /**
+     * Removes any {@code minionExpiries} entry whose key is <b>not</b> a modern
+     * position+equipment armor-stand key (see {@code MinionFuelTracker.buildArmorStandKey()}) —
+     * i.e. a bare GUI-title fallback key like {@code "Inferno Minion XI"} — but only when at
+     * least one modern position-format key also exists at the same time.
+     *
+     * <p>A title-only key can't reliably represent one specific physical minion (every minion
+     * of the same type/tier shares the same GUI title), so it's only ever meant to be a
+     * last-resort fallback for the rare case a minion GUI opens without a captured armor-stand
+     * right-click (e.g. via the favourite-GUI shortcut). If a title-only key is found alongside
+     * real position-format keys, it's almost certainly stale data left over from before
+     * position-based tracking existed, not a currently legitimate parallel mechanism — left
+     * alone, such an entry can sit with an expiry far in the future indefinitely, which both
+     * permanently blocks the cohort from ever being treated as "fully run dry" (since
+     * {@code minionExpiries} never becomes empty) and keeps re-queuing a phantom single-minion
+     * count onto every future day-slot up to its expiry. Purging it also decrements
+     * {@code minionsRefueledAuto} on every not-yet-closed day-slot it had been counted toward,
+     * so the bogus count doesn't linger in already-queued day records either.
+     */
+    private static void purgeStaleLegacyMinionKeys() {
+        if (minionExpiries.isEmpty()) return;
+        boolean hasModernKey = minionExpiries.keySet().stream()
+                .anyMatch(k -> ARMOR_STAND_KEY_PATTERN.matcher(k).matches());
+        if (!hasModernKey) return;
+
+        List<String> legacyKeys = minionExpiries.keySet().stream()
+                .filter(k -> !ARMOR_STAND_KEY_PATTERN.matcher(k).matches())
+                .collect(java.util.stream.Collectors.toList());
+        if (legacyKeys.isEmpty()) return;
+
+        for (String legacyKey : legacyKeys) {
+            minionExpiries.remove(legacyKey);
+            for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+                if (entry.getValue().remove(legacyKey)) {
+                    DayRecord record = dayRecords.get(entry.getKey());
+                    if (record != null && record.minionsRefueledAuto > 0) {
+                        record.minionsRefueledAuto -= 1;
+                    }
+                }
+            }
+            System.out.println("[FuelCycleTracker] Purged stale legacy (pre-armor-stand-tracking) "
+                    + "minion key '" + legacyKey + "' from saved data.");
+        }
+        save();
+    }
+
     /**
      * Returns the key of the record for the currently active fuel-day (see the class
      * javadoc), or today's calendar date if no cohort is currently in progress. This is
@@ -955,6 +1006,8 @@ public class FuelCycleTracker {
                     // each survivor is re-checked individually rather than as one shared cycle.
                     long now = System.currentTimeMillis();
                     minionExpiries.values().removeIf(expiry -> now >= expiry);
+
+                    purgeStaleLegacyMinionKeys();
                 }
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Load failed: " + e.getMessage());
