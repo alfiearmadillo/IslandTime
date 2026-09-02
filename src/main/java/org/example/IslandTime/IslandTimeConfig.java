@@ -140,7 +140,9 @@ public class IslandTimeConfig extends Config {
                 name = "Current Day's Gabagool Amount Override",
                 desc = "Manual override for the amount of Crude Gabagool collected during the currently active fuel " +
                         "day. Leave blank to use the amount auto-tracked from Hypixel's '[Sacks]' chat messages " +
-                        "(requires sack messages enabled in-game). Edit past days individually in the Fuel Day Tracker GUI."
+                        "(requires sack messages enabled in-game). Enter an absolute total, or prefix with + or - " +
+                        "(e.g. +100000 or -20000) to adjust the auto-tracked amount by that much instead of " +
+                        "replacing it. Edit past days individually in the Fuel Day Tracker GUI."
         )
         @ConfigEditorText
         public String todayGabagoolAmountString = "";

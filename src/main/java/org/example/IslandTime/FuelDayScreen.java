@@ -130,11 +130,11 @@ public class FuelDayScreen extends Screen {
         int dialogY = height / 2 - 127;
 
         editMinionField = new EditBox(font, dialogX, dialogY + 20, 240, 20, Component.literal("Minions"));
-        editMinionField.setMaxLength(6);
+        editMinionField.setMaxLength(8);
         editMinionField.setValue(record.manualMinionCount != null
                 ? String.valueOf(record.manualMinionCount)
                 : "");
-        editMinionField.setHint(Component.literal("auto: " + record.minionsRefueledAuto).withStyle(ChatFormatting.GRAY));
+        editMinionField.setHint(Component.literal("auto: " + record.minionsRefueledAuto + " (or +/-N)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editMinionField);
 
         editMobKillField = new EditBox(font, dialogX, dialogY + 54, 240, 20, Component.literal("Coins @ 100%"));
@@ -152,7 +152,7 @@ public class FuelDayScreen extends Screen {
         editGabagoolAmountField.setValue(record.manualGabagoolAmount != null
                 ? String.valueOf(record.manualGabagoolAmount)
                 : "");
-        editGabagoolAmountField.setHint(Component.literal("auto: " + record.gabagoolAmountAuto).withStyle(ChatFormatting.GRAY));
+        editGabagoolAmountField.setHint(Component.literal("auto: " + record.gabagoolAmountAuto + " (or +/-N)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editGabagoolAmountField);
 
         editFuelCostField = new EditBox(font, dialogX, dialogY + 122, 240, 20, Component.literal("Fuel Cost"));
@@ -160,7 +160,7 @@ public class FuelDayScreen extends Screen {
         editFuelCostField.setValue(record.manualFuelCost != null
                 ? String.valueOf(record.manualFuelCost)
                 : "");
-        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.fuelCost)).withStyle(ChatFormatting.GRAY));
+        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.fuelCost) + " (or +/-N)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editFuelCostField);
 
         editNotesField = new EditBox(font, dialogX, dialogY + 156, 240, 20, Component.literal("Notes"));
@@ -174,7 +174,8 @@ public class FuelDayScreen extends Screen {
                 FuelCycleTracker.setManualMinionCount(editDate, null);
             } else {
                 try {
-                    FuelCycleTracker.setManualMinionCount(editDate, Integer.parseInt(minionText));
+                    int minionValue = (int) Math.round(resolveDeltaOrAbsolute(minionText, record.minionsRefueledAuto));
+                    FuelCycleTracker.setManualMinionCount(editDate, minionValue);
                 } catch (NumberFormatException ignored) {}
             }
             try {
@@ -188,7 +189,8 @@ public class FuelDayScreen extends Screen {
                 FuelCycleTracker.clearManualGabagoolAmount(editDate);
             } else {
                 try {
-                    FuelCycleTracker.setGabagoolAmount(editDate, Double.parseDouble(gabagoolAmountText));
+                    double amountValue = resolveDeltaOrAbsolute(gabagoolAmountText, record.gabagoolAmountAuto);
+                    FuelCycleTracker.setGabagoolAmount(editDate, amountValue);
                 } catch (NumberFormatException ignored) {}
             }
             String fuelCostText = editFuelCostField.getValue().trim();
@@ -196,7 +198,8 @@ public class FuelDayScreen extends Screen {
                 FuelCycleTracker.clearManualFuelCost(editDate);
             } else {
                 try {
-                    FuelCycleTracker.setFuelCost(editDate, Double.parseDouble(fuelCostText));
+                    double fuelCostValue = resolveDeltaOrAbsolute(fuelCostText, record.fuelCost);
+                    FuelCycleTracker.setFuelCost(editDate, fuelCostValue);
                 } catch (NumberFormatException ignored) {}
             }
             FuelCycleTracker.setNotes(editDate, editNotesField.getValue());
@@ -207,6 +210,23 @@ public class FuelDayScreen extends Screen {
                 .bounds(dialogX + 125, dialogY + 190, 115, 20).build());
 
         setFocused(editMinionField);
+    }
+
+    /**
+     * Parses an override field's text as either an absolute replacement value, or — when it
+     * starts with an explicit {@code +} or {@code -} sign (e.g. {@code +100000} to correct for
+     * a missed sack message, or {@code -20000} to back out an over-count) — a delta to apply
+     * on top of {@code autoValue}. None of these override fields ever legitimately hold a
+     * negative absolute value (minion count, gabagool amount, and fuel cost are all
+     * non-negative), so a leading sign unambiguously means "relative to auto" rather than
+     * "set to this negative number". The result is clamped to zero.
+     */
+    private static double resolveDeltaOrAbsolute(String text, double autoValue) throws NumberFormatException {
+        double parsed = Double.parseDouble(text);
+        if (text.startsWith("+") || text.startsWith("-")) {
+            return Math.max(0.0, autoValue + parsed);
+        }
+        return Math.max(0.0, parsed);
     }
 
     private void closeDialog() {

@@ -49,11 +49,20 @@ public class SackIncomeTracker {
         String plain = message.getString();
         if (!plain.startsWith("[Sacks]")) return;
 
-        StringBuilder hoverText = new StringBuilder();
-        collectHoverText(message, hoverText);
-        if (hoverText.length() == 0) return;
+        // Hypixel's "[Sacks]" line is built from several sibling components (e.g. one per
+        // word/segment of the visible text) that all carry an IDENTICAL copy of the same
+        // full hover tooltip — not one hover event split across siblings. Recursing through
+        // every sibling and blindly concatenating each one's hover text therefore reads the
+        // same "+145 Crude Gabagool (Slayer Sack)" line once per sibling that carries it
+        // (observed 4x in practice), silently quadrupling the tracked amount. Deduplicating
+        // identical hover-text blocks — keeping only the first occurrence of each exact
+        // block of text — before parsing fixes this without needing to know how many
+        // siblings a given server/message happens to use.
+        java.util.LinkedHashSet<String> hoverBlocks = new java.util.LinkedHashSet<>();
+        collectHoverText(message, hoverBlocks);
+        if (hoverBlocks.isEmpty()) return;
 
-        String text = hoverText.toString();
+        String text = String.join("\n", hoverBlocks);
         Matcher matcher = SACK_CHANGE_PATTERN.matcher(text);
         double gained = 0;
         boolean removed = false;
@@ -82,13 +91,18 @@ public class SackIncomeTracker {
         }
     }
 
-    /** Recursively collects hover-text (SHOW_TEXT) content from this component and its siblings. */
-    private static void collectHoverText(Component component, StringBuilder out) {
+    /**
+     * Recursively collects unique hover-text (SHOW_TEXT) blocks from this component and its
+     * siblings into {@code out}. A {@link java.util.LinkedHashSet} is used (rather than a
+     * plain StringBuilder) so that the same tooltip text repeated across multiple sibling
+     * components — as Hypixel's "[Sacks]" message does — is only counted once.
+     */
+    private static void collectHoverText(Component component, java.util.Set<String> out) {
         Style style = component.getStyle();
         if (style != null) {
             HoverEvent hover = style.getHoverEvent();
             if (hover instanceof HoverEvent.ShowText showText) {
-                out.append(showText.value().getString()).append('\n');
+                out.add(showText.value().getString());
             }
         }
         for (Component sibling : component.getSiblings()) {

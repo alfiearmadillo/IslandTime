@@ -207,7 +207,15 @@ public class ConfigManager {
                     FuelCycleTracker.clearManualGabagoolAmount(todayDate);
                 }
             } else {
-                double amount = Double.parseDouble(amountText);
+                double parsedAmount = Double.parseDouble(amountText);
+                // A leading "+"/"-" means "adjust the auto-tracked amount by this much"
+                // (e.g. "+100000" to correct for a missed sack message) rather than "set the
+                // absolute total to this value" — gabagool amounts are never legitimately
+                // negative, so the sign is unambiguous.
+                double autoAmount = today != null ? today.gabagoolAmountAuto : 0.0;
+                double amount = (amountText.startsWith("+") || amountText.startsWith("-"))
+                        ? Math.max(0.0, autoAmount + parsedAmount)
+                        : Math.max(0.0, parsedAmount);
                 if (currentManual == null || currentManual != amount) {
                     FuelCycleTracker.setGabagoolAmount(todayDate, amount);
                 }
