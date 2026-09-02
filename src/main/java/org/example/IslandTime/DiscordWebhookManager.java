@@ -88,6 +88,24 @@ public class DiscordWebhookManager {
         sendWebhook(url, message);
     }
 
+    /**
+     * Sent when a minion's queued fuel-days have run out. Repeats at the configured interval
+     * until stopped (see FuelExpiredAlertTracker), primarily because sack storage caps mean
+     * an idle AFK setup stops gaining anything once sacks fill up.
+     */
+    public static void sendFuelExpiredAlert(int minionCount) {
+        String url = webhookUrl;
+        if (url == null || url.isEmpty()) return;
+
+        String time = LocalDateTime.now().format(TIME_FORMATTER);
+        String ping = (discordUserId != null && !discordUserId.isEmpty()) ? "<@" + discordUserId + ">\n" : "";
+        String message = String.format(
+                "⛽ **Fuel Alert**\n%sYour minion fuel has run out (%d minion%s)\n" +
+                        "Time to refuel and/or empty sacks before selling.\nTime: %s",
+                ping, minionCount, minionCount == 1 ? "" : "s", time);
+        sendWebhook(url, message);
+    }
+
     public static void sendCustomMessage(String message) {
         String url = webhookUrl;
         if (url == null || url.isEmpty()) return;

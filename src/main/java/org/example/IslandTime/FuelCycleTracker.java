@@ -344,10 +344,12 @@ public class FuelCycleTracker {
 
         // Check cycle expiry — always runs, regardless of toggle
         if (now >= currentCycleExpiryTime) {
+            int minionsAtExpiry = currentCycleMinions;
             currentCycleStartTime  = 0;
             currentCycleExpiryTime = 0;
             currentCycleMinions    = 0;
             wasOnIslandLastTick     = false;
+            FuelExpiredAlertTracker.onFuelDayUp(minionsAtExpiry);
             save();
             return;
         }

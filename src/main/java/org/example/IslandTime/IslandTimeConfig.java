@@ -247,6 +247,11 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Disconnect Alert Speed", desc = "How often to alert when disconnected\nOFF: No alerts | FAST: After 10s, then every 5 min\nNORMAL: After 10s, then every 30 min | SLOW: After 10s, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int disconnectSpeed = 2; // NORMAL
+
+        @Expose
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's queued fuel-days run out, until you empty your sacks (removing gabagool stops the pings)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
+        public int fuelExpiredSpeed = 2; // NORMAL
     }
 
     public static class ChatRelay {

@@ -137,6 +137,7 @@ public class ConfigManager {
         config.alertSpeeds.trackedItemSpeed = convertAlertSpeedToInt(ItemTracker.getAlertSpeed().name());
         config.alertSpeeds.islandSpeed = convertAlertSpeedToInt(IslandAlertTracker.getAlertSpeed().name());
         config.alertSpeeds.disconnectSpeed = convertAlertSpeedToInt(DisconnectAlertTracker.getAlertSpeed().name());
+        config.alertSpeeds.fuelExpiredSpeed = convertAlertSpeedToInt(FuelExpiredAlertTracker.getAlertSpeed().name());
 
         // Item tracking UUID (editable)
         String uuid = ItemTracker.getTrackedUuid();
@@ -238,6 +239,11 @@ public class ConfigManager {
         String disconnectSpeed = convertIntToAlertSpeed(config.alertSpeeds.disconnectSpeed);
         if (!DisconnectAlertTracker.getAlertSpeed().name().equals(disconnectSpeed)) {
             DisconnectAlertTracker.setAlertSpeed(DisconnectAlertTracker.AlertSpeed.valueOf(disconnectSpeed));
+        }
+
+        String fuelExpiredSpeed = convertIntToAlertSpeed(config.alertSpeeds.fuelExpiredSpeed);
+        if (!FuelExpiredAlertTracker.getAlertSpeed().name().equals(fuelExpiredSpeed)) {
+            FuelExpiredAlertTracker.setAlertSpeed(FuelExpiredAlertTracker.AlertSpeed.valueOf(fuelExpiredSpeed));
         }
 
         // Item tracking UUID (manual editing)

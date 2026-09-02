@@ -27,6 +27,10 @@ import java.util.regex.Pattern;
  * hover starts with "Added"/"Removed". This is a genuine periodic notification (fires whenever
  * sack contents change, not something we have to poll or macro for), so it satisfies the "only
  * implement if you can for sure find a working example" requirement.
+ *
+ * Negative deltas (gabagool taken out of the sack, e.g. to sell) never subtract from the day's
+ * tracked total — they only stop the "fuel day up" Discord alert (see FuelExpiredAlertTracker),
+ * since removing gabagool means the sack has been emptied.
  */
 public class SackIncomeTracker {
 
@@ -53,6 +57,7 @@ public class SackIncomeTracker {
         String text = hoverText.toString();
         Matcher matcher = SACK_CHANGE_PATTERN.matcher(text);
         double gained = 0;
+        boolean removed = false;
         while (matcher.find()) {
             String item = matcher.group(2).trim();
             if (!item.equalsIgnoreCase(TRACKED_ITEM_NAME)) continue;
@@ -60,12 +65,21 @@ public class SackIncomeTracker {
                 double delta = Double.parseDouble(matcher.group(1).replace(",", ""));
                 if (delta > 0) {
                     gained += delta;
+                } else if (delta < 0) {
+                    // Taking gabagool out of the sack (e.g. to sell) means it's been emptied —
+                    // stop any active "fuel day up" alert. This intentionally does NOT subtract
+                    // from the day's tracked amount: you're just withdrawing what was already
+                    // counted, not losing it.
+                    removed = true;
                 }
             } catch (NumberFormatException ignored) {}
         }
 
         if (gained > 0) {
             FuelCycleTracker.addAutoGabagoolAmount(LocalDate.now().toString(), gained);
+        }
+        if (removed) {
+            FuelExpiredAlertTracker.onSackEmptied();
         }
     }
 
