@@ -223,7 +223,8 @@ public class FuelDayScreen extends Screen {
             int dialogX = width / 2 - 130;
             int dialogY = height / 2 - 110;
             context.fill(dialogX, dialogY, dialogX + 260, dialogY + 200, 0xEE000000);
-            Component title = Component.literal("Edit " + editDate);
+            FuelCycleTracker.DayRecord editRecord = editDate != null ? FuelCycleTracker.getDayRecord(editDate) : null;
+            Component title = Component.literal("Edit " + (editRecord != null ? FuelCycleTracker.formatCycleRange(editRecord) : editDate));
             int tw = font.width(title);
             context.text(font, title, width / 2 - tw / 2, dialogY + 4, -1, true);
 
@@ -271,7 +272,7 @@ public class FuelDayScreen extends Screen {
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 2;
 
             // Line 1: date + profit
-            context.text(font, Component.literal(record.date).withStyle(ChatFormatting.BOLD, ChatFormatting.WHITE),
+            context.text(font, Component.literal(FuelCycleTracker.formatCycleRange(record)).withStyle(ChatFormatting.BOLD, ChatFormatting.WHITE),
                     listLeft + PADDING, rowY + 3, 0xFFFFFFFF, true);
             double profit = record.getProfit();
             ChatFormatting profitStyle = profit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;

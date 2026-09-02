@@ -13,7 +13,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -190,6 +194,17 @@ public class FuelCycleTracker {
     public static class DayRecord {
         public String date; // yyyy-MM-dd
 
+        /** Wall-clock time this record was first created — i.e. roughly when the fuel
+         *  cycle it represents started. 0 for legacy/migrated records that predate this
+         *  field (see {@link #formatCycleRange(DayRecord)} for the display fallback). */
+        public long cycleStartMs = 0;
+
+        /** Wall-clock time the shared "fuel day up" alert fired for this record's cycle
+         *  (see {@link #tick(boolean)}), i.e. when the last-expiring minion in the batch
+         *  ran dry. 0 while the cycle is still in progress or unknown (legacy/manual
+         *  records) — see {@link #formatCycleRange(DayRecord)} for the display fallback. */
+        public long cycleEndMs = 0;
+
         /** Minions refueled today, auto-detected from fuel placements. */
         public int minionsRefueledAuto = 0;
 
@@ -280,10 +295,35 @@ public class FuelCycleTracker {
         return dayRecords.get(date);
     }
 
+    private static final DateTimeFormatter CYCLE_LABEL_FORMAT = DateTimeFormatter.ofPattern("dd/MM/yy HH:mm");
+
+    /**
+     * Formats a day record's title as "{@code start - end}" (dd/MM/yy HH:mm each), spanning
+     * from when this record's fuel cycle started to when it ended (or "now" if still in
+     * progress). Legacy/manually-added records without real timestamps fall back to treating
+     * {@link DayRecord#date} as a full calendar-day span, so old data still displays sensibly.
+     */
+    public static String formatCycleRange(DayRecord record) {
+        long start = record.cycleStartMs;
+        long end = record.cycleEndMs;
+        if (start <= 0) {
+            start = LocalDate.parse(record.date).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        }
+        if (end <= 0) {
+            end = start + DAY_MS;
+        }
+        return formatEpochMs(start) + " - " + formatEpochMs(end);
+    }
+
+    private static String formatEpochMs(long epochMs) {
+        return CYCLE_LABEL_FORMAT.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMs), ZoneId.systemDefault()));
+    }
+
     private static DayRecord getOrCreateDayRecord(String date) {
         return dayRecords.computeIfAbsent(date, d -> {
             DayRecord record = new DayRecord(d);
             record.mobKillCoinsAt100 = mobKillCoinsAt100Baseline;
+            record.cycleStartMs = System.currentTimeMillis();
             return record;
         });
     }
@@ -467,6 +507,8 @@ public class FuelCycleTracker {
 
         if (now >= maxExpiry) {
             int minionsAtExpiry = minionExpiries.size();
+            DayRecord finishedRecord = getOrCreateDayRecord(LocalDate.now().toString());
+            finishedRecord.cycleEndMs = now;
             minionExpiries.clear();
             wasOnIslandLastTick = false;
             FuelExpiredAlertTracker.onFuelDayUp(minionsAtExpiry);
@@ -555,7 +597,7 @@ public class FuelCycleTracker {
 
     private static void displaySingleDay(Minecraft client, DayRecord record) {
         client.player.sendSystemMessage(
-                Component.literal("» " + record.date).withStyle(ChatFormatting.GOLD));
+                Component.literal("» " + formatCycleRange(record)).withStyle(ChatFormatting.GOLD));
         client.player.sendSystemMessage(
                 Component.literal("  Minions: ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(String.valueOf(record.getEffectiveMinionCount())).withStyle(ChatFormatting.WHITE))
