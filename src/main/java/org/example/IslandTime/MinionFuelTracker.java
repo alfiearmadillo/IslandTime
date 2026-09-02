@@ -113,15 +113,41 @@ public class MinionFuelTracker {
                     currentItem.getHoverName().getString().equals("Fuel");
 
             boolean currentIsActualFuel = !currentItem.isEmpty() && !currentIsGlassPane;
+            boolean initialWasActualFuel = !initialFuelSlotItem.isEmpty() && !initialWasGlassPane;
 
-            // Only send message if:
-            // 1. We started with the glass pane (empty slot indicator)
-            // 2. AND now we have actual fuel (not glass pane, not empty)
+            // Whether the current fuel item is the same fuel type as whatever was
+            // previously in the slot (compared by display name, since fuel items
+            // share the same base Item but differ by SkyBlock NBT/hover name).
+            boolean sameFuelType = initialWasActualFuel && currentIsActualFuel &&
+                    currentItem.getHoverName().getString().equals(initialFuelSlotItem.getHoverName().getString());
+
+            int newFuelUnits = 0;
             if (initialWasGlassPane && currentIsActualFuel) {
-                // Support placing a full stack of fuel at once — each unit in the
-                // stack burns for its own 24h period, queued back-to-back.
-                int fuelCount = Math.max(1, currentItem.getCount());
+                // Slot went from empty (glass pane placeholder) to holding fuel:
+                // the whole stack is newly placed fuel.
+                newFuelUnits = Math.max(1, currentItem.getCount());
+            } else if (initialWasActualFuel && currentIsActualFuel) {
+                // Fuel was topped up while the minion was still actively fueled
+                // (placing fuel into a slot that already has fuel, instead of glass).
+                // Only the increase in count is newly added fuel; a same-or-lower
+                // count just reflects the existing fuel depleting over time and
+                // shouldn't be counted again.
+                int currentCount = currentItem.getCount();
+                int initialCount = initialFuelSlotItem.getCount();
+                if (sameFuelType) {
+                    if (currentCount > initialCount) {
+                        newFuelUnits = currentCount - initialCount;
+                    }
+                } else {
+                    // Different fuel type placed on top of remaining fuel - treat
+                    // the whole new stack as freshly added fuel. The previous
+                    // cycle info (minions refueled, expiry so far) is preserved
+                    // since FuelCycleTracker.onMinionFueled() only ever extends it.
+                    newFuelUnits = Math.max(1, currentCount);
+                }
+            }
 
+            if (newFuelUnits > 0) {
                 // The fuel was placed! Send the message (if enabled)
                 if (showFuelMessages) {
                     String fuelName = currentItem.getHoverName().getString();
@@ -130,14 +156,16 @@ public class MinionFuelTracker {
                     Component message = Component.empty()
                             .append(Component.literal(currentMinionName).withStyle(ChatFormatting.BLUE))
                             .append(Component.literal(" fueled with ").withStyle(ChatFormatting.GREEN))
-                            .append(Component.literal(fuelCount > 1 ? (fuelCount + "x ") : "").withStyle(ChatFormatting.GREEN))
+                            .append(Component.literal(newFuelUnits > 1 ? (newFuelUnits + "x ") : "").withStyle(ChatFormatting.GREEN))
                             .append(Component.literal(fuelName).withStyle(fuelColor));
 
                     client.player.sendSystemMessage(message);
                 }
 
-                // Notify FuelCycleTracker
-                FuelCycleTracker.onMinionFueled(fuelCount);
+                // Notify FuelCycleTracker - this additively extends the existing
+                // cycle (preserving prior minionsRefueled/expiry) rather than
+                // resetting it, so topping up mid-cycle just queues more fuel-days.
+                FuelCycleTracker.onMinionFueled(newFuelUnits);
             }
 
             // Update the initial state to the current state
