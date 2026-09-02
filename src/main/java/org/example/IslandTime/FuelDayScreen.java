@@ -131,7 +131,10 @@ public class FuelDayScreen extends Screen {
 
         editGabagoolAmountField = new EditBox(font, dialogX + 125, dialogY + 88, 115, 20, Component.literal("Gabagool Amount"));
         editGabagoolAmountField.setMaxLength(16);
-        editGabagoolAmountField.setValue(String.valueOf(record.gabagoolAmount));
+        editGabagoolAmountField.setValue(record.manualGabagoolAmount != null
+                ? String.valueOf(record.manualGabagoolAmount)
+                : "");
+        editGabagoolAmountField.setHint(Component.literal("auto: " + record.gabagoolAmountAuto).withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editGabagoolAmountField);
 
         editNotesField = new EditBox(font, dialogX, dialogY + 122, 240, 20, Component.literal("Notes"));
@@ -154,9 +157,14 @@ public class FuelDayScreen extends Screen {
             try {
                 FuelCycleTracker.setGabagoolPrice(editDate, Double.parseDouble(editGabagoolPriceField.getValue().trim()));
             } catch (NumberFormatException ignored) {}
-            try {
-                FuelCycleTracker.setGabagoolAmount(editDate, Double.parseDouble(editGabagoolAmountField.getValue().trim()));
-            } catch (NumberFormatException ignored) {}
+            String gabagoolAmountText = editGabagoolAmountField.getValue().trim();
+            if (gabagoolAmountText.isEmpty()) {
+                FuelCycleTracker.clearManualGabagoolAmount(editDate);
+            } else {
+                try {
+                    FuelCycleTracker.setGabagoolAmount(editDate, Double.parseDouble(gabagoolAmountText));
+                } catch (NumberFormatException ignored) {}
+            }
             FuelCycleTracker.setNotes(editDate, editNotesField.getValue());
             closeDialog();
         }).bounds(dialogX, dialogY + 156, 115, 20).build());
@@ -283,6 +291,7 @@ public class FuelDayScreen extends Screen {
             // Line 3: mob-kill coins, gabagool revenue, notes
             String line3 = "Mob-Kill: " + PriceCache.formatCoins(record.getMobKillCoins())
                     + "  Gabagool: " + PriceCache.formatCoins(record.getGabagoolRevenue())
+                    + " (" + record.getEffectiveGabagoolAmount() + (record.manualGabagoolAmount != null ? " manual" : " auto") + ")"
                     + (record.notes != null && !record.notes.isBlank() ? "  \"" + record.notes + "\"" : "");
             int maxW = listWidth - (BUTTON_SIZE + 2) * 2 - PADDING * 2;
             if (font.width(line3) > maxW) {

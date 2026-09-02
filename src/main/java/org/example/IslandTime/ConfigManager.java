@@ -118,7 +118,10 @@ public class ConfigManager {
         config.fuelCycles.mobKillCoinsAt100PercentString = String.valueOf(FuelCycleTracker.getMobKillCoinsAt100Baseline());
         FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(java.time.LocalDate.now().toString());
         config.fuelCycles.todayGabagoolPriceString = today != null ? String.valueOf(today.gabagoolPrice) : "0";
-        config.fuelCycles.todayGabagoolAmountString = today != null ? String.valueOf(today.gabagoolAmount) : "0";
+        // Blank = "use the auto-tracked value from sack chat messages" (see SackIncomeTracker).
+        config.fuelCycles.todayGabagoolAmountString = (today != null && today.manualGabagoolAmount != null)
+                ? String.valueOf(today.manualGabagoolAmount)
+                : "";
 
         // Favourite GUI tracking
         config.favouriteGui.enabled = FavouriteGuiManager.isTrackingEnabled();
@@ -191,10 +194,18 @@ public class ConfigManager {
             // Invalid number, keep existing value
         }
         try {
-            double amount = Double.parseDouble(config.fuelCycles.todayGabagoolAmountString.trim());
+            String amountText = config.fuelCycles.todayGabagoolAmountString.trim();
             FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
-            if (today == null || today.gabagoolAmount != amount) {
-                FuelCycleTracker.setGabagoolAmount(todayDate, amount);
+            Double currentManual = today != null ? today.manualGabagoolAmount : null;
+            if (amountText.isEmpty()) {
+                if (currentManual != null) {
+                    FuelCycleTracker.clearManualGabagoolAmount(todayDate);
+                }
+            } else {
+                double amount = Double.parseDouble(amountText);
+                if (currentManual == null || currentManual != amount) {
+                    FuelCycleTracker.setGabagoolAmount(todayDate, amount);
+                }
             }
         } catch (NumberFormatException ignored) {
             // Invalid number, keep existing value

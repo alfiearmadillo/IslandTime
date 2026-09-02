@@ -24,12 +24,13 @@ public class ChatMessageStore {
 
     private static void addMessage(Component message) {
         // Copy the component to preserve formatting (some messages use mutable/lazy components)
-        messages.add(0, message.copy());
+        Component copy = message.copy();
+        messages.add(0, copy);
         if (messages.size() > MAX_MESSAGES) {
             messages.remove(messages.size() - 1);
         }
-        // Hook for sack-income tracking (currently a disabled no-op — see class docs).
-        SackIncomeTracker.onSackChatLine(message.getString());
+        // Hook for sack-income tracking — reads hover text on "[Sacks]" messages.
+        SackIncomeTracker.onSackChatMessage(copy);
     }
 
     public static List<Component> getMessages() {

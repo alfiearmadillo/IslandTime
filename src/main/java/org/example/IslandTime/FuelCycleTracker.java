@@ -124,8 +124,14 @@ public class FuelCycleTracker {
         /** Manually entered sell price for a single Crude Gabagool (or whatever sack item is tracked). */
         public double gabagoolPrice = 0.0;
 
-        /** Manually entered amount of Crude Gabagool collected this day. */
-        public double gabagoolAmount = 0.0;
+        /** Amount of Crude Gabagool auto-tracked today from Hypixel's periodic "[Sacks]" chat
+         *  messages (see SackIncomeTracker) — sum of all positive sack-gain deltas seen today. */
+        public double gabagoolAmountAuto = 0.0;
+
+        /** Manual override for gabagool amount collected today — null means "use the
+         *  auto-tracked {@link #gabagoolAmountAuto} value". Useful as a fallback when sack
+         *  messages are disabled, or to correct the auto-tracked value. */
+        public Double manualGabagoolAmount = null;
 
         public String notes = "";
 
@@ -148,8 +154,13 @@ public class FuelCycleTracker {
             return mobKillCoinsAt100 * (getAfkPercent() / 100.0);
         }
 
+        /** Effective gabagool amount used for profit calc: manual override if set, else auto-tracked. */
+        public double getEffectiveGabagoolAmount() {
+            return manualGabagoolAmount != null ? manualGabagoolAmount : gabagoolAmountAuto;
+        }
+
         public double getGabagoolRevenue() {
-            return gabagoolPrice * gabagoolAmount;
+            return gabagoolPrice * getEffectiveGabagoolAmount();
         }
 
         public double getProfit() {
@@ -209,9 +220,29 @@ public class FuelCycleTracker {
         save();
     }
 
+    /** Sets a manual override for gabagool amount, taking precedence over the auto-tracked value. */
     public static void setGabagoolAmount(String date, double value) {
         DayRecord record = getOrCreateDayRecord(date);
-        record.gabagoolAmount = Math.max(0.0, value);
+        record.manualGabagoolAmount = Math.max(0.0, value);
+        save();
+    }
+
+    /** Clears the manual override, reverting the day back to using the auto-tracked gabagool amount. */
+    public static void clearManualGabagoolAmount(String date) {
+        DayRecord record = getOrCreateDayRecord(date);
+        record.manualGabagoolAmount = null;
+        save();
+    }
+
+    /**
+     * Adds to today's auto-tracked gabagool amount. Called by {@link SackIncomeTracker} whenever a
+     * positive Crude Gabagool sack-gain is detected in Hypixel's periodic "[Sacks]" chat message.
+     * No-ops for non-positive deltas (sack losses/removals aren't "collected" amounts).
+     */
+    public static void addAutoGabagoolAmount(String date, double delta) {
+        if (delta <= 0) return;
+        DayRecord record = getOrCreateDayRecord(date);
+        record.gabagoolAmountAuto += delta;
         save();
     }
 
@@ -351,7 +382,7 @@ public class FuelCycleTracker {
         record.activeMs = 20 * 60 * 60 * 1000L;
         record.mobKillCoinsAt100 = mobKillCoinsAt100Baseline;
         record.gabagoolPrice = 15.0;
-        record.gabagoolAmount = 500;
+        record.gabagoolAmountAuto = 500;
 
         System.out.println("[FuelCycleTracker] DEBUG: Injecting fake day record — " + fakeDate);
 
