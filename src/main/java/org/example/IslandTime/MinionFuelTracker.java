@@ -118,6 +118,10 @@ public class MinionFuelTracker {
             // 1. We started with the glass pane (empty slot indicator)
             // 2. AND now we have actual fuel (not glass pane, not empty)
             if (initialWasGlassPane && currentIsActualFuel) {
+                // Support placing a full stack of fuel at once — each unit in the
+                // stack burns for its own 24h period, queued back-to-back.
+                int fuelCount = Math.max(1, currentItem.getCount());
+
                 // The fuel was placed! Send the message (if enabled)
                 if (showFuelMessages) {
                     String fuelName = currentItem.getHoverName().getString();
@@ -126,13 +130,14 @@ public class MinionFuelTracker {
                     Component message = Component.empty()
                             .append(Component.literal(currentMinionName).withStyle(ChatFormatting.BLUE))
                             .append(Component.literal(" fueled with ").withStyle(ChatFormatting.GREEN))
+                            .append(Component.literal(fuelCount > 1 ? (fuelCount + "x ") : "").withStyle(ChatFormatting.GREEN))
                             .append(Component.literal(fuelName).withStyle(fuelColor));
 
                     client.player.sendSystemMessage(message);
                 }
 
                 // Notify FuelCycleTracker
-                FuelCycleTracker.onMinionFueled();
+                FuelCycleTracker.onMinionFueled(fuelCount);
             }
 
             // Update the initial state to the current state

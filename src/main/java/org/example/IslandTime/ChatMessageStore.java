@@ -28,6 +28,8 @@ public class ChatMessageStore {
         if (messages.size() > MAX_MESSAGES) {
             messages.remove(messages.size() - 1);
         }
+        // Hook for sack-income tracking (currently a disabled no-op — see class docs).
+        SackIncomeTracker.onSackChatLine(message.getString());
     }
 
     public static List<Component> getMessages() {

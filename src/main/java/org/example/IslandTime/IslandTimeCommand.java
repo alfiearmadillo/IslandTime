@@ -268,6 +268,12 @@ public class IslandTimeCommand {
                             client.execute(() -> client.setScreen(new PlayerListScreen()));
                             return 1;
                         }))
+                .then(literal("fueldays")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new FuelDayScreen()));
+                            return 1;
+                        }))
                 .then(literal("savesettings")
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
@@ -329,25 +335,27 @@ public class IslandTimeCommand {
                         }))
         );
 
-        // /fueltime
+        // /fueltime — opens the fuel day tracker GUI (use /it fueldays for the same thing).
+        // A date argument still prints a quick chat summary for that day.
         dispatcher.register(literal("fueltime")
                 .executes(ctx -> {
-                    FuelCycleTracker.displayStats(ctx.getSource().getClient(), null);
+                    Minecraft client = ctx.getSource().getClient();
+                    client.execute(() -> client.setScreen(new FuelDayScreen()));
                     return 1;
                 })
                 .then(literal("debug")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
                             client.player.sendSystemMessage(
-                                    Component.literal("[FuelCycleTracker Debug] Injecting fake cycle and saving...")
+                                    Component.literal("[FuelCycleTracker Debug] Injecting fake day record and saving...")
                                             .withStyle(ChatFormatting.YELLOW));
-                            boolean saved = FuelCycleTracker.debugSimulateCycle();
+                            boolean saved = FuelCycleTracker.debugSimulateDay();
                             if (saved) {
                                 client.player.sendSystemMessage(
                                         Component.literal("[FuelCycleTracker Debug] Save succeeded — file exists on disk.")
                                                 .withStyle(ChatFormatting.GREEN));
                                 client.player.sendSystemMessage(
-                                        Component.literal("[FuelCycleTracker Debug] Run /fueltime to confirm the cycle appears, then check latest.log for any errors.")
+                                        Component.literal("[FuelCycleTracker Debug] Run /fueltime to confirm the day appears, then check latest.log for any errors.")
                                                 .withStyle(ChatFormatting.GRAY));
                             } else {
                                 client.player.sendSystemMessage(
@@ -356,10 +364,10 @@ public class IslandTimeCommand {
                             }
                             return 1;
                         }))
-                .then(argument("cycle", com.mojang.brigadier.arguments.IntegerArgumentType.integer())
+                .then(argument("date", StringArgumentType.word())
                         .executes(ctx -> {
-                            int cycleNumber = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "cycle");
-                            FuelCycleTracker.displayStats(ctx.getSource().getClient(), cycleNumber);
+                            String date = StringArgumentType.getString(ctx, "date");
+                            FuelCycleTracker.displayStats(ctx.getSource().getClient(), date);
                             return 1;
                         })));
 
@@ -1285,8 +1293,8 @@ public class IslandTimeCommand {
                 {"/islandtime", "Open the configuration GUI (all settings in one place)"},
                 {"/islandtime recent", "Show last 7 days of island time"},
                 {"/islandtime <DD-MM-YY>", "Show specific date (e.g., /islandtime 1-1-26)"},
-                {"/fueltime", "Show current and recent fuel cycle stats (last 4 cycles)"},
-                {"/fueltime <cycle>", "Show details for a specific cycle number (e.g., /fueltime 6)"},
+                {"/fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
+                {"/fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /fueltime 2026-01-01)"},
 
                 // Page 2 - Discord webhook & pings
                 {"/webhook", "Show current webhook URL"},
@@ -1307,7 +1315,7 @@ public class IslandTimeCommand {
                 {"/islandalertspeed <speed>", "Set island alert speed (off / fast / normal / slow)"},
                 {"/disconnectalertspeed", "Show current disconnect alert speed and options"},
                 {"/disconnectalertspeed <speed>", "Set disconnect alert speed. Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
-                {"/fueltime debug", "Inject a fake completed cycle and attempt save (for diagnostics)"},
+                {"/fueltime debug", "Inject a fake day record and attempt save (for diagnostics)"},
 
                 // Page 5 - Tracking toggles & chat messages
                 {"/trackislandtime <on|off>", "Enable or disable island-time tracking. Disabling preserves existing data but no new days will be tracked."},

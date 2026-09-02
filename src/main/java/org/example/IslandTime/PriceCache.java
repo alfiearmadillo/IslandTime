@@ -28,6 +28,35 @@ public class PriceCache {
     // Per-item cache for AH lowest BIN prices
     private static final Map<String, CachedPrice> lowestBinCache = new ConcurrentHashMap<>();
 
+    /**
+     * The 5 Epic-tier Inferno Minion Fuel distillates (used to craft the medium
+     * Epic fuel variants). Only these are relevant for the "cheapest distillate"
+     * fuel-cost strategy — the other Inferno Minion Fuel tiers are ignored.
+     */
+    public static final String[] INFERNO_FUEL_DISTILLATE_IDS = {
+            "BLAZE_ROD_DISTILLATE",
+            "GLOWSTONE_DUST_DISTILLATE",
+            "MAGMA_CREAM_DISTILLATE",
+            "NETHER_STALK_DISTILLATE",
+            "CRUDE_GABAGOOL_DISTILLATE"
+    };
+
+    /**
+     * Returns the insta-buy price of the cheapest of the 5 Epic Inferno Minion Fuel
+     * distillates, or -1 if the bazaar data is unavailable or none of the products exist.
+     */
+    public static double getCheapestInfernoFuelDistillatePrice(JsonObject products) {
+        if (products == null) return -1;
+        double cheapest = -1;
+        for (String id : INFERNO_FUEL_DISTILLATE_IDS) {
+            double price = getInstaBuyPrice(products, id);
+            if (price > 0 && (cheapest < 0 || price < cheapest)) {
+                cheapest = price;
+            }
+        }
+        return cheapest;
+    }
+
     public static JsonObject getBazaar() {
         long now = System.currentTimeMillis();
         if (cachedBazaar != null && (now - bazaarCacheTime) < CACHE_DURATION_MS) {

@@ -115,6 +115,10 @@ public class ConfigManager {
 
         // Fuel Cycles tracking
         config.fuelCycles.enabled = TrackingToggleConfig.isFuelCycleEnabled();
+        config.fuelCycles.mobKillCoinsAt100PercentString = String.valueOf(FuelCycleTracker.getMobKillCoinsAt100Baseline());
+        FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(java.time.LocalDate.now().toString());
+        config.fuelCycles.todayGabagoolPriceString = today != null ? String.valueOf(today.gabagoolPrice) : "0";
+        config.fuelCycles.todayGabagoolAmountString = today != null ? String.valueOf(today.gabagoolAmount) : "0";
 
         // Favourite GUI tracking
         config.favouriteGui.enabled = FavouriteGuiManager.isTrackingEnabled();
@@ -167,6 +171,33 @@ public class ConfigManager {
         // Fuel Cycles tracking
         if (TrackingToggleConfig.isFuelCycleEnabled() != config.fuelCycles.enabled) {
             TrackingToggleConfig.setFuelCycleEnabled(config.fuelCycles.enabled);
+        }
+        try {
+            double baseline = Double.parseDouble(config.fuelCycles.mobKillCoinsAt100PercentString.trim());
+            if (baseline != FuelCycleTracker.getMobKillCoinsAt100Baseline()) {
+                FuelCycleTracker.setMobKillCoinsAt100Baseline(baseline);
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid number, keep existing value
+        }
+        String todayDate = java.time.LocalDate.now().toString();
+        try {
+            double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
+            FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
+            if (today == null || today.gabagoolPrice != price) {
+                FuelCycleTracker.setGabagoolPrice(todayDate, price);
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid number, keep existing value
+        }
+        try {
+            double amount = Double.parseDouble(config.fuelCycles.todayGabagoolAmountString.trim());
+            FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
+            if (today == null || today.gabagoolAmount != amount) {
+                FuelCycleTracker.setGabagoolAmount(todayDate, amount);
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid number, keep existing value
         }
 
         // Favourite GUI tracking

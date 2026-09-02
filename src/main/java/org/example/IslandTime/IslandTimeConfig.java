@@ -89,15 +89,13 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions (last 4 cycles). You can also use /fueltime <cycle> to view a specific cycle number (e.g., /fueltime 6)")
-        @ConfigEditorButton(buttonText = " View Fuel Time ")
+        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing day-by-day fuel and profit stats. You can also use /it fueldays or /fueltime")
+        @ConfigEditorButton(buttonText = " Open Fuel Day Tracker ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-                if (client.player != null) {
-                    client.player.connection.sendCommand("fueltime");
-                }
+                client.execute(() -> client.setScreen(new FuelDayScreen()));
             }
         };
 
@@ -105,6 +103,34 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Enable Tracking", desc = "Track fuel cycles for your minions")
         @ConfigEditorBoolean
         public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Mob-Kill Coins/Day @ 100% AFK",
+                desc = "Baseline coins/day from mob kills at 100% AFK time, used to estimate each day's mob-kill profit " +
+                        "based on that day's actual AFK%. Snapshotted per-day when recorded, so changing this later " +
+                        "(e.g. after a game update) doesn't affect past days. Edit past days individually in the Fuel Day Tracker GUI."
+        )
+        @ConfigEditorText
+        public String mobKillCoinsAt100PercentString = "0";
+
+        @Expose
+        @ConfigOption(
+                name = "Today's Gabagool Price",
+                desc = "Manually entered sell price for a single Crude Gabagool today (sacks can't be read automatically). " +
+                        "Edit past days individually in the Fuel Day Tracker GUI."
+        )
+        @ConfigEditorText
+        public String todayGabagoolPriceString = "0";
+
+        @Expose
+        @ConfigOption(
+                name = "Today's Gabagool Amount",
+                desc = "Manually entered amount of Crude Gabagool collected today. " +
+                        "Edit past days individually in the Fuel Day Tracker GUI."
+        )
+        @ConfigEditorText
+        public String todayGabagoolAmountString = "0";
     }
 
     public static class FavouriteGui {
