@@ -448,11 +448,6 @@ public class PlayerListScreen extends Screen {
         StringBuilder sb = new StringBuilder();
         sb.append("=== Chat component dump ===\n");
         appendComponentDump(sb, message, "root", 0);
-        int i = 0;
-        for (Component sibling : message.getSiblings()) {
-            appendComponentDump(sb, sibling, "sibling[" + i + "]", 0);
-            i++;
-        }
         return sb.toString();
     }
 
