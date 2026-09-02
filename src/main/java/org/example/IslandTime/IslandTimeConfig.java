@@ -117,7 +117,7 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(
-                name = "Mob-Kill Coins/Day @ 100% AFK",
+                name = "Coins/Day @ 100% AFK",
                 desc = "Baseline coins/day from mob kills at 100% AFK time, used to estimate each day's mob-kill profit " +
                         "based on that day's actual AFK%. Snapshotted per-day when recorded, so changing this later " +
                         "(e.g. after a game update) doesn't affect past days. Edit past days individually in the Fuel Day Tracker GUI."

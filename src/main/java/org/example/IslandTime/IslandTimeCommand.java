@@ -1,6 +1,7 @@
 package org.example.islandtime;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -87,36 +88,36 @@ public class IslandTimeCommand {
                         .then(literal("remove")
                                 .then(argument("blockid", StringArgumentType.greedyString())
                                         .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))))
-                .then(literal("savesettings")
+                .then(literal("settingssave")
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     SettingsLoadoutManager.save(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
                                     return 1;
                                 })))
-                .then(literal("loadsettings")
+                .then(literal("settingsload")
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     SettingsLoadoutManager.load(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
                                     return 1;
                                 })))
-                .then(literal("deletesettings")
+                .then(literal("settingsdelete")
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     SettingsLoadoutManager.delete(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
                                     return 1;
                                 })))
-                .then(literal("listsettings")
+                .then(literal("settingslist")
                         .executes(ctx -> {
                             SettingsLoadoutManager.list(ctx.getSource().getClient());
                             return 1;
                         }))
-                .then(literal("groupsettings")
+                .then(literal("settingsgroup")
                         .then(argument("names", StringArgumentType.greedyString())
                                 .executes(ctx -> {
                                     String[] parts = StringArgumentType.getString(ctx, "names").split("\\s+");
                                     if (parts.length < 3) {
                                         ctx.getSource().getClient().player.sendSystemMessage(
-                                                Component.literal("[IslandTime] Usage: /it groupsettings <groupName> <loadout1> <loadout2> [...]").withStyle(ChatFormatting.RED));
+                                                Component.literal("[IslandTime] Usage: /it settingsgroup <groupName> <loadout1> <loadout2> [...]").withStyle(ChatFormatting.RED));
                                         return 1;
                                     }
                                     String groupName = parts[0];
@@ -125,11 +126,25 @@ public class IslandTimeCommand {
                                     SettingsLoadoutManager.setGroup(ctx.getSource().getClient(), groupName, loadouts);
                                     return 1;
                                 })))
-                .then(literal("cyclesettings")
+                .then(literal("settingscycle")
                         .executes(ctx -> {
                             SettingsLoadoutManager.cycle(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(buildFueltimeCommand())
+                .then(buildWebhookCommand())
+                .then(buildDiscordpingCommand())
+                .then(buildChatrelayCommand())
+                .then(buildTrackitemCommand())
+                .then(buildTrackedalertspeedCommand())
+                .then(buildIslandalertspeedCommand())
+                .then(buildDisconnectalertspeedCommand())
+                .then(buildTrackislandtimeCommand())
+                .then(buildTrackfuelcyclesCommand())
+                .then(buildMinionfuelmessagesCommand())
+                .then(buildIslandleavemessagesCommand())
+                .then(buildFavouriteguiCommand())
+                .then(buildShowtooltipsCommand())
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
@@ -141,11 +156,12 @@ public class IslandTimeCommand {
                                     showHelp(ctx.getSource().getClient(), page);
                                     return 1;
                                 })))
-                .then(argument("date", StringArgumentType.word())
-                        .executes(ctx -> {
-                            showSpecificDate(StringArgumentType.getString(ctx, "date"));
-                            return 1;
-                        }))
+                .then(literal("trackedIslandTime")
+                        .then(argument("date", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    showSpecificDate(StringArgumentType.getString(ctx, "date"));
+                                    return 1;
+                                })))
         );
 
         // /it — alias for /islandtime
@@ -274,36 +290,36 @@ public class IslandTimeCommand {
                             client.execute(() -> client.setScreen(new FuelDayScreen()));
                             return 1;
                         }))
-                .then(literal("savesettings")
+                .then(literal("settingssave")
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     SettingsLoadoutManager.save(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
                                     return 1;
                                 })))
-                .then(literal("loadsettings")
+                .then(literal("settingsload")
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     SettingsLoadoutManager.load(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
                                     return 1;
                                 })))
-                .then(literal("deletesettings")
+                .then(literal("settingsdelete")
                         .then(argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     SettingsLoadoutManager.delete(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
                                     return 1;
                                 })))
-                .then(literal("listsettings")
+                .then(literal("settingslist")
                         .executes(ctx -> {
                             SettingsLoadoutManager.list(ctx.getSource().getClient());
                             return 1;
                         }))
-                .then(literal("groupsettings")
+                .then(literal("settingsgroup")
                         .then(argument("names", StringArgumentType.greedyString())
                                 .executes(ctx -> {
                                     String[] parts = StringArgumentType.getString(ctx, "names").split("\\s+");
                                     if (parts.length < 3) {
                                         ctx.getSource().getClient().player.sendSystemMessage(
-                                                Component.literal("[IslandTime] Usage: /it groupsettings <groupName> <loadout1> <loadout2> [...]").withStyle(ChatFormatting.RED));
+                                                Component.literal("[IslandTime] Usage: /it settingsgroup <groupName> <loadout1> <loadout2> [...]").withStyle(ChatFormatting.RED));
                                         return 1;
                                     }
                                     String groupName = parts[0];
@@ -312,11 +328,25 @@ public class IslandTimeCommand {
                                     SettingsLoadoutManager.setGroup(ctx.getSource().getClient(), groupName, loadouts);
                                     return 1;
                                 })))
-                .then(literal("cyclesettings")
+                .then(literal("settingscycle")
                         .executes(ctx -> {
                             SettingsLoadoutManager.cycle(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(buildFueltimeCommand())
+                .then(buildWebhookCommand())
+                .then(buildDiscordpingCommand())
+                .then(buildChatrelayCommand())
+                .then(buildTrackitemCommand())
+                .then(buildTrackedalertspeedCommand())
+                .then(buildIslandalertspeedCommand())
+                .then(buildDisconnectalertspeedCommand())
+                .then(buildTrackislandtimeCommand())
+                .then(buildTrackfuelcyclesCommand())
+                .then(buildMinionfuelmessagesCommand())
+                .then(buildIslandleavemessagesCommand())
+                .then(buildFavouriteguiCommand())
+                .then(buildShowtooltipsCommand())
                 .then(literal("help")
                         .executes(ctx -> {
                             showHelp(ctx.getSource().getClient(), 1);
@@ -328,665 +358,14 @@ public class IslandTimeCommand {
                                     showHelp(ctx.getSource().getClient(), page);
                                     return 1;
                                 })))
-                .then(argument("date", StringArgumentType.word())
-                        .executes(ctx -> {
-                            showSpecificDate(StringArgumentType.getString(ctx, "date"));
-                            return 1;
-                        }))
+                .then(literal("trackedIslandTime")
+                        .then(argument("date", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    showSpecificDate(StringArgumentType.getString(ctx, "date"));
+                                    return 1;
+                                })))
         );
 
-        // /fueltime — opens the fuel day tracker GUI (use /it fueldays for the same thing).
-        // A date argument still prints a quick chat summary for that day.
-        dispatcher.register(literal("fueltime")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    client.execute(() -> client.setScreen(new FuelDayScreen()));
-                    return 1;
-                })
-                .then(literal("debug")
-                        .executes(ctx -> {
-                            Minecraft client = ctx.getSource().getClient();
-                            client.player.sendSystemMessage(
-                                    Component.literal("[FuelCycleTracker Debug] Injecting fake day record and saving...")
-                                            .withStyle(ChatFormatting.YELLOW));
-                            boolean saved = FuelCycleTracker.debugSimulateDay();
-                            if (saved) {
-                                client.player.sendSystemMessage(
-                                        Component.literal("[FuelCycleTracker Debug] Save succeeded — file exists on disk.")
-                                                .withStyle(ChatFormatting.GREEN));
-                                client.player.sendSystemMessage(
-                                        Component.literal("[FuelCycleTracker Debug] Run /fueltime to confirm the day appears, then check latest.log for any errors.")
-                                                .withStyle(ChatFormatting.GRAY));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("[FuelCycleTracker Debug] Save FAILED — file not found after save attempt. Check latest.log for the IOException.")
-                                                .withStyle(ChatFormatting.RED));
-                            }
-                            return 1;
-                        }))
-                .then(argument("date", StringArgumentType.word())
-                        .executes(ctx -> {
-                            String date = StringArgumentType.getString(ctx, "date");
-                            FuelCycleTracker.displayStats(ctx.getSource().getClient(), date);
-                            return 1;
-                        })));
-
-        // /webhook
-        dispatcher.register(literal("webhook")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    String url = DiscordWebhookManager.getWebhook();
-                    if (url != null && !url.isEmpty()) {
-                        client.player.sendSystemMessage(
-                                Component.literal("Webhook URL: " + url).withStyle(ChatFormatting.AQUA));
-                    } else {
-                        client.player.sendSystemMessage(
-                                Component.literal("No webhook set").withStyle(ChatFormatting.YELLOW));
-                    }
-                    return 1;
-                })
-                .then(argument("url", StringArgumentType.greedyString())
-                        .executes(ctx -> {
-                            String url = StringArgumentType.getString(ctx, "url");
-                            Minecraft client = ctx.getSource().getClient();
-                            if (url.equalsIgnoreCase("clear")) {
-                                DiscordWebhookManager.clearWebhook();
-                                client.player.sendSystemMessage(
-                                        Component.literal("Webhook cleared").withStyle(ChatFormatting.GREEN));
-                            } else if (url.startsWith("https://discord.com/api/webhooks/")) {
-                                DiscordWebhookManager.setWebhook(url);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Webhook set successfully").withStyle(ChatFormatting.GREEN));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Invalid webhook URL. Must start with https://discord.com/api/webhooks/")
-                                                .withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /discordping
-        dispatcher.register(literal("discordping")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    String userId = DiscordWebhookManager.getDiscordUserId();
-                    if (userId != null && !userId.isEmpty()) {
-                        client.player.sendSystemMessage(
-                                Component.literal("Discord ping ID: ").withStyle(ChatFormatting.AQUA)
-                                        .append(Component.literal(userId).withStyle(ChatFormatting.YELLOW)));
-                    } else {
-                        client.player.sendSystemMessage(
-                                Component.literal("No Discord ping ID set (webhooks will not ping anyone)")
-                                        .withStyle(ChatFormatting.YELLOW));
-                    }
-                    return 1;
-                })
-                .then(argument("userid", StringArgumentType.word())
-                        .executes(ctx -> {
-                            String userId = StringArgumentType.getString(ctx, "userid");
-                            Minecraft client = ctx.getSource().getClient();
-                            if (userId.equalsIgnoreCase("clear")) {
-                                DiscordWebhookManager.clearDiscordUserId();
-                                client.player.sendSystemMessage(
-                                        Component.literal("Discord ping ID cleared").withStyle(ChatFormatting.GREEN));
-                                return 1;
-                            }
-                            if (!userId.matches("\\d+")) {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Invalid Discord user ID. Must be numeric (e.g., 123456789012345678)")
-                                                .withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            DiscordWebhookManager.setDiscordUserId(userId);
-                            client.player.sendSystemMessage(
-                                    Component.literal("Discord ping ID set to: ").withStyle(ChatFormatting.GREEN)
-                                            .append(Component.literal(userId).withStyle(ChatFormatting.YELLOW)));
-                            return 1;
-                        })));
-
-        // /chatrelay
-        dispatcher.register(literal("chatrelay")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    String url    = ChatRelayConfig.getChatWebhookUrl();
-                    int    port   = ChatRelayConfig.getPollPort();
-                    String secret = ChatRelayConfig.getPollSecret();
-
-                    client.player.sendSystemMessage(
-                            Component.literal("─── Chat Relay Config ───").withStyle(ChatFormatting.AQUA));
-                    client.player.sendSystemMessage(
-                            Component.literal("Webhook: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(url.isEmpty() ? "(not set)" : url)
-                                            .withStyle(url.isEmpty() ? ChatFormatting.YELLOW : ChatFormatting.GREEN)));
-                    client.player.sendSystemMessage(
-                            Component.literal("Poll port: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(String.valueOf(port)).withStyle(ChatFormatting.WHITE)));
-                    client.player.sendSystemMessage(
-                            Component.literal("Poll secret: ").withStyle(ChatFormatting.GRAY)
-                                    .append(Component.literal(secret).withStyle(ChatFormatting.WHITE)));
-                    client.player.sendSystemMessage(
-                            Component.literal("Use /islandtime help 6 for subcommands.").withStyle(ChatFormatting.DARK_GRAY));
-                    return 1;
-                })
-                .then(literal("webhook")
-                        .then(argument("url", StringArgumentType.greedyString())
-                                .executes(ctx -> {
-                                    String url = StringArgumentType.getString(ctx, "url");
-                                    Minecraft client = ctx.getSource().getClient();
-                                    if (url.equalsIgnoreCase("clear")) {
-                                        ChatRelayConfig.setChatWebhookUrl("");
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Chat relay webhook cleared.").withStyle(ChatFormatting.GREEN));
-                                    } else if (url.startsWith("https://discord.com/api/webhooks/")) {
-                                        ChatRelayConfig.setChatWebhookUrl(url);
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Chat relay webhook set.").withStyle(ChatFormatting.GREEN));
-                                    } else {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Invalid URL. Must start with https://discord.com/api/webhooks/")
-                                                        .withStyle(ChatFormatting.RED));
-                                        return 0;
-                                    }
-                                    return 1;
-                                })))
-                .then(literal("port")
-                        .then(argument("port", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 65535))
-                                .executes(ctx -> {
-                                    int port = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "port");
-                                    ChatRelayConfig.setPollPort(port);
-                                    ctx.getSource().getClient().player.sendSystemMessage(
-                                            Component.literal("Poll port set to " + port + ". Rejoin the server to apply.")
-                                                    .withStyle(ChatFormatting.GREEN));
-                                    return 1;
-                                })))
-                .then(literal("secret")
-                        .then(argument("secret", StringArgumentType.greedyString())
-                                .executes(ctx -> {
-                                    String secret = StringArgumentType.getString(ctx, "secret");
-                                    ChatRelayConfig.setPollSecret(secret);
-                                    ctx.getSource().getClient().player.sendSystemMessage(
-                                            Component.literal("Poll secret updated.").withStyle(ChatFormatting.GREEN));
-                                    return 1;
-                                }))));
-
-        // /trackitem
-        dispatcher.register(literal("trackitem")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    String uuid = ItemTracker.getTrackedUuid();
-                    String name = ItemTracker.getTrackedItemName();
-                    if (uuid != null && !uuid.isEmpty()) {
-                        client.player.sendSystemMessage(
-                                Component.literal("Currently tracking: ").withStyle(ChatFormatting.AQUA)
-                                        .append(Component.literal(name != null ? name : "Unknown item").withStyle(ChatFormatting.YELLOW))
-                                        .append(Component.literal("\nUUID: " + uuid).withStyle(ChatFormatting.GRAY)));
-                    } else {
-                        client.player.sendSystemMessage(
-                                Component.literal("No item is being tracked").withStyle(ChatFormatting.YELLOW));
-                    }
-                    return 1;
-                })
-                .then(literal("set")
-                        .executes(ctx -> {
-                            Minecraft client = ctx.getSource().getClient();
-                            if (ItemTracker.setTrackedItemFromMainHand(client)) {
-                                String name = ItemTracker.getTrackedItemName();
-                                String uuid = ItemTracker.getTrackedUuid();
-                                client.player.sendSystemMessage(
-                                        Component.literal("Now tracking: ").withStyle(ChatFormatting.GREEN)
-                                                .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                .append(Component.literal("\nUUID: " + uuid).withStyle(ChatFormatting.GRAY)));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Cannot track this item. Item must have both 'uuid' and 'stats_book' in custom data.")
-                                                .withStyle(ChatFormatting.RED));
-                            }
-                            return 1;
-                        }))
-                .then(literal("clear")
-                        .executes(ctx -> {
-                            ItemTracker.clearTrackedItem();
-                            ctx.getSource().getClient().player.sendSystemMessage(
-                                    Component.literal("Cleared tracked item").withStyle(ChatFormatting.GREEN));
-                            return 1;
-                        })));
-
-        // /trackedalertspeed
-        dispatcher.register(literal("trackedalertspeed")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    client.player.sendSystemMessage(
-                            Component.literal("Current tracked item alert speed: ").withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(ItemTracker.getAlertSpeed().name().toLowerCase())
-                                            .withStyle(ChatFormatting.YELLOW)));
-                    showAlertSpeedOptions(client);
-                    return 1;
-                })
-                .then(argument("speed", StringArgumentType.word())
-                        .suggests((ctx, builder) -> {
-                            builder.suggest("off");
-                            builder.suggest("fast");
-                            builder.suggest("normal");
-                            builder.suggest("slow");
-                            return builder.buildFuture();
-                        })
-                        .executes(ctx -> {
-                            String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
-                            Minecraft client = ctx.getSource().getClient();
-                            try {
-                                ItemTracker.AlertSpeed speed = ItemTracker.AlertSpeed.valueOf(speedStr);
-                                ItemTracker.setAlertSpeed(speed);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Tracked item alert speed set to: ").withStyle(ChatFormatting.GREEN)
-                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
-                            } catch (IllegalArgumentException e) {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
-                                                .withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /islandalertspeed
-        dispatcher.register(literal("islandalertspeed")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    client.player.sendSystemMessage(
-                            Component.literal("Current island alert speed: ").withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(IslandAlertTracker.getAlertSpeed().name().toLowerCase())
-                                            .withStyle(ChatFormatting.YELLOW)));
-                    showAlertSpeedOptions(client);
-                    return 1;
-                })
-                .then(argument("speed", StringArgumentType.word())
-                        .suggests((ctx, builder) -> {
-                            builder.suggest("off");
-                            builder.suggest("fast");
-                            builder.suggest("normal");
-                            builder.suggest("slow");
-                            return builder.buildFuture();
-                        })
-                        .executes(ctx -> {
-                            String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
-                            Minecraft client = ctx.getSource().getClient();
-                            try {
-                                IslandAlertTracker.AlertSpeed speed = IslandAlertTracker.AlertSpeed.valueOf(speedStr);
-                                IslandAlertTracker.setAlertSpeed(speed);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Island alert speed set to: ").withStyle(ChatFormatting.GREEN)
-                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
-                            } catch (IllegalArgumentException e) {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
-                                                .withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /disconnectalertspeed
-        dispatcher.register(literal("disconnectalertspeed")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    client.player.sendSystemMessage(
-                            Component.literal("Current disconnect alert speed: ").withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(DisconnectAlertTracker.getAlertSpeed().name().toLowerCase())
-                                            .withStyle(ChatFormatting.YELLOW)));
-                    client.player.sendSystemMessage(Component.literal("\nDisconnect alert speeds:").withStyle(ChatFormatting.GRAY));
-                    client.player.sendSystemMessage(Component.literal("  off: ").withStyle(ChatFormatting.WHITE)
-                            .append(Component.literal("No alerts").withStyle(ChatFormatting.GRAY)));
-                    client.player.sendSystemMessage(Component.literal("  fast: ").withStyle(ChatFormatting.WHITE)
-                            .append(Component.literal("After 10s, then every 5 min").withStyle(ChatFormatting.GRAY)));
-                    client.player.sendSystemMessage(Component.literal("  normal: ").withStyle(ChatFormatting.WHITE)
-                            .append(Component.literal("After 10s, then every 30 min").withStyle(ChatFormatting.GRAY)));
-                    client.player.sendSystemMessage(Component.literal("  slow: ").withStyle(ChatFormatting.WHITE)
-                            .append(Component.literal("After 10s, then every 3 hours").withStyle(ChatFormatting.GRAY)));
-                    return 1;
-                })
-                .then(argument("speed", StringArgumentType.word())
-                        .suggests((ctx, builder) -> {
-                            builder.suggest("off");
-                            builder.suggest("fast");
-                            builder.suggest("normal");
-                            builder.suggest("slow");
-                            return builder.buildFuture();
-                        })
-                        .executes(ctx -> {
-                            String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
-                            Minecraft client = ctx.getSource().getClient();
-                            try {
-                                DisconnectAlertTracker.AlertSpeed speed = DisconnectAlertTracker.AlertSpeed.valueOf(speedStr);
-                                DisconnectAlertTracker.setAlertSpeed(speed);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Disconnect alert speed set to: ").withStyle(ChatFormatting.GREEN)
-                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
-                            } catch (IllegalArgumentException e) {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
-                                                .withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /trackislandtime
-        dispatcher.register(literal("trackislandtime")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    boolean current = TrackingToggleConfig.isIslandTimeEnabled();
-                    client.player.sendSystemMessage(
-                            Component.literal("Island-time tracking is currently: ").withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(current ? "enabled" : "disabled")
-                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
-                    client.player.sendSystemMessage(
-                            Component.literal("Use /trackislandtime <on|off> to change.").withStyle(ChatFormatting.GRAY));
-                    return 1;
-                })
-                .then(argument("state", StringArgumentType.word())
-                        .executes(ctx -> {
-                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            Minecraft client = ctx.getSource().getClient();
-                            if (state.equals("on")) {
-                                TrackingToggleConfig.setIslandTimeEnabled(true);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Island-time tracking enabled.").withStyle(ChatFormatting.GREEN));
-                            } else if (state.equals("off")) {
-                                TrackingToggleConfig.setIslandTimeEnabled(false);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Island-time tracking disabled. Current day data is preserved; no new days will be tracked.")
-                                                .withStyle(ChatFormatting.YELLOW));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Usage: /trackislandtime <on|off>").withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /trackfuelcycles
-        dispatcher.register(literal("trackfuelcycles")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    boolean current = TrackingToggleConfig.isFuelCycleEnabled();
-                    client.player.sendSystemMessage(
-                            Component.literal("Fuel-cycle tracking is currently: ").withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(current ? "enabled" : "disabled")
-                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
-                    client.player.sendSystemMessage(
-                            Component.literal("Use /trackfuelcycles <on|off> to change.").withStyle(ChatFormatting.GRAY));
-                    return 1;
-                })
-                .then(argument("state", StringArgumentType.word())
-                        .executes(ctx -> {
-                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            Minecraft client = ctx.getSource().getClient();
-                            if (state.equals("on")) {
-                                TrackingToggleConfig.setFuelCycleEnabled(true);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Fuel-cycle tracking enabled.").withStyle(ChatFormatting.GREEN));
-                            } else if (state.equals("off")) {
-                                TrackingToggleConfig.setFuelCycleEnabled(false);
-                                client.player.sendSystemMessage(
-                                        Component.literal("Fuel-cycle tracking disabled. Any active cycle will complete naturally; no new cycles will start.")
-                                                .withStyle(ChatFormatting.YELLOW));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Usage: /trackfuelcycles <on|off>").withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /minionfuelmessages
-        dispatcher.register(literal("minionfuelmessages")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    boolean current = MinionFuelTracker.isShowFuelMessages();
-                    client.player.sendSystemMessage(
-                            Component.literal("Minion fuel messages are currently: ").withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(current ? "enabled" : "disabled")
-                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
-                    client.player.sendSystemMessage(
-                            Component.literal("Use /minionfuelmessages <on|off> to change.").withStyle(ChatFormatting.GRAY));
-                    return 1;
-                })
-                .then(argument("state", StringArgumentType.word())
-                        .executes(ctx -> {
-                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            Minecraft client = ctx.getSource().getClient();
-                            if (state.equals("on")) {
-                                MinionFuelTracker.setShowFuelMessages(true);
-                                ConfigManager.syncFromExistingConfigs();
-                                client.player.sendSystemMessage(
-                                        Component.literal("Minion fuel messages enabled.").withStyle(ChatFormatting.GREEN));
-                            } else if (state.equals("off")) {
-                                MinionFuelTracker.setShowFuelMessages(false);
-                                ConfigManager.syncFromExistingConfigs();
-                                client.player.sendSystemMessage(
-                                        Component.literal("Minion fuel messages disabled.").withStyle(ChatFormatting.YELLOW));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Usage: /minionfuelmessages <on|off>").withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /islandleavemessages
-        dispatcher.register(literal("islandleavemessages")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    boolean current = IslandPlayerTracker.isShowLeaveMessages();
-                    client.player.sendSystemMessage(
-                            Component.literal("Island leave messages are currently: ").withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(current ? "enabled" : "disabled")
-                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
-                    client.player.sendSystemMessage(
-                            Component.literal("Use /islandleavemessages <on|off> to change.").withStyle(ChatFormatting.GRAY));
-                    return 1;
-                })
-                .then(argument("state", StringArgumentType.word())
-                        .executes(ctx -> {
-                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
-                            Minecraft client = ctx.getSource().getClient();
-                            if (state.equals("on")) {
-                                IslandPlayerTracker.setShowLeaveMessages(true);
-                                ConfigManager.syncFromExistingConfigs();
-                                client.player.sendSystemMessage(
-                                        Component.literal("Island leave messages enabled.").withStyle(ChatFormatting.GREEN));
-                            } else if (state.equals("off")) {
-                                IslandPlayerTracker.setShowLeaveMessages(false);
-                                ConfigManager.syncFromExistingConfigs();
-                                client.player.sendSystemMessage(
-                                        Component.literal("Island leave messages disabled.").withStyle(ChatFormatting.YELLOW));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Usage: /islandleavemessages <on|off>").withStyle(ChatFormatting.RED));
-                                return 0;
-                            }
-                            return 1;
-                        })));
-
-        // /favouritegui
-        dispatcher.register(literal("favouritegui")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    Set<String> savedNames = FavouriteGuiManager.getSavedNames();
-
-                    if (savedNames.isEmpty()) {
-                        client.player.sendSystemMessage(
-                                Component.literal("No saved containers yet. Use /favouritegui save <name> to save a container.")
-                                        .withStyle(ChatFormatting.YELLOW));
-                    } else {
-                        client.player.sendSystemMessage(
-                                Component.literal("Saved containers (" + savedNames.size() + "):").withStyle(ChatFormatting.GOLD));
-                        for (String name : savedNames) {
-                            FavouriteGuiManager.SavedContainer container = FavouriteGuiManager.getSavedContainer(name);
-                            client.player.sendSystemMessage(
-                                    Component.literal("  • ").withStyle(ChatFormatting.GRAY)
-                                            .append(Component.literal(name).withStyle(ChatFormatting.AQUA)
-                                                    .withStyle(style -> style
-                                                            .withClickEvent(new ClickEvent.RunCommand(
-                                                                    "/favouritegui view " + name))
-                                                            .withHoverEvent(new HoverEvent.ShowText(
-                                                                    Component.literal("Click to view").withStyle(ChatFormatting.GRAY)))))
-                                            .append(Component.literal(" - ").withStyle(ChatFormatting.GRAY))
-                                            .append(Component.literal(container.title).withStyle(ChatFormatting.WHITE))
-                                            .append(Component.literal(" (" + container.items.size() + " items)").withStyle(ChatFormatting.GRAY)));
-                        }
-                    }
-                    return 1;
-                })
-                .then(literal("save")
-                        .then(argument("name", StringArgumentType.word())
-                                .executes(ctx -> {
-                                    String name = StringArgumentType.getString(ctx, "name");
-                                    Minecraft client = ctx.getSource().getClient();
-
-                                    if (FavouriteGuiManager.saveCurrentContainer(name)) {
-                                        FavouriteGuiManager.SavedContainer container = FavouriteGuiManager.getSavedContainer(name);
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Saved container '").withStyle(ChatFormatting.GREEN)
-                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                        .append(Component.literal("' (").withStyle(ChatFormatting.GREEN))
-                                                        .append(Component.literal(container.title).withStyle(ChatFormatting.WHITE))
-                                                        .append(Component.literal(", " + container.size + " slots, " + container.items.size() + " items)").withStyle(ChatFormatting.GREEN)));
-                                    } else {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Cannot save: No container is currently open or it's not a valid container type.")
-                                                        .withStyle(ChatFormatting.RED));
-                                        return 0;
-                                    }
-                                    return 1;
-                                })))
-                .then(literal("toggle")
-                        .executes(ctx -> {
-                            Minecraft client = ctx.getSource().getClient();
-                            boolean nowEnabled = !FavouriteGuiManager.isTrackingEnabled();
-                            FavouriteGuiManager.setTrackingEnabled(nowEnabled);
-                            if (nowEnabled) {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Favourite GUI tracking ")
-                                                .withStyle(ChatFormatting.GREEN)
-                                                .append(Component.literal("enabled").withStyle(ChatFormatting.GREEN))
-                                                .append(Component.literal(". Container snapshots will be kept for /favouritegui save.").withStyle(ChatFormatting.GRAY)));
-                            } else {
-                                client.player.sendSystemMessage(
-                                        Component.literal("Favourite GUI tracking ")
-                                                .withStyle(ChatFormatting.YELLOW)
-                                                .append(Component.literal("disabled").withStyle(ChatFormatting.RED))
-                                                .append(Component.literal(". Containers will no longer be snapshotted — /favouritegui save will have no data to work from.").withStyle(ChatFormatting.GRAY)));
-                            }
-                            return 1;
-                        }))
-                .then(literal("delete")
-                        .then(argument("name", StringArgumentType.word())
-                                .suggests((ctx, builder) -> {
-                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
-                                    return builder.buildFuture();
-                                })
-                                .executes(ctx -> {
-                                    String name = StringArgumentType.getString(ctx, "name");
-                                    Minecraft client = ctx.getSource().getClient();
-
-                                    if (FavouriteGuiManager.deleteSavedContainer(name)) {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Deleted saved container '").withStyle(ChatFormatting.GREEN)
-                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
-                                    } else {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
-                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
-                                        return 0;
-                                    }
-                                    return 1;
-                                })))
-                .then(literal("view")
-                        .then(argument("name", StringArgumentType.word())
-                                .suggests((ctx, builder) -> {
-                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
-                                    return builder.buildFuture();
-                                })
-                                .executes(ctx -> {
-                                    String name = StringArgumentType.getString(ctx, "name");
-                                    Minecraft client = ctx.getSource().getClient();
-
-                                    if (FavouriteGuiViewer.open(name)) {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Opening saved container '").withStyle(ChatFormatting.GREEN)
-                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
-                                    } else {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
-                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
-                                        return 0;
-                                    }
-                                    return 1;
-                                })))
-                .then(literal("open")
-                        .then(argument("name", StringArgumentType.word())
-                                .suggests((ctx, builder) -> {
-                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
-                                    return builder.buildFuture();
-                                })
-                                .executes(ctx -> {
-                                    String name = StringArgumentType.getString(ctx, "name");
-                                    Minecraft client = ctx.getSource().getClient();
-
-                                    if (FavouriteGuiViewer.open(name)) {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("Opening saved container '").withStyle(ChatFormatting.GREEN)
-                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
-                                    } else {
-                                        client.player.sendSystemMessage(
-                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
-                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
-                                        return 0;
-                                    }
-                                    return 1;
-                                }))));
-
-        // /showtooltips
-        dispatcher.register(literal("showtooltips")
-                .executes(ctx -> {
-                    TooltipOverrideConfig.toggle();
-                    boolean enabled = TooltipOverrideConfig.isShowHiddenTooltips();
-
-                    // Keep MoulConfig in sync so the GUI reflects the change
-                    if (ConfigManager.getConfig() != null) {
-                        ConfigManager.getConfig().misc.showHiddenTooltips = enabled;
-                        ConfigManager.saveToFile();
-                    }
-
-                    ctx.getSource().getClient().player.sendSystemMessage(
-                            Component.literal("Show hidden tooltips: ")
-                                    .withStyle(ChatFormatting.AQUA)
-                                    .append(Component.literal(enabled ? "ON" : "OFF")
-                                            .withStyle(enabled ? ChatFormatting.GREEN : ChatFormatting.RED)));
-                    return 1;
-                }));
-
-        // /highlight — alias, opens highlight GUI
-        dispatcher.register(literal("highlight")
-                .executes(ctx -> {
-                    Minecraft client = ctx.getSource().getClient();
-                    client.execute(() -> client.setScreen(new BlockHighlightScreen()));
-                    return 1;
-                })
-                .then(literal("add")
-                        .then(argument("blockid", StringArgumentType.greedyString())
-                                .executes(ctx -> { return highlightAdd(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); })))
-                .then(literal("remove")
-                        .then(argument("blockid", StringArgumentType.greedyString())
-                                .executes(ctx -> { return highlightRemove(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "blockid")); }))));
     }
 
     // -------------------------------------------------------------------------
@@ -1290,81 +669,80 @@ public class IslandTimeCommand {
     private static void showHelp(Minecraft client, int page) {
         String[][] commands = {
                 // Page 1 - Island time & fuel time
-                {"/islandtime", "Open the configuration GUI (all settings in one place)"},
-                {"/islandtime recent", "Show last 7 days of island time"},
-                {"/islandtime <DD-MM-YY>", "Show specific date (e.g., /islandtime 1-1-26)"},
-                {"/fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
-                {"/fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /fueltime 2026-01-01)"},
+                {"/it", "Open the configuration GUI (all settings in one place)"},
+                {"/it recent", "Show last 7 days of island time"},
+                {"/it trackedIslandTime <DD-MM-YY>", "Show specific date (e.g., /it trackedIslandTime 1-1-26)"},
+                {"/it fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
+                {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
 
                 // Page 2 - Discord webhook & pings
-                {"/webhook", "Show current webhook URL"},
-                {"/webhook <url>", "Set webhook URL (for Discord alerts). Must start with https://discord.com/api/webhooks/"},
-                {"/webhook clear", "Remove the webhook URL"},
-                {"/discordping <userid>", "Set your Discord user ID to ping in webhook alerts (must be numeric)"},
-                {"/discordping clear", "Remove Discord ping (webhooks won't ping anyone)"},
+                {"/it webhook", "Show current webhook URL"},
+                {"/it webhook <url>", "Set webhook URL (for Discord alerts). Must start with https://discord.com/api/webhooks/"},
+                {"/it webhook clear", "Remove the webhook URL"},
+                {"/it discordping <userid>", "Set your Discord user ID to ping in webhook alerts (must be numeric)"},
+                {"/it discordping clear", "Remove Discord ping (webhooks won't ping anyone)"},
 
                 // Page 3 - Item tracking
-                {"/trackitem", "Show the currently tracked item"},
-                {"/trackitem set", "Track the item in your main hand (must have UUID + stats_book)"},
-                {"/trackitem clear", "Stop tracking the current item"},
-                {"/trackedalertspeed", "Show current tracked-item alert speed and options"},
-                {"/trackedalertspeed <speed>", "Set tracked-item alert speed (off / fast / normal / slow)"},
+                {"/it trackitem", "Show the currently tracked item"},
+                {"/it trackitem set", "Track the item in your main hand (must have UUID + stats_book)"},
+                {"/it trackitem clear", "Stop tracking the current item"},
+                {"/it trackedalertspeed", "Show current tracked-item alert speed and options"},
+                {"/it trackedalertspeed <speed>", "Set tracked-item alert speed (off / fast / normal / slow)"},
 
                 // Page 4 - Alert speeds
-                {"/islandalertspeed", "Show current island alert speed and options"},
-                {"/islandalertspeed <speed>", "Set island alert speed (off / fast / normal / slow)"},
-                {"/disconnectalertspeed", "Show current disconnect alert speed and options"},
-                {"/disconnectalertspeed <speed>", "Set disconnect alert speed. Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
-                {"/fueltime debug", "Inject a fake day record and attempt save (for diagnostics)"},
+                {"/it islandalertspeed", "Show current island alert speed and options"},
+                {"/it islandalertspeed <speed>", "Set island alert speed (off / fast / normal / slow)"},
+                {"/it disconnectalertspeed", "Show current disconnect alert speed and options"},
+                {"/it disconnectalertspeed <speed>", "Set disconnect alert speed. Alerts fire after a 10s grace period — no alert if you reconnect within 10 seconds."},
+                {"/it fueltime debug", "Inject a fake day record and attempt save (for diagnostics)"},
 
                 // Page 5 - Tracking toggles & chat messages
-                {"/trackislandtime <on|off>", "Enable or disable island-time tracking. Disabling preserves existing data but no new days will be tracked."},
-                {"/trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. Any active cycle completes naturally; no new cycles will start."},
-                {"/minionfuelmessages <on|off>", "Enable or disable local chat messages when you fuel a minion"},
-                {"/islandleavemessages <on|off>", "Enable or disable local chat messages when a visitor leaves your island"},
-                {"/showtooltips", "Toggle visibility of items that have hide_tooltip set (e.g. GUI filler panes). Also configurable under Misc in /islandtime."},
-                {"/favouritegui toggle", "Toggle container snapshot tracking on/off. When off, /favouritegui save has no data to work from."},
+                {"/it trackislandtime <on|off>", "Enable or disable island-time tracking. Disabling preserves existing data but no new days will be tracked."},
+                {"/it trackfuelcycles <on|off>", "Enable or disable fuel-cycle tracking. Any active cycle completes naturally; no new cycles will start."},
+                {"/it minionfuelmessages <on|off>", "Enable or disable local chat messages when you fuel a minion"},
+                {"/it islandleavemessages <on|off>", "Enable or disable local chat messages when a visitor leaves your island"},
+                {"/it showtooltips", "Toggle visibility of items that have hide_tooltip set (e.g. GUI filler panes). Also configurable under Misc in /it."},
+                {"/it favouritegui toggle", "Toggle container snapshot tracking on/off. When off, /it favouritegui save has no data to work from."},
 
                 // Page 6 - Favourite GUI
-                {"/favouritegui", "List all saved container layouts"},
-                {"/favouritegui save <name>", "Save the currently open container under <name>"},
-                {"/favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
-                {"/favouritegui delete <name>", "Remove a previously saved container layout"},
+                {"/it favouritegui", "List all saved container layouts"},
+                {"/it favouritegui save <name>", "Save the currently open container under <name>"},
+                {"/it favouritegui view <name>", "Open a saved container layout as a read-only overlay"},
+                {"/it favouritegui delete <name>", "Remove a previously saved container layout"},
 
                 // Page 7 - Chat relay
-                {"/chatrelay", "Show current chat relay config (webhook, port, secret)"},
-                {"/chatrelay webhook <url>", "Set the Discord webhook for outbound island chat relay"},
-                {"/chatrelay webhook clear", "Disable outbound chat relay"},
-                {"/chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
-                {"/chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
+                {"/it chatrelay", "Show current chat relay config (webhook, port, secret)"},
+                {"/it chatrelay webhook <url>", "Set the Discord webhook for outbound island chat relay"},
+                {"/it chatrelay webhook clear", "Disable outbound chat relay"},
+                {"/it chatrelay port <number>", "Set localhost poll port for inbound relay (default 8765)"},
+                {"/it chatrelay secret <string>", "Set shared secret key for the poll endpoint"},
 
                 // Page 8 - Ghost, WAILA & Block Highlights
-                {"/islandtime ghost", "Client-side remove the block you are looking at (alias: /it ghost). Can be disabled in /islandtime under Misc."},
+                {"/it ghost", "Client-side remove the block you are looking at. Can be disabled in /it under Misc."},
                 {"/it highlight", "Open the Block Highlights GUI (same as /it highlights). Use /it highlight add <id> to add from chat."},
                 {"/it highlight add <id>", "Add to highlights. stone=block, sb:DITTO_SKULL=skyblock ID, skull:HASH=texture hash. Optionally add color: /it highlight add stone red"},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
-                {"/showtooltips", "Toggle visibility of items that have hide_tooltip set"},
-                {"/islandtime help [page]", "Show this help (pages 1-11)"},
+                {"/it help [page]", "Show this help (pages 1-11)"},
 
                 // Page 9 - Aging Items
                 {"/it agingItems", "Compare profit/hour for all configured aging items using live Bazaar prices"},
                 {"/it agingItems add <agingId> <agedId>", "Add a custom aging item pair by SkyBlock IDs (e.g. BOTTLE_OF_JYRRE REFINED_BOTTLE_OF_JYRRE)"},
                 {"/it agingItems remove <agingId>", "Remove an aging item pair by its aging SkyBlock ID"},
                 {"/it agingItems list", "List all configured aging item pairs"},
-                {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /islandtime GUI"},
+                {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /it GUI"},
 
                 // Page 10 - Cookie Profit & Settings Loadouts
                 {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
-                {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /islandtime GUI"},
-                {"/it savesettings <name>", "Save current settings as a named loadout"},
-                {"/it loadsettings <name>", "Load a saved settings loadout (replaces current settings)"},
-                {"/it deletesettings <name>", "Delete a saved settings loadout"},
+                {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /it GUI"},
+                {"/it settingssave <name>", "Save current settings as a named loadout"},
+                {"/it settingsload <name>", "Load a saved settings loadout (replaces current settings)"},
+                {"/it settingsdelete <name>", "Delete a saved settings loadout"},
 
                 // Page 11 - Settings Loadouts (continued)
-                {"/it listsettings", "List all saved loadouts and settings groups"},
-                {"/it groupsettings <group> <n1> <n2> ...", "Create a settings group from named loadouts (a loadout can only be in one group)"},
-                {"/it cyclesettings", "Cycle to the next loadout in the current group"},
+                {"/it settingslist", "List all saved loadouts and settings groups"},
+                {"/it settingsgroup <group> <n1> <n2> ...", "Create a settings group from named loadouts (a loadout can only be in one group)"},
+                {"/it settingscycle", "Cycle to the next loadout in the current group"},
         };
 
         int commandsPerPage = 5;
@@ -1530,6 +908,664 @@ public class IslandTimeCommand {
         });
         // Schedule a sync after the GUI is closed to apply any changes
         // This will happen on the next tick when the screen is null
+    }
+
+    // -------------------------------------------------------------------------
+    // Command subtrees shared under both /islandtime and /it (built once per
+    // registration so every command lives under the /it prefix, alongside its
+    // /islandtime alias).
+    // -------------------------------------------------------------------------
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildFueltimeCommand() {
+        return literal("fueltime")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    client.execute(() -> client.setScreen(new FuelDayScreen()));
+                    return 1;
+                })
+                .then(literal("debug")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.player.sendSystemMessage(
+                                    Component.literal("[FuelCycleTracker Debug] Injecting fake day record and saving...")
+                                            .withStyle(ChatFormatting.YELLOW));
+                            boolean saved = FuelCycleTracker.debugSimulateDay();
+                            if (saved) {
+                                client.player.sendSystemMessage(
+                                        Component.literal("[FuelCycleTracker Debug] Save succeeded — file exists on disk.")
+                                                .withStyle(ChatFormatting.GREEN));
+                                client.player.sendSystemMessage(
+                                        Component.literal("[FuelCycleTracker Debug] Run /fueltime to confirm the day appears, then check latest.log for any errors.")
+                                                .withStyle(ChatFormatting.GRAY));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("[FuelCycleTracker Debug] Save FAILED — file not found after save attempt. Check latest.log for the IOException.")
+                                                .withStyle(ChatFormatting.RED));
+                            }
+                            return 1;
+                        }))
+                .then(argument("date", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String date = StringArgumentType.getString(ctx, "date");
+                            FuelCycleTracker.displayStats(ctx.getSource().getClient(), date);
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildWebhookCommand() {
+        return literal("webhook")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    String url = DiscordWebhookManager.getWebhook();
+                    if (url != null && !url.isEmpty()) {
+                        client.player.sendSystemMessage(
+                                Component.literal("Webhook URL: " + url).withStyle(ChatFormatting.AQUA));
+                    } else {
+                        client.player.sendSystemMessage(
+                                Component.literal("No webhook set").withStyle(ChatFormatting.YELLOW));
+                    }
+                    return 1;
+                })
+                .then(argument("url", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            String url = StringArgumentType.getString(ctx, "url");
+                            Minecraft client = ctx.getSource().getClient();
+                            if (url.equalsIgnoreCase("clear")) {
+                                DiscordWebhookManager.clearWebhook();
+                                client.player.sendSystemMessage(
+                                        Component.literal("Webhook cleared").withStyle(ChatFormatting.GREEN));
+                            } else if (url.startsWith("https://discord.com/api/webhooks/")) {
+                                DiscordWebhookManager.setWebhook(url);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Webhook set successfully").withStyle(ChatFormatting.GREEN));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid webhook URL. Must start with https://discord.com/api/webhooks/")
+                                                .withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildDiscordpingCommand() {
+        return literal("discordping")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    String userId = DiscordWebhookManager.getDiscordUserId();
+                    if (userId != null && !userId.isEmpty()) {
+                        client.player.sendSystemMessage(
+                                Component.literal("Discord ping ID: ").withStyle(ChatFormatting.AQUA)
+                                        .append(Component.literal(userId).withStyle(ChatFormatting.YELLOW)));
+                    } else {
+                        client.player.sendSystemMessage(
+                                Component.literal("No Discord ping ID set (webhooks will not ping anyone)")
+                                        .withStyle(ChatFormatting.YELLOW));
+                    }
+                    return 1;
+                })
+                .then(argument("userid", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String userId = StringArgumentType.getString(ctx, "userid");
+                            Minecraft client = ctx.getSource().getClient();
+                            if (userId.equalsIgnoreCase("clear")) {
+                                DiscordWebhookManager.clearDiscordUserId();
+                                client.player.sendSystemMessage(
+                                        Component.literal("Discord ping ID cleared").withStyle(ChatFormatting.GREEN));
+                                return 1;
+                            }
+                            if (!userId.matches("\\d+")) {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid Discord user ID. Must be numeric (e.g., 123456789012345678)")
+                                                .withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            DiscordWebhookManager.setDiscordUserId(userId);
+                            client.player.sendSystemMessage(
+                                    Component.literal("Discord ping ID set to: ").withStyle(ChatFormatting.GREEN)
+                                            .append(Component.literal(userId).withStyle(ChatFormatting.YELLOW)));
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildChatrelayCommand() {
+        return literal("chatrelay")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    String url    = ChatRelayConfig.getChatWebhookUrl();
+                    int    port   = ChatRelayConfig.getPollPort();
+                    String secret = ChatRelayConfig.getPollSecret();
+
+                    client.player.sendSystemMessage(
+                            Component.literal("─── Chat Relay Config ───").withStyle(ChatFormatting.AQUA));
+                    client.player.sendSystemMessage(
+                            Component.literal("Webhook: ").withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(url.isEmpty() ? "(not set)" : url)
+                                            .withStyle(url.isEmpty() ? ChatFormatting.YELLOW : ChatFormatting.GREEN)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Poll port: ").withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(String.valueOf(port)).withStyle(ChatFormatting.WHITE)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Poll secret: ").withStyle(ChatFormatting.GRAY)
+                                    .append(Component.literal(secret).withStyle(ChatFormatting.WHITE)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /it help 6 for subcommands.").withStyle(ChatFormatting.DARK_GRAY));
+                    return 1;
+                })
+                .then(literal("webhook")
+                        .then(argument("url", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String url = StringArgumentType.getString(ctx, "url");
+                                    Minecraft client = ctx.getSource().getClient();
+                                    if (url.equalsIgnoreCase("clear")) {
+                                        ChatRelayConfig.setChatWebhookUrl("");
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Chat relay webhook cleared.").withStyle(ChatFormatting.GREEN));
+                                    } else if (url.startsWith("https://discord.com/api/webhooks/")) {
+                                        ChatRelayConfig.setChatWebhookUrl(url);
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Chat relay webhook set.").withStyle(ChatFormatting.GREEN));
+                                    } else {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Invalid URL. Must start with https://discord.com/api/webhooks/")
+                                                        .withStyle(ChatFormatting.RED));
+                                        return 0;
+                                    }
+                                    return 1;
+                                })))
+                .then(literal("port")
+                        .then(argument("port", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 65535))
+                                .executes(ctx -> {
+                                    int port = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "port");
+                                    ChatRelayConfig.setPollPort(port);
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Poll port set to " + port + ". Rejoin the server to apply.")
+                                                    .withStyle(ChatFormatting.GREEN));
+                                    return 1;
+                                })))
+                .then(literal("secret")
+                        .then(argument("secret", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    String secret = StringArgumentType.getString(ctx, "secret");
+                                    ChatRelayConfig.setPollSecret(secret);
+                                    ctx.getSource().getClient().player.sendSystemMessage(
+                                            Component.literal("Poll secret updated.").withStyle(ChatFormatting.GREEN));
+                                    return 1;
+                                })));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildTrackitemCommand() {
+        return literal("trackitem")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    String uuid = ItemTracker.getTrackedUuid();
+                    String name = ItemTracker.getTrackedItemName();
+                    if (uuid != null && !uuid.isEmpty()) {
+                        client.player.sendSystemMessage(
+                                Component.literal("Currently tracking: ").withStyle(ChatFormatting.AQUA)
+                                        .append(Component.literal(name != null ? name : "Unknown item").withStyle(ChatFormatting.YELLOW))
+                                        .append(Component.literal("\nUUID: " + uuid).withStyle(ChatFormatting.GRAY)));
+                    } else {
+                        client.player.sendSystemMessage(
+                                Component.literal("No item is being tracked").withStyle(ChatFormatting.YELLOW));
+                    }
+                    return 1;
+                })
+                .then(literal("set")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            if (ItemTracker.setTrackedItemFromMainHand(client)) {
+                                String name = ItemTracker.getTrackedItemName();
+                                String uuid = ItemTracker.getTrackedUuid();
+                                client.player.sendSystemMessage(
+                                        Component.literal("Now tracking: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                .append(Component.literal("\nUUID: " + uuid).withStyle(ChatFormatting.GRAY)));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Cannot track this item. Item must have both 'uuid' and 'stats_book' in custom data.")
+                                                .withStyle(ChatFormatting.RED));
+                            }
+                            return 1;
+                        }))
+                .then(literal("clear")
+                        .executes(ctx -> {
+                            ItemTracker.clearTrackedItem();
+                            ctx.getSource().getClient().player.sendSystemMessage(
+                                    Component.literal("Cleared tracked item").withStyle(ChatFormatting.GREEN));
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildTrackedalertspeedCommand() {
+        return literal("trackedalertspeed")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    client.player.sendSystemMessage(
+                            Component.literal("Current tracked item alert speed: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(ItemTracker.getAlertSpeed().name().toLowerCase())
+                                            .withStyle(ChatFormatting.YELLOW)));
+                    showAlertSpeedOptions(client);
+                    return 1;
+                })
+                .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
+                            Minecraft client = ctx.getSource().getClient();
+                            try {
+                                ItemTracker.AlertSpeed speed = ItemTracker.AlertSpeed.valueOf(speedStr);
+                                ItemTracker.setAlertSpeed(speed);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Tracked item alert speed set to: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
+                            } catch (IllegalArgumentException e) {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
+                                                .withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildIslandalertspeedCommand() {
+        return literal("islandalertspeed")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    client.player.sendSystemMessage(
+                            Component.literal("Current island alert speed: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(IslandAlertTracker.getAlertSpeed().name().toLowerCase())
+                                            .withStyle(ChatFormatting.YELLOW)));
+                    showAlertSpeedOptions(client);
+                    return 1;
+                })
+                .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
+                            Minecraft client = ctx.getSource().getClient();
+                            try {
+                                IslandAlertTracker.AlertSpeed speed = IslandAlertTracker.AlertSpeed.valueOf(speedStr);
+                                IslandAlertTracker.setAlertSpeed(speed);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island alert speed set to: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
+                            } catch (IllegalArgumentException e) {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
+                                                .withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildDisconnectalertspeedCommand() {
+        return literal("disconnectalertspeed")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    client.player.sendSystemMessage(
+                            Component.literal("Current disconnect alert speed: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(DisconnectAlertTracker.getAlertSpeed().name().toLowerCase())
+                                            .withStyle(ChatFormatting.YELLOW)));
+                    client.player.sendSystemMessage(Component.literal("\nDisconnect alert speeds:").withStyle(ChatFormatting.GRAY));
+                    client.player.sendSystemMessage(Component.literal("  off: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("No alerts").withStyle(ChatFormatting.GRAY)));
+                    client.player.sendSystemMessage(Component.literal("  fast: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("After 10s, then every 5 min").withStyle(ChatFormatting.GRAY)));
+                    client.player.sendSystemMessage(Component.literal("  normal: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("After 10s, then every 30 min").withStyle(ChatFormatting.GRAY)));
+                    client.player.sendSystemMessage(Component.literal("  slow: ").withStyle(ChatFormatting.WHITE)
+                            .append(Component.literal("After 10s, then every 3 hours").withStyle(ChatFormatting.GRAY)));
+                    return 1;
+                })
+                .then(argument("speed", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("off");
+                            builder.suggest("fast");
+                            builder.suggest("normal");
+                            builder.suggest("slow");
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            String speedStr = StringArgumentType.getString(ctx, "speed").toUpperCase();
+                            Minecraft client = ctx.getSource().getClient();
+                            try {
+                                DisconnectAlertTracker.AlertSpeed speed = DisconnectAlertTracker.AlertSpeed.valueOf(speedStr);
+                                DisconnectAlertTracker.setAlertSpeed(speed);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Disconnect alert speed set to: ").withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal(speed.name().toLowerCase()).withStyle(ChatFormatting.YELLOW)));
+                            } catch (IllegalArgumentException e) {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Invalid alert speed. Use: off, fast, normal, or slow")
+                                                .withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildTrackislandtimeCommand() {
+        return literal("trackislandtime")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    boolean current = TrackingToggleConfig.isIslandTimeEnabled();
+                    client.player.sendSystemMessage(
+                            Component.literal("Island-time tracking is currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /it trackislandtime <on|off> to change.").withStyle(ChatFormatting.GRAY));
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            Minecraft client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                TrackingToggleConfig.setIslandTimeEnabled(true);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island-time tracking enabled.").withStyle(ChatFormatting.GREEN));
+                            } else if (state.equals("off")) {
+                                TrackingToggleConfig.setIslandTimeEnabled(false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island-time tracking disabled. Current day data is preserved; no new days will be tracked.")
+                                                .withStyle(ChatFormatting.YELLOW));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /it trackislandtime <on|off>").withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildTrackfuelcyclesCommand() {
+        return literal("trackfuelcycles")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    boolean current = TrackingToggleConfig.isFuelCycleEnabled();
+                    client.player.sendSystemMessage(
+                            Component.literal("Fuel-cycle tracking is currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /it trackfuelcycles <on|off> to change.").withStyle(ChatFormatting.GRAY));
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            Minecraft client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                TrackingToggleConfig.setFuelCycleEnabled(true);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Fuel-cycle tracking enabled.").withStyle(ChatFormatting.GREEN));
+                            } else if (state.equals("off")) {
+                                TrackingToggleConfig.setFuelCycleEnabled(false);
+                                client.player.sendSystemMessage(
+                                        Component.literal("Fuel-cycle tracking disabled. Any active cycle will complete naturally; no new cycles will start.")
+                                                .withStyle(ChatFormatting.YELLOW));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /it trackfuelcycles <on|off>").withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildMinionfuelmessagesCommand() {
+        return literal("minionfuelmessages")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    boolean current = MinionFuelTracker.isShowFuelMessages();
+                    client.player.sendSystemMessage(
+                            Component.literal("Minion fuel messages are currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /it minionfuelmessages <on|off> to change.").withStyle(ChatFormatting.GRAY));
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            Minecraft client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                MinionFuelTracker.setShowFuelMessages(true);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendSystemMessage(
+                                        Component.literal("Minion fuel messages enabled.").withStyle(ChatFormatting.GREEN));
+                            } else if (state.equals("off")) {
+                                MinionFuelTracker.setShowFuelMessages(false);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendSystemMessage(
+                                        Component.literal("Minion fuel messages disabled.").withStyle(ChatFormatting.YELLOW));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /it minionfuelmessages <on|off>").withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildIslandleavemessagesCommand() {
+        return literal("islandleavemessages")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    boolean current = IslandPlayerTracker.isShowLeaveMessages();
+                    client.player.sendSystemMessage(
+                            Component.literal("Island leave messages are currently: ").withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(current ? "enabled" : "disabled")
+                                            .withStyle(current ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    client.player.sendSystemMessage(
+                            Component.literal("Use /it islandleavemessages <on|off> to change.").withStyle(ChatFormatting.GRAY));
+                    return 1;
+                })
+                .then(argument("state", StringArgumentType.word())
+                        .executes(ctx -> {
+                            String state = StringArgumentType.getString(ctx, "state").toLowerCase();
+                            Minecraft client = ctx.getSource().getClient();
+                            if (state.equals("on")) {
+                                IslandPlayerTracker.setShowLeaveMessages(true);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island leave messages enabled.").withStyle(ChatFormatting.GREEN));
+                            } else if (state.equals("off")) {
+                                IslandPlayerTracker.setShowLeaveMessages(false);
+                                ConfigManager.syncFromExistingConfigs();
+                                client.player.sendSystemMessage(
+                                        Component.literal("Island leave messages disabled.").withStyle(ChatFormatting.YELLOW));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Usage: /it islandleavemessages <on|off>").withStyle(ChatFormatting.RED));
+                                return 0;
+                            }
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildFavouriteguiCommand() {
+        return literal("favouritegui")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    Set<String> savedNames = FavouriteGuiManager.getSavedNames();
+
+                    if (savedNames.isEmpty()) {
+                        client.player.sendSystemMessage(
+                                Component.literal("No saved containers yet. Use /favouritegui save <name> to save a container.")
+                                        .withStyle(ChatFormatting.YELLOW));
+                    } else {
+                        client.player.sendSystemMessage(
+                                Component.literal("Saved containers (" + savedNames.size() + "):").withStyle(ChatFormatting.GOLD));
+                        for (String name : savedNames) {
+                            FavouriteGuiManager.SavedContainer container = FavouriteGuiManager.getSavedContainer(name);
+                            client.player.sendSystemMessage(
+                                    Component.literal("  • ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal(name).withStyle(ChatFormatting.AQUA)
+                                                    .withStyle(style -> style
+                                                            .withClickEvent(new ClickEvent.RunCommand(
+                                                                    "/it favouritegui view " + name))
+                                                            .withHoverEvent(new HoverEvent.ShowText(
+                                                                    Component.literal("Click to view").withStyle(ChatFormatting.GRAY)))))
+                                            .append(Component.literal(" - ").withStyle(ChatFormatting.GRAY))
+                                            .append(Component.literal(container.title).withStyle(ChatFormatting.WHITE))
+                                            .append(Component.literal(" (" + container.items.size() + " items)").withStyle(ChatFormatting.GRAY)));
+                        }
+                    }
+                    return 1;
+                })
+                .then(literal("save")
+                        .then(argument("name", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    String name = StringArgumentType.getString(ctx, "name");
+                                    Minecraft client = ctx.getSource().getClient();
+
+                                    if (FavouriteGuiManager.saveCurrentContainer(name)) {
+                                        FavouriteGuiManager.SavedContainer container = FavouriteGuiManager.getSavedContainer(name);
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("' (").withStyle(ChatFormatting.GREEN))
+                                                        .append(Component.literal(container.title).withStyle(ChatFormatting.WHITE))
+                                                        .append(Component.literal(", " + container.size + " slots, " + container.items.size() + " items)").withStyle(ChatFormatting.GREEN)));
+                                    } else {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Cannot save: No container is currently open or it's not a valid container type.")
+                                                        .withStyle(ChatFormatting.RED));
+                                        return 0;
+                                    }
+                                    return 1;
+                                })))
+                .then(literal("toggle")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            boolean nowEnabled = !FavouriteGuiManager.isTrackingEnabled();
+                            FavouriteGuiManager.setTrackingEnabled(nowEnabled);
+                            if (nowEnabled) {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Favourite GUI tracking ")
+                                                .withStyle(ChatFormatting.GREEN)
+                                                .append(Component.literal("enabled").withStyle(ChatFormatting.GREEN))
+                                                .append(Component.literal(". Container snapshots will be kept for /favouritegui save.").withStyle(ChatFormatting.GRAY)));
+                            } else {
+                                client.player.sendSystemMessage(
+                                        Component.literal("Favourite GUI tracking ")
+                                                .withStyle(ChatFormatting.YELLOW)
+                                                .append(Component.literal("disabled").withStyle(ChatFormatting.RED))
+                                                .append(Component.literal(". Containers will no longer be snapshotted — /favouritegui save will have no data to work from.").withStyle(ChatFormatting.GRAY)));
+                            }
+                            return 1;
+                        }))
+                .then(literal("delete")
+                        .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> {
+                                    String name = StringArgumentType.getString(ctx, "name");
+                                    Minecraft client = ctx.getSource().getClient();
+
+                                    if (FavouriteGuiManager.deleteSavedContainer(name)) {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Deleted saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
+                                    } else {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
+                                        return 0;
+                                    }
+                                    return 1;
+                                })))
+                .then(literal("view")
+                        .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> {
+                                    String name = StringArgumentType.getString(ctx, "name");
+                                    Minecraft client = ctx.getSource().getClient();
+
+                                    if (FavouriteGuiViewer.open(name)) {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Opening saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
+                                    } else {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
+                                        return 0;
+                                    }
+                                    return 1;
+                                })))
+                .then(literal("open")
+                        .then(argument("name", StringArgumentType.word())
+                                .suggests((ctx, builder) -> {
+                                    FavouriteGuiManager.getSavedNames().forEach(builder::suggest);
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> {
+                                    String name = StringArgumentType.getString(ctx, "name");
+                                    Minecraft client = ctx.getSource().getClient();
+
+                                    if (FavouriteGuiViewer.open(name)) {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("Opening saved container '").withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.GREEN)));
+                                    } else {
+                                        client.player.sendSystemMessage(
+                                                Component.literal("No saved container found with name '").withStyle(ChatFormatting.RED)
+                                                        .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
+                                                        .append(Component.literal("'").withStyle(ChatFormatting.RED)));
+                                        return 0;
+                                    }
+                                    return 1;
+                                })));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildShowtooltipsCommand() {
+        return literal("showtooltips")
+                .executes(ctx -> {
+                    TooltipOverrideConfig.toggle();
+                    boolean enabled = TooltipOverrideConfig.isShowHiddenTooltips();
+
+                    // Keep MoulConfig in sync so the GUI reflects the change
+                    if (ConfigManager.getConfig() != null) {
+                        ConfigManager.getConfig().misc.showHiddenTooltips = enabled;
+                        ConfigManager.saveToFile();
+                    }
+
+                    ctx.getSource().getClient().player.sendSystemMessage(
+                            Component.literal("Show hidden tooltips: ")
+                                    .withStyle(ChatFormatting.AQUA)
+                                    .append(Component.literal(enabled ? "ON" : "OFF")
+                                            .withStyle(enabled ? ChatFormatting.GREEN : ChatFormatting.RED)));
+                    return 1;
+                });
     }
 
     private static void formatLineColored(Minecraft client, String date, long ms, boolean isToday) {

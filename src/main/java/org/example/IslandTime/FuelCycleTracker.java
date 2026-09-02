@@ -564,7 +564,7 @@ public class FuelCycleTracker {
                         .append(Component.literal(" | Fuel Cost: ").withStyle(ChatFormatting.GRAY))
                         .append(Component.literal(PriceCache.formatCoins(record.fuelCost)).withStyle(ChatFormatting.WHITE)));
         client.player.sendSystemMessage(
-                Component.literal("  Mob-Kill Coins: ").withStyle(ChatFormatting.GRAY)
+                Component.literal("  Coins: ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(PriceCache.formatCoins(record.getMobKillCoins())).withStyle(ChatFormatting.WHITE))
                         .append(Component.literal(" | Gabagool Revenue: ").withStyle(ChatFormatting.GRAY))
                         .append(Component.literal(PriceCache.formatCoins(record.getGabagoolRevenue())).withStyle(ChatFormatting.WHITE))

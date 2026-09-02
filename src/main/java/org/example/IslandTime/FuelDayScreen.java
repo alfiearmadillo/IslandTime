@@ -119,7 +119,7 @@ public class FuelDayScreen extends Screen {
         editMinionField.setHint(Component.literal("auto: " + record.minionsRefueledAuto).withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editMinionField);
 
-        editMobKillField = new EditBox(font, dialogX, dialogY + 54, 240, 20, Component.literal("Mob-Kill Coins @ 100%"));
+        editMobKillField = new EditBox(font, dialogX, dialogY + 54, 240, 20, Component.literal("Coins @ 100%"));
         editMobKillField.setMaxLength(16);
         editMobKillField.setValue(String.valueOf(record.mobKillCoinsAt100));
         addRenderableWidget(editMobKillField);
@@ -229,7 +229,7 @@ public class FuelDayScreen extends Screen {
 
             context.text(font, Component.literal("Minions (blank = auto):").withStyle(ChatFormatting.GRAY),
                     dialogX + 10, dialogY + 10, 0xFFAAAAAA, true);
-            context.text(font, Component.literal("Mob-Kill Coins @ 100% AFK:").withStyle(ChatFormatting.GRAY),
+            context.text(font, Component.literal("Coins @ 100% AFK:").withStyle(ChatFormatting.GRAY),
                     dialogX + 10, dialogY + 44, 0xFFAAAAAA, true);
             context.text(font, Component.literal("Gabagool Price:").withStyle(ChatFormatting.GRAY),
                     dialogX + 10, dialogY + 78, 0xFFAAAAAA, true);
@@ -289,7 +289,7 @@ public class FuelDayScreen extends Screen {
                     listLeft + PADDING, rowY + 18, 0xFFCCCCCC, true);
 
             // Line 3: mob-kill coins, gabagool revenue, notes
-            String line3 = "Mob-Kill: " + PriceCache.formatCoins(record.getMobKillCoins())
+            String line3 = "Coins: " + PriceCache.formatCoins(record.getMobKillCoins())
                     + "  Gabagool: " + PriceCache.formatCoins(record.getGabagoolRevenue())
                     + " (" + record.getEffectiveGabagoolAmount() + (record.manualGabagoolAmount != null ? " manual" : " auto") + ")"
                     + (record.notes != null && !record.notes.isBlank() ? "  \"" + record.notes + "\"" : "");
