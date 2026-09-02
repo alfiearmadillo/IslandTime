@@ -661,6 +661,21 @@ public class FuelCycleTracker {
     private static void migrateLegacyFile() {
         if (!Files.exists(LEGACY_SAVE_FILE)) return;
 
+        // Back up the legacy file before touching it at all, so if anything goes wrong
+        // during migration (corrupt data, a bug, etc.) the original is never lost. Uses
+        // a timestamped name so repeated runs (or a prior failed migration) don't clobber
+        // an earlier backup.
+        Path backupFile = Paths.get("config/IslandTime/fuel_cycles.backup-"
+                + java.time.Instant.now().toEpochMilli() + ".txt");
+        try {
+            Files.copy(LEGACY_SAVE_FILE, backupFile, StandardCopyOption.COPY_ATTRIBUTES);
+            System.out.println("[FuelCycleTracker] Backed up legacy fuel_cycles.txt to " + backupFile.getFileName());
+        } catch (IOException e) {
+            System.err.println("[FuelCycleTracker] Failed to back up legacy fuel_cycles.txt before migration: " + e.getMessage());
+            System.err.println("[FuelCycleTracker] Aborting migration to avoid risking data loss without a backup.");
+            return;
+        }
+
         try (BufferedReader reader = Files.newBufferedReader(LEGACY_SAVE_FILE)) {
             String line;
             String section = "";
