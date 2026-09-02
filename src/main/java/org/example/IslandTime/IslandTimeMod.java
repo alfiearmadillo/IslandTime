@@ -29,6 +29,7 @@ public class IslandTimeMod implements ClientModInitializer {
         AgingItemsConfig.load();
         IslandChatRelay.register();
         ChatMessageStore.register();
+        MinionFuelTracker.registerArmorStandInteractionListener();
 
         // Initialize MoulConfig
         ConfigManager.initialize();

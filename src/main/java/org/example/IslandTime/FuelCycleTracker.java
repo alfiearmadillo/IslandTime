@@ -33,7 +33,9 @@ import java.util.concurrent.TimeUnit;
 /**
  * Tracks minion fuel usage per real 24h fuel-day for profit-per-day tracking.
  *
- * Each minion (keyed by its GUI title) tracks its own fuel expiry independently —
+ * Each minion (keyed by the UUID of the armor stand entity you right-clicked to open its
+ * GUI, falling back to the GUI title if that couldn't be captured — see
+ * {@link MinionFuelTracker}) tracks its own fuel expiry independently —
  * fueling one minion never affects another's timer. A unit of fuel extends that
  * specific minion's own expiry by 24h, so placing a full stack of, say, 10 fuel
  * queues up 10 consecutive 24h burn periods for that minion. This per-minion state
@@ -153,11 +155,12 @@ public class FuelCycleTracker {
     private static final int MAX_BACKUPS = 7;
     private static long lastBackupTime = 0;
 
-    // Active per-minion fuel state: minion GUI title (the same key MinionFuelTracker
-    // uses to distinguish minions) -> that minion's own fuel expiry time. Each minion
-    // tracks its own remaining fuel independently, so fueling 32 minions doesn't
-    // serialize their fuel-days onto one shared timeline. An empty map means no
-    // minion currently has active fuel (no cohort in progress).
+    // Active per-minion fuel state: minion key (armor stand UUID, or GUI title as a
+    // fallback — the same key MinionFuelTracker uses to distinguish minions) -> that
+    // minion's own fuel expiry time. Each minion tracks its own remaining fuel
+    // independently, so fueling 32 minions doesn't serialize their fuel-days onto one
+    // shared timeline. An empty map means no minion currently has active fuel (no
+    // cohort in progress).
     private static final ConcurrentHashMap<String, Long> minionExpiries = new ConcurrentHashMap<>();
 
     // Wall-clock time the current cohort started (0 = no cohort in progress). Real
@@ -476,12 +479,15 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Called when the minion identified by {@code minionKey} (its GUI title, e.g.
-     * "Cobblestone Minion V" — the same string {@link MinionFuelTracker} uses to tell
-     * minions apart) is fueled with {@code fuelCount} units of fuel (e.g. placing a
-     * stack of 10 at once). Each unit extends that specific minion's own fuel expiry
-     * by 24h, queued back-to-back — other minions' timers are untouched, so fueling a
-     * batch of minions never serializes their fuel-days onto one shared timeline.
+     * Called when the minion identified by {@code minionKey} (the UUID of the armor stand
+     * entity right-clicked to open its GUI, or its GUI title as a fallback — the same
+     * string {@link MinionFuelTracker} uses to tell minions apart) is fueled with
+     * {@code fuelCount} units of fuel (e.g. placing a stack of 10 at once). Each unit
+     * extends that specific minion's own fuel expiry by 24h, queued back-to-back — other
+     * minions' timers are untouched, so fueling a batch of minions never serializes their
+     * fuel-days onto one shared timeline. Because the key is per-physical-minion rather
+     * than per-title, fueling several minions of the same type/tier is correctly tracked
+     * as separate minions instead of being merged into one.
      *
      * Per-minion data is only ever used internally for this expiry bookkeeping — the
      * day-level aggregate (minionsRefueledAuto, etc.) stays a single number per
