@@ -19,13 +19,30 @@ import java.util.regex.Pattern;
  *   Added
  *   +64 Crude Gabagool (Slayer Sack)
  * </pre>
- * This format (and the fact that the detail is in the hover text of the "[Sacks]" line's
- * component siblings, not the plain chat text) was confirmed by inspecting SkyHanni's
- * {@code SackApi.onChat}, which parses the exact same message via the regex
- * {@code ([+-][\d,]+) (.+) \((.+)\)} applied to the hover text of the message's siblings whose
- * hover starts with "Added"/"Removed". This is a genuine periodic notification (fires whenever
- * sack contents change, not something we have to poll or macro for), so it satisfies the "only
- * implement if you can for sure find a working example" requirement.
+ * This format was confirmed by inspecting SkyHanni's {@code SackApi.onChat} (GitHub:
+ * {@code hannibal002/SkyHanni}, {@code src/main/java/at/hannibal2/skyhanni/data/SackApi.kt}).
+ * Its exact approach — which this class now mirrors precisely, after an earlier
+ * recursive/dedup-based implementation here still double- and quadruple-counted amounts — is:
+ * <ol>
+ *   <li>Only look at the "[Sacks]" message's <b>direct</b> siblings ({@code
+ *       chatComponent.siblings}), never recursing into a sibling's own nested siblings. The
+ *       component tree Hypixel sends nests siblings-of-siblings, and several of those deeper
+ *       levels carry copies of the same hover text — recursing into them (as an earlier
+ *       version of this method did) reads the same "+145 Crude Gabagool (Slayer Sack)" entry
+ *       multiple times over, no matter how the resulting duplicate text is deduplicated
+ *       afterwards.</li>
+ *   <li>Of those direct siblings, take only the <i>first</i> one whose hover text starts with
+ *       "Added" (for gains), and separately only the first one whose hover text starts with
+ *       "Removed" (for losses) — {@code firstNotNullOfOrNull} in SkyHanni's Kotlin. There is
+ *       always at most one genuine "Added" block and one genuine "Removed" block per message;
+ *       any other sibling's hover text is either absent or an incidental duplicate/partial
+ *       copy that must be ignored, not merged in.</li>
+ *   <li>Concatenate those (at most) two blocks and run the regex
+ *       {@code ([+-][\d,]+) (.+) \((.+)\)} over the combined text once.</li>
+ * </ol>
+ * This is a genuine periodic notification (fires whenever sack contents change, not something
+ * we have to poll or macro for), so it satisfies the "only implement if you can for sure find
+ * a working example" requirement.
  *
  * Negative deltas (gabagool taken out of the sack, e.g. to sell) never subtract from the day's
  * tracked total — they only stop the "fuel day up" Discord alert (see FuelExpiredAlertTracker),
@@ -41,52 +58,39 @@ public class SackIncomeTracker {
 
     /**
      * Called for every chat message received. Looks for a "[Sacks]" message and reads the
-     * hover text of its sibling components (the actual added/removed item list lives there,
-     * not in the plain visible text).
+     * hover text of its direct sibling components (the actual added/removed item list lives
+     * there, not in the plain visible text) — mirroring SkyHanni's {@code SackApi.onChat}
+     * exactly (see class javadoc): only the first direct sibling whose hover starts with
+     * "Added", and only the first direct sibling whose hover starts with "Removed", are read.
      */
     public static void onSackChatMessage(Component message) {
         if (message == null) return;
         String plain = message.getString();
         if (!plain.startsWith("[Sacks]")) return;
 
-        // Hypixel's "[Sacks]" line is built from several sibling components (e.g. one per
-        // word/segment of the visible text), and more than one of those siblings can carry
-        // its own copy of the "Added"/"Removed" hover tooltip — not always a byte-identical
-        // copy (e.g. one sibling's hover may include extra surrounding lines/whitespace that
-        // another doesn't), so deduplicating whole hover-text blocks isn't fully reliable and
-        // duplicate "+145 Crude Gabagool (Slayer Sack)" entries can still slip through under
-        // slightly different block text. Instead, every individual regex match (a single
-        // "<delta> <item> (<source>)" entry) is deduped by its own exact matched text — the
-        // same delta+item+source triple genuinely appearing twice within one single message
-        // isn't a real scenario Hypixel produces (deltas for the same item are always
-        // combined into one line per message), so this is safe regardless of how many
-        // siblings/blocks the entry happened to be read from.
-        java.util.LinkedHashSet<String> hoverBlocks = new java.util.LinkedHashSet<>();
-        collectHoverText(message, hoverBlocks);
-        if (hoverBlocks.isEmpty()) return;
+        String addedText = firstSiblingHoverStartingWith(message, "Added");
+        String removedText = firstSiblingHoverStartingWith(message, "Removed");
+        String text = addedText + removedText;
+        if (text.isEmpty()) return;
 
-        java.util.Set<String> seenEntries = new java.util.HashSet<>();
+        Matcher matcher = SACK_CHANGE_PATTERN.matcher(text);
         double gained = 0;
         boolean removed = false;
-        for (String block : hoverBlocks) {
-            Matcher matcher = SACK_CHANGE_PATTERN.matcher(block);
-            while (matcher.find()) {
-                if (!seenEntries.add(matcher.group())) continue; // already counted this exact entry
-                String item = matcher.group(2).trim();
-                if (!item.equalsIgnoreCase(TRACKED_ITEM_NAME)) continue;
-                try {
-                    double delta = Double.parseDouble(matcher.group(1).replace(",", ""));
-                    if (delta > 0) {
-                        gained += delta;
-                    } else if (delta < 0) {
-                        // Taking gabagool out of the sack (e.g. to sell) means it's been emptied —
-                        // stop any active "fuel day up" alert. This intentionally does NOT subtract
-                        // from the day's tracked amount: you're just withdrawing what was already
-                        // counted, not losing it.
-                        removed = true;
-                    }
-                } catch (NumberFormatException ignored) {}
-            }
+        while (matcher.find()) {
+            String item = matcher.group(2).trim();
+            if (!item.equalsIgnoreCase(TRACKED_ITEM_NAME)) continue;
+            try {
+                double delta = Double.parseDouble(matcher.group(1).replace(",", ""));
+                if (delta > 0) {
+                    gained += delta;
+                } else if (delta < 0) {
+                    // Taking gabagool out of the sack (e.g. to sell) means it's been emptied —
+                    // stop any active "fuel day up" alert. This intentionally does NOT subtract
+                    // from the day's tracked amount: you're just withdrawing what was already
+                    // counted, not losing it.
+                    removed = true;
+                }
+            } catch (NumberFormatException ignored) {}
         }
 
         if (gained > 0) {
@@ -98,21 +102,19 @@ public class SackIncomeTracker {
     }
 
     /**
-     * Recursively collects unique hover-text (SHOW_TEXT) blocks from this component and its
-     * siblings into {@code out}. A {@link java.util.LinkedHashSet} is used (rather than a
-     * plain StringBuilder) so that the same tooltip text repeated across multiple sibling
-     * components — as Hypixel's "[Sacks]" message does — is only counted once.
+     * Returns the hover text (SHOW_TEXT) of the first <b>direct</b> sibling of {@code message}
+     * whose hover text starts with {@code prefix}, or {@code ""} if none match. Deliberately
+     * does not recurse into a sibling's own nested siblings — see class javadoc for why.
      */
-    private static void collectHoverText(Component component, java.util.Set<String> out) {
-        Style style = component.getStyle();
-        if (style != null) {
+    private static String firstSiblingHoverStartingWith(Component message, String prefix) {
+        for (Component sibling : message.getSiblings()) {
+            Style style = sibling.getStyle();
+            if (style == null) continue;
             HoverEvent hover = style.getHoverEvent();
-            if (hover instanceof HoverEvent.ShowText showText) {
-                out.add(showText.value().getString());
-            }
+            if (!(hover instanceof HoverEvent.ShowText showText)) continue;
+            String hoverText = showText.value().getString();
+            if (hoverText.startsWith(prefix)) return hoverText;
         }
-        for (Component sibling : component.getSiblings()) {
-            collectHoverText(sibling, out);
-        }
+        return "";
     }
 }
