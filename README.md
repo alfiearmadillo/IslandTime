@@ -1,13 +1,13 @@
 # IslandTime
 
-A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, fuel cycles, item stats, and more. Includes Discord alerts and a configuration GUI.
+A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, minion fuel/profit per day, item stats, and more. Includes Discord alerts and a configuration GUI.
 
 ## Features
 
 - **Island Time Tracking** — Tracks time spent on your private island with daily history
-- **Fuel Cycle Tracking** — Tracks minion fuel cycles (start, end, duration, minions fueled, active time)
+- **Fuel Day Tracker** — Tracks minion fuel and profit per calendar day via a dedicated GUI (`/it fueldays` or `/fueltime`). Supports placing full stacks of fuel at once (each unit queues an additional 24h burn period), auto-estimates fuel cost from live Bazaar prices (cheapest of the 5 Epic Inferno Minion Fuel distillates), tracks mob-kill coins/day from a configurable 100%-AFK baseline scaled by that day's AFK%, and auto-tracks Crude Gabagool collected via Hypixel's in-game "[Sacks]" chat messages (with a manual override, and a manually-entered sell price, for full profit-per-day tracking). Rows are color-graded red→yellow→green by AFK% and every field — including a manual minion-count override for when lag desyncs auto-detection — is directly editable
 - **Item Stat Tracking** — Monitors a tracked item's `stats_book` value and alerts if it stops increasing or goes missing
-- **Discord Webhook Alerts** — Sends notifications for island absence, tracked item issues, and disconnects
+- **Discord Webhook Alerts** — Sends notifications for island absence, tracked item issues, disconnects, and when a minion's queued fuel-days run out (repeats until you empty your sacks, since sack storage caps mean AFKing further gains nothing)
 - **Chat Relay** — Bridges island chat to/from Discord via a companion bot (outbound webhook + inbound localhost polling)
 - **Backpack Preview** — Hover over a backpack to see its contents in an overlay; press Shift to inspect
 - **Favourite GUI** — Save and view container snapshots (e.g. minion layouts) as read-only overlays
@@ -41,13 +41,16 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/islandtime` | Open the config GUI |
 | `/islandtime recent` | Show last 7 days of island time |
 | `/islandtime <date>` | Show a specific date (DD-MM-YY) |
-| `/fueltime [cycle]` | Show fuel cycle stats (optionally a specific cycle number) |
+| `/fueltime` | Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as `/it fueldays` |
+| `/fueltime <YYYY-MM-DD>` | Show a quick chat summary for a specific day |
+| `/fueltime debug` | Inject a fake day record and attempt a save (diagnostics) |
 | `/trackitem set\|clear` | Track/untrack the held item |
 | `/webhook <url\|clear>` | Set or clear the Discord webhook |
 | `/discordping <userid\|clear>` | Set or clear Discord ping user ID |
 | `/trackedalertspeed <speed>` | Set tracked item alert speed (off/fast/normal/slow) |
 | `/islandalertspeed <speed>` | Set island alert speed |
 | `/disconnectalertspeed <speed>` | Set disconnect alert speed |
+| Fuel Expired Alert Speed | Configurable in the MoulConfig GUI under Alert Speeds (pings repeat until you empty your sacks) |
 | `/trackislandtime <on\|off>` | Enable/disable island time tracking |
 | `/trackfuelcycles <on\|off>` | Enable/disable fuel cycle tracking |
 | `/minionfuelmessages <on\|off>` | Toggle minion fuel chat messages |
@@ -62,6 +65,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it highlight add <target> [color]` | Add a highlight entry (target: block ID, `sb:ID`, or `skull:HASH`) |
 | `/it highlight remove <target>` | Remove a highlight entry by target |
 | `/it players` | Open the player list GUI (add/edit/delete/party/invite) |
+| `/it fueldays` | Open the fuel day tracker GUI (same as `/fueltime`) |
 | `/it ghost` | Client-side block removal tool |
 | `/it agingItems` | Compare profit/hour for all configured aging items using Bazaar prices |
 | `/it agingItems add <agingId> <agedId>` | Add a custom aging item pair by SkyBlock IDs |
@@ -74,4 +78,4 @@ All commands can also be configured from the GUI (`/islandtime`).
 
 ## Configuration
 
-Settings are saved in the `config` folder as `islandtime*.txt` files. Never share these publicly — they contain your Discord webhook URL.
+Settings are saved in the `config` folder as `islandtime*.txt` files (and `fuel_days.json` for the fuel day tracker). Never share these publicly — they contain your Discord webhook URL.

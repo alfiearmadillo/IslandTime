@@ -20,7 +20,7 @@ public class IslandTimeConfig extends Config {
     public IslandTime islandTime = new IslandTime();
 
     @Expose
-    @Category(name = "Fuel Cycles", desc = "Track fuel cycles for your minions")
+    @Category(name = "Fuel Cycles", desc = "Track minion fuel and profit per day")
     public FuelCycles fuelCycles = new FuelCycles();
 
     @Expose
@@ -100,7 +100,7 @@ public class IslandTimeConfig extends Config {
         };
 
         @Expose
-        @ConfigOption(name = "Enable Tracking", desc = "Track fuel cycles for your minions")
+        @ConfigOption(name = "Enable Tracking", desc = "Track minion fuel and profit per day")
         @ConfigEditorBoolean
         public boolean enabled = true;
 
