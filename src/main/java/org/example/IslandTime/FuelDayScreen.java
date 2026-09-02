@@ -22,7 +22,10 @@ import java.util.List;
  * future/queued ones), rather than one row per calendar date. Rows are colored on a
  * red → yellow → green gradient
  * based on that cycle's AFK percentage. Every value is directly editable, similar to the
- * Block Highlights and Player List GUIs.
+ * Block Highlights and Player List GUIs. While a day is still actively ticking, its AFK%
+ * (and everything derived from it — mob-kill coins, profit) reflects progress against time
+ * elapsed so far today rather than the full 24h, and refreshes once a second rather than
+ * every render frame.
  */
 public class FuelDayScreen extends Screen {
 
@@ -50,10 +53,20 @@ public class FuelDayScreen extends Screen {
     private EditBox editMobKillField;
     private EditBox editGabagoolPriceField;
     private EditBox editGabagoolAmountField;
+    private EditBox editFuelCostField;
     private EditBox editNotesField;
 
     // Scrollbar
     private boolean draggingScrollbar = false;
+
+    // Live values (AFK%, mob-kill coins, profit) are frozen to whatever they were at the
+    // last refresh and only recomputed once per second (see extractRenderState()), rather
+    // than recalculating off a constantly-moving "now" on every render frame — so the
+    // numbers you see visibly change once a second while watching this GUI live, not on
+    // every single frame.
+    private static final long LIVE_VALUE_REFRESH_INTERVAL_MS = 1000L;
+    private long displayNowMs = System.currentTimeMillis();
+    private long lastLiveValueRefreshMs = 0;
 
     public FuelDayScreen() {
         super(Component.literal("Fuel Day Tracker"));
@@ -114,7 +127,7 @@ public class FuelDayScreen extends Screen {
         clearWidgets();
 
         int dialogX = width / 2 - 130;
-        int dialogY = height / 2 - 110;
+        int dialogY = height / 2 - 127;
 
         editMinionField = new EditBox(font, dialogX, dialogY + 20, 240, 20, Component.literal("Minions"));
         editMinionField.setMaxLength(6);
@@ -142,7 +155,15 @@ public class FuelDayScreen extends Screen {
         editGabagoolAmountField.setHint(Component.literal("auto: " + record.gabagoolAmountAuto).withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editGabagoolAmountField);
 
-        editNotesField = new EditBox(font, dialogX, dialogY + 122, 240, 20, Component.literal("Notes"));
+        editFuelCostField = new EditBox(font, dialogX, dialogY + 122, 240, 20, Component.literal("Fuel Cost"));
+        editFuelCostField.setMaxLength(16);
+        editFuelCostField.setValue(record.manualFuelCost != null
+                ? String.valueOf(record.manualFuelCost)
+                : "");
+        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.fuelCost)).withStyle(ChatFormatting.GRAY));
+        addRenderableWidget(editFuelCostField);
+
+        editNotesField = new EditBox(font, dialogX, dialogY + 156, 240, 20, Component.literal("Notes"));
         editNotesField.setMaxLength(128);
         editNotesField.setValue(record.notes != null ? record.notes : "");
         addRenderableWidget(editNotesField);
@@ -170,12 +191,20 @@ public class FuelDayScreen extends Screen {
                     FuelCycleTracker.setGabagoolAmount(editDate, Double.parseDouble(gabagoolAmountText));
                 } catch (NumberFormatException ignored) {}
             }
+            String fuelCostText = editFuelCostField.getValue().trim();
+            if (fuelCostText.isEmpty()) {
+                FuelCycleTracker.clearManualFuelCost(editDate);
+            } else {
+                try {
+                    FuelCycleTracker.setFuelCost(editDate, Double.parseDouble(fuelCostText));
+                } catch (NumberFormatException ignored) {}
+            }
             FuelCycleTracker.setNotes(editDate, editNotesField.getValue());
             closeDialog();
-        }).bounds(dialogX, dialogY + 156, 115, 20).build());
+        }).bounds(dialogX, dialogY + 190, 115, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 125, dialogY + 156, 115, 20).build());
+                .bounds(dialogX + 125, dialogY + 190, 115, 20).build());
 
         setFocused(editMinionField);
     }
@@ -205,6 +234,12 @@ public class FuelDayScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, width, height, 0xC0101010);
 
+        long realNow = System.currentTimeMillis();
+        if (realNow - lastLiveValueRefreshMs >= LIVE_VALUE_REFRESH_INTERVAL_MS) {
+            displayNowMs = realNow;
+            lastLiveValueRefreshMs = realNow;
+        }
+
         Component titleComp = Component.literal("Fuel Day Tracker").withStyle(ChatFormatting.GOLD);
         int titleWidth = font.width(titleComp);
         context.text(font, titleComp, width / 2 - titleWidth / 2, 2, -1, true);
@@ -226,8 +261,8 @@ public class FuelDayScreen extends Screen {
 
         if (editDialogOpen) {
             int dialogX = width / 2 - 130;
-            int dialogY = height / 2 - 110;
-            context.fill(dialogX, dialogY, dialogX + 260, dialogY + 200, 0xEE000000);
+            int dialogY = height / 2 - 127;
+            context.fill(dialogX, dialogY, dialogX + 260, dialogY + 234, 0xEE000000);
             FuelCycleTracker.DayRecord editRecord = editDate != null ? FuelCycleTracker.getDayRecord(editDate) : null;
             Component title = Component.literal("Edit " + (editRecord != null ? FuelCycleTracker.formatCycleRange(editRecord) : editDate));
             int tw = font.width(title);
@@ -241,8 +276,10 @@ public class FuelDayScreen extends Screen {
                     dialogX + 10, dialogY + 78, 0xFFAAAAAA, true);
             context.text(font, Component.literal("Amount:").withStyle(ChatFormatting.GRAY),
                     dialogX + 135, dialogY + 78, 0xFFAAAAAA, true);
-            context.text(font, Component.literal("Notes:").withStyle(ChatFormatting.GRAY),
+            context.text(font, Component.literal("Fuel Cost (blank = auto):").withStyle(ChatFormatting.GRAY),
                     dialogX + 10, dialogY + 112, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Notes:").withStyle(ChatFormatting.GRAY),
+                    dialogX + 10, dialogY + 146, 0xFFAAAAAA, true);
         }
 
         super.extractRenderState(context, mouseX, mouseY, delta);
@@ -271,7 +308,7 @@ public class FuelDayScreen extends Screen {
 
             FuelCycleTracker.DayRecord record = records.get(i);
 
-            int bgColor = afkGradientColor(record.getAfkPercent(), 0x50);
+            int bgColor = afkGradientColor(record.getAfkPercent(displayNowMs), 0x50);
             context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
 
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 2;
@@ -279,7 +316,7 @@ public class FuelDayScreen extends Screen {
             // Line 1: date + profit
             context.text(font, Component.literal(FuelCycleTracker.formatCycleRange(record)).withStyle(ChatFormatting.BOLD, ChatFormatting.WHITE),
                     listLeft + PADDING, rowY + 3, 0xFFFFFFFF, true);
-            double profit = record.getProfit();
+            double profit = record.getProfit(displayNowMs);
             ChatFormatting profitStyle = profit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
             String profitStr = "Profit: " + PriceCache.formatCoins(profit);
             int profitW = font.width(profitStr);
@@ -289,13 +326,14 @@ public class FuelDayScreen extends Screen {
             // Line 2: minions, AFK%, fuel cost
             String line2 = "Minions: " + record.getEffectiveMinionCount()
                     + (record.manualMinionCount != null ? " (manual)" : "")
-                    + "  AFK: " + String.format("%.1f%%", record.getAfkPercent())
-                    + "  Fuel Cost: " + PriceCache.formatCoins(record.fuelCost);
+                    + "  AFK: " + String.format("%.1f%%", record.getAfkPercent(displayNowMs))
+                    + "  Fuel Cost: " + PriceCache.formatCoins(record.getEffectiveFuelCost())
+                    + (record.manualFuelCost != null ? " (manual)" : "");
             context.text(font, Component.literal(line2).withStyle(ChatFormatting.GRAY),
                     listLeft + PADDING, rowY + 18, 0xFFCCCCCC, true);
 
             // Line 3: mob-kill coins, gabagool revenue, notes
-            String line3 = "Coins: " + PriceCache.formatCoins(record.getMobKillCoins())
+            String line3 = "Coins: " + PriceCache.formatCoins(record.getMobKillCoins(displayNowMs))
                     + "  Gabagool: " + PriceCache.formatCoins(record.getGabagoolRevenue())
                     + " (" + record.getEffectiveGabagoolAmount() + (record.manualGabagoolAmount != null ? " manual" : " auto") + ")"
                     + (record.notes != null && !record.notes.isBlank() ? "  \"" + record.notes + "\"" : "");
@@ -340,7 +378,7 @@ public class FuelDayScreen extends Screen {
     private void renderTotalProfitWidget(GuiGraphicsExtractor context, List<FuelCycleTracker.DayRecord> records) {
         double totalProfit = 0.0;
         for (FuelCycleTracker.DayRecord record : records) {
-            totalProfit += record.getProfit();
+            totalProfit += record.getProfit(displayNowMs);
         }
 
         int widgetW = TOTAL_PROFIT_WIDGET_WIDTH;

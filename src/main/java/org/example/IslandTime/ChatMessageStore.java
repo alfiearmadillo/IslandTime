@@ -29,8 +29,9 @@ public class ChatMessageStore {
         if (messages.size() > MAX_MESSAGES) {
             messages.remove(messages.size() - 1);
         }
-        // Hook for sack-income tracking — reads hover text on "[Sacks]" messages.
-        SackIncomeTracker.onSackChatMessage(copy);
+        // Sack-income tracking is handled by SackChatPacketMixin directly on the network
+        // packet (not here), so it keeps working even if another mod (e.g. SkyHanni's
+        // "Sack Change Hider") cancels this message before it reaches the GAME event.
     }
 
     public static List<Component> getMessages() {

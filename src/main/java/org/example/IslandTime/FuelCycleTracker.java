@@ -33,9 +33,9 @@ import java.util.concurrent.TimeUnit;
 /**
  * Tracks minion fuel usage per real 24h fuel-day for profit-per-day tracking.
  *
- * Each minion (keyed by the UUID of the armor stand entity you right-clicked to open its
- * GUI, falling back to the GUI title if that couldn't be captured — see
- * {@link MinionFuelTracker}) tracks its own fuel expiry independently —
+ * Each minion (keyed by the block position + full equipment of the armor stand entity
+ * you right-clicked to open its GUI, falling back to the GUI title if that couldn't be
+ * captured — see {@link MinionFuelTracker}) tracks its own fuel expiry independently —
  * fueling one minion never affects another's timer. A unit of fuel extends that
  * specific minion's own expiry by 24h, so placing a full stack of, say, 10 fuel
  * queues up 10 consecutive 24h burn periods for that minion. This per-minion state
@@ -155,9 +155,9 @@ public class FuelCycleTracker {
     private static final int MAX_BACKUPS = 7;
     private static long lastBackupTime = 0;
 
-    // Active per-minion fuel state: minion key (armor stand UUID, or GUI title as a
-    // fallback — the same key MinionFuelTracker uses to distinguish minions) -> that
-    // minion's own fuel expiry time. Each minion tracks its own remaining fuel
+    // Active per-minion fuel state: minion key (armor stand position+equipment, or GUI
+    // title as a fallback — the same key MinionFuelTracker uses to distinguish minions)
+    // -> that minion's own fuel expiry time. Each minion tracks its own remaining fuel
     // independently, so fueling 32 minions doesn't serialize their fuel-days onto one
     // shared timeline. An empty map means no minion currently has active fuel (no
     // cohort in progress).
@@ -261,6 +261,12 @@ public class FuelCycleTracker {
         /** Estimated total bazaar cost of the fuel placed this day (cheapest of the 5 distillates). */
         public double fuelCost = 0.0;
 
+        /** Manual override for this day's fuel cost — null means "use the auto-estimated
+         *  {@link #fuelCost} value". Useful when the live bazaar price at fueling time
+         *  wasn't representative (e.g. you already had distillates stockpiled, or bought
+         *  them at a different price than the bazaar snapshot used). */
+        public Double manualFuelCost = null;
+
         /** Snapshot of the 100%-AFK mob-kill coins/day baseline at the time this day was recorded.
          *  Stored per-day so changing the live config baseline later doesn't alter past days. */
         public double mobKillCoinsAt100 = 0.0;
@@ -289,13 +295,44 @@ public class FuelCycleTracker {
             return manualMinionCount != null ? manualMinionCount : minionsRefueledAuto;
         }
 
+        /** Effective fuel cost used for profit calc: manual override if set, else auto-estimated. */
+        public double getEffectiveFuelCost() {
+            return manualFuelCost != null ? manualFuelCost : fuelCost;
+        }
+
         public double getAfkPercent() {
+            return getAfkPercent(System.currentTimeMillis());
+        }
+
+        /**
+         * AFK percentage using {@code now} as the current time, letting callers (e.g. a GUI
+         * that wants to throttle live updates) freeze "now" for a batch of calculations
+         * instead of it silently drifting between calls within the same render pass.
+         *
+         * While this fuel-day is still actively ticking (started, not yet closed), the
+         * percentage is of time elapsed so far today — not the full 24h — so it reflects
+         * real progress instead of instantly looking tiny right after the day starts and
+         * only reaching a meaningful number near the end of the day. Once the day is
+         * closed (or for legacy records with no start timestamp), it's simply activeMs
+         * out of the full 24h day, same as before.
+         */
+        public double getAfkPercent(long now) {
             if (activeMs <= 0) return 0.0;
-            return Math.min(100.0, (activeMs * 100.0) / DAY_MS);
+            long elapsed = DAY_MS;
+            if (cycleEndMs <= 0 && cycleStartMs > 0) {
+                long sinceStart = now - cycleStartMs;
+                if (sinceStart <= 0) return 0.0; // future/queued day — hasn't started yet
+                elapsed = Math.min(sinceStart, DAY_MS);
+            }
+            return Math.min(100.0, (activeMs * 100.0) / elapsed);
         }
 
         public double getMobKillCoins() {
-            return mobKillCoinsAt100 * (getAfkPercent() / 100.0);
+            return getMobKillCoins(System.currentTimeMillis());
+        }
+
+        public double getMobKillCoins(long now) {
+            return mobKillCoinsAt100 * (getAfkPercent(now) / 100.0);
         }
 
         /** Effective gabagool amount used for profit calc: manual override if set, else auto-tracked. */
@@ -308,7 +345,11 @@ public class FuelCycleTracker {
         }
 
         public double getProfit() {
-            return getMobKillCoins() + getGabagoolRevenue() - fuelCost;
+            return getProfit(System.currentTimeMillis());
+        }
+
+        public double getProfit(long now) {
+            return getMobKillCoins(now) + getGabagoolRevenue() - getEffectiveFuelCost();
         }
     }
 
@@ -440,6 +481,20 @@ public class FuelCycleTracker {
         save();
     }
 
+    /** Sets a manual override for this day's fuel cost, taking precedence over the auto-estimated value. */
+    public static void setFuelCost(String date, double value) {
+        DayRecord record = getOrCreateDayRecord(date);
+        record.manualFuelCost = Math.max(0.0, value);
+        save();
+    }
+
+    /** Clears the manual fuel cost override, reverting the day back to the auto-estimated bazaar cost. */
+    public static void clearManualFuelCost(String date) {
+        DayRecord record = getOrCreateDayRecord(date);
+        record.manualFuelCost = null;
+        save();
+    }
+
     public static void setMobKillCoinsAt100(String date, double value) {
         DayRecord record = getOrCreateDayRecord(date);
         record.mobKillCoinsAt100 = Math.max(0.0, value);
@@ -479,9 +534,10 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Called when the minion identified by {@code minionKey} (the UUID of the armor stand
-     * entity right-clicked to open its GUI, or its GUI title as a fallback — the same
-     * string {@link MinionFuelTracker} uses to tell minions apart) is fueled with
+     * Called when the minion identified by {@code minionKey} (the block position +
+     * equipment of the armor stand entity right-clicked to open its GUI, or its GUI
+     * title as a fallback — the same string {@link MinionFuelTracker} uses to tell
+     * minions apart) is fueled with
      * {@code fuelCount} units of fuel (e.g. placing a stack of 10 at once). Each unit
      * extends that specific minion's own fuel expiry by 24h, queued back-to-back — other
      * minions' timers are untouched, so fueling a batch of minions never serializes their
@@ -730,7 +786,7 @@ public class FuelCycleTracker {
                         .append(Component.literal(" | AFK: ").withStyle(ChatFormatting.GRAY))
                         .append(Component.literal(String.format("%.1f%%", record.getAfkPercent())).withStyle(ChatFormatting.WHITE))
                         .append(Component.literal(" | Fuel Cost: ").withStyle(ChatFormatting.GRAY))
-                        .append(Component.literal(PriceCache.formatCoins(record.fuelCost)).withStyle(ChatFormatting.WHITE)));
+                        .append(Component.literal(PriceCache.formatCoins(record.getEffectiveFuelCost())).withStyle(ChatFormatting.WHITE)));
         client.player.sendSystemMessage(
                 Component.literal("  Coins: ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(PriceCache.formatCoins(record.getMobKillCoins())).withStyle(ChatFormatting.WHITE))

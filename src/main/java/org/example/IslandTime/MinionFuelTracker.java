@@ -3,7 +3,9 @@ package org.example.islandtime;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -18,14 +20,18 @@ public class MinionFuelTracker {
     private static ItemStack initialFuelSlotItem = ItemStack.EMPTY;
     private static String currentMinionName = "";
 
-    // The unique key actually passed to FuelCycleTracker for this open GUI — the UUID of
-    // the armor stand entity that was right-clicked to open it (see registerArmorStandInteractionListener()
-    // below), falling back to the GUI title itself if no armor-stand interaction was captured
-    // in time (safety net). Unlike the title (which is identical for every minion of the
-    // same type/tier, e.g. 32 "Wheat Minion XI" armor stands on one island), the armor
-    // stand's UUID is unique per physical minion, so fueling 32 separate minions of the
-    // same tier is correctly tracked as 32 distinct minions instead of one minion refueled
-    // 32 times.
+    // The unique key actually passed to FuelCycleTracker for this open GUI — built from
+    // the block position and full equipment (see buildArmorStandKey()) of the armor stand
+    // entity that was right-clicked to open it (see registerArmorStandInteractionListener()
+    // below), falling back to the GUI title itself if no armor-stand interaction was
+    // captured in time (safety net). Unlike the title (which is identical for every minion
+    // of the same type/tier, e.g. 32 "Wheat Minion XI" armor stands on one island), a given
+    // physical minion's armor stand never moves and never changes its equipped
+    // skin/items, so this key reliably distinguishes 32 separate minions of the same tier
+    // instead of merging them into one. Position+equipment is used instead of the armor
+    // stand's entity UUID because UUIDs are re-assigned whenever the server unloads and
+    // reloads the island (e.g. after being away or switching servers) — position+equipment
+    // stays stable across that, as long as the minion itself isn't moved/replaced.
     private static String currentMinionKey = "";
 
     private static final int FUEL_SLOT_INDEX = 19; // The fuel slot (row 3, column 2)
@@ -42,11 +48,12 @@ public class MinionFuelTracker {
     // -------------------------------------------------------------------------
 
     // SkyBlock minions are armor stand entities you right-click to open their GUI. We
-    // record the UUID of whichever armor stand was last right-clicked (and when), so that
-    // when a minion GUI subsequently opens we can attribute it to that specific physical
-    // minion rather than just its (non-unique) GUI title. Only ever read/written on the
-    // client thread (tick + input handling), so no synchronization is needed.
-    private static String lastArmorStandUuid = null;
+    // record a stable key (block position + all equipped items, see buildArmorStandKey())
+    // for whichever armor stand was last right-clicked (and when), so that when a minion
+    // GUI subsequently opens we can attribute it to that specific physical minion rather
+    // than just its (non-unique) GUI title. Only ever read/written on the client thread
+    // (tick + input handling), so no synchronization is needed.
+    private static String lastArmorStandKey = null;
     private static long lastArmorStandInteractMs = 0;
 
     // How long after right-clicking an armor stand we'll still trust it as "the minion
@@ -58,8 +65,8 @@ public class MinionFuelTracker {
     /** Registers the client-side entity-interact listener. Call once during mod init. */
     public static void registerArmorStandInteractionListener() {
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
-            if (world.isClientSide() && entity instanceof ArmorStand) {
-                lastArmorStandUuid = entity.getUUID().toString();
+            if (world.isClientSide() && entity instanceof ArmorStand armorStand) {
+                lastArmorStandKey = buildArmorStandKey(armorStand);
                 lastArmorStandInteractMs = System.currentTimeMillis();
             }
             return InteractionResult.PASS;
@@ -67,18 +74,41 @@ public class MinionFuelTracker {
     }
 
     /**
-     * Returns (and clears) the most recently right-clicked armor stand's UUID, if the
+     * Builds a key identifying a specific physical minion armor stand from its block
+     * position and everything it has equipped (helmet/chestplate/leggings/boots/hands) —
+     * stable across server restarts/rejoins (unlike the entity's UUID, which gets
+     * reassigned whenever the server unloads and reloads the island), as long as the
+     * minion itself isn't physically moved or its skin changed. Two minions of the exact
+     * same type/tier standing at different spots still get different keys since their
+     * positions differ.
+     */
+    private static String buildArmorStandKey(ArmorStand armorStand) {
+        BlockPos pos = armorStand.blockPosition();
+        StringBuilder key = new StringBuilder();
+        key.append(pos.getX()).append(',').append(pos.getY()).append(',').append(pos.getZ());
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            ItemStack item = armorStand.getItemBySlot(slot);
+            key.append('|');
+            if (!item.isEmpty()) {
+                key.append(item.getItem()).append(':').append(item.getHoverName().getString());
+            }
+        }
+        return key.toString();
+    }
+
+    /**
+     * Returns (and clears) the most recently right-clicked armor stand's key, if the
      * interaction happened recently enough to plausibly be the one that opened the minion
      * GUI we're currently looking at. Returns null if there's no recent-enough interaction
      * (e.g. the GUI was opened some other way), in which case callers should fall back to
      * the GUI title as the minion key.
      */
-    private static String consumeLastArmorStandUuid() {
-        if (lastArmorStandUuid != null &&
+    private static String consumeLastArmorStandKey() {
+        if (lastArmorStandKey != null &&
                 System.currentTimeMillis() - lastArmorStandInteractMs <= ARMOR_STAND_INTERACT_MAX_AGE_MS) {
-            String uuid = lastArmorStandUuid;
-            lastArmorStandUuid = null; // consume so a stale value can't be reused for a later, unrelated open
-            return uuid;
+            String key = lastArmorStandKey;
+            lastArmorStandKey = null; // consume so a stale value can't be reused for a later, unrelated open
+            return key;
         }
         return null;
     }
@@ -139,12 +169,12 @@ public class MinionFuelTracker {
         if (!title.equals(currentMinionName)) {
             // RESET EVERYTHING for the new minion
             currentMinionName = title;
-            // Prefer the UUID of whichever armor stand was just right-clicked (unique per
-            // physical minion) so identical minion types/tiers aren't merged into one
-            // tracked minion. Falls back to the title itself if no recent armor-stand
-            // interaction was captured (e.g. GUI reopened via a favourite/macro instead of
-            // a fresh right-click).
-            String armorStandKey = consumeLastArmorStandUuid();
+            // Prefer the position+equipment key of whichever armor stand was just
+            // right-clicked (stable per physical minion, even across server restarts) so
+            // identical minion types/tiers aren't merged into one. Falls back to the title
+            // itself if no recent armor-stand interaction was captured (e.g. GUI reopened
+            // via a favourite/macro instead of a fresh right-click).
+            String armorStandKey = consumeLastArmorStandKey();
             currentMinionKey = armorStandKey != null ? armorStandKey : title;
             canTrackChanges = false; // Disable tracking until we stabilize
             initialFuelSlotItem = ItemStack.EMPTY; // Clear the old state
