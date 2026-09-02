@@ -709,7 +709,7 @@ public class PlayerListScreen extends Screen {
         // component structure (plain text + hover text, own and every sibling's) to the
         // clipboard, so chat-parsing bugs (e.g. "[Sacks]" messages) can be reported with exact
         // data instead of guesswork.
-        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && hasShiftDown()) {
+        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && (event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0) {
             Component clicked = chatMirrorMessageAt(mouseX, mouseY);
             if (clicked != null) {
                 client.keyboardHandler.setClipboard(dumpComponentFull(clicked));
