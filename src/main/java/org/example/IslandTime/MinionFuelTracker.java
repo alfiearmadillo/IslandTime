@@ -38,6 +38,18 @@ public class MinionFuelTracker {
     private static boolean canTrackChanges = false;
     private static boolean wasInMinionGui = false; // Track if we were in a minion GUI last tick
 
+    // The fuel slot's contents right after opening a minion's GUI can take a tick or two
+    // to actually sync from the server — reading it too early risks seeing a stale/empty
+    // placeholder even though the minion genuinely already has fuel queued. If we then
+    // trusted that stale read as our baseline, the real content arriving a tick later
+    // would look like a brand new fuel placement and get miscounted as newly-added fuel
+    // units that were never actually placed. To guard against this, the slot's contents
+    // must read back identically for several consecutive ticks before we lock it in as
+    // the baseline (see the stabilization loop in checkFuelSlot()).
+    private static ItemStack pendingStableItem = ItemStack.EMPTY;
+    private static int stableTickCount = 0;
+    private static final int STABILIZATION_TICKS = 3;
+
     private static boolean showFuelMessages = true;
 
     public static boolean isShowFuelMessages() { return showFuelMessages; }
@@ -140,6 +152,8 @@ public class MinionFuelTracker {
                 currentMinionName = "";
                 currentMinionKey = "";
                 canTrackChanges = false;
+                pendingStableItem = ItemStack.EMPTY;
+                stableTickCount = 0;
                 wasInMinionGui = false;
             }
             return;
@@ -153,6 +167,8 @@ public class MinionFuelTracker {
                 currentMinionName = "";
                 currentMinionKey = "";
                 canTrackChanges = false;
+                pendingStableItem = ItemStack.EMPTY;
+                stableTickCount = 0;
                 wasInMinionGui = false;
             }
             return;
@@ -172,6 +188,8 @@ public class MinionFuelTracker {
                 currentMinionName = "";
                 currentMinionKey = "";
                 canTrackChanges = false;
+                pendingStableItem = ItemStack.EMPTY;
+                stableTickCount = 0;
                 wasInMinionGui = false;
             }
             return;
@@ -204,18 +222,36 @@ public class MinionFuelTracker {
             currentMinionKey = armorStandKey != null ? armorStandKey : title;
             canTrackChanges = false; // Disable tracking until we stabilize
             initialFuelSlotItem = ItemStack.EMPTY; // Clear the old state
+            pendingStableItem = ItemStack.EMPTY;
+            stableTickCount = 0;
 
             // DON'T store initial state yet - wait for next tick
             return;
         }
 
-        // If we can't track changes yet, we're in the stabilization phase
+        // If we can't track changes yet, we're in the stabilization phase. The slot's
+        // contents must read back identically for STABILIZATION_TICKS consecutive ticks
+        // before we trust it as the baseline — a single-tick read risks catching the
+        // container mid-sync (e.g. still showing the "empty" glass-pane placeholder
+        // before the server's real fuel data has arrived), which would otherwise get
+        // misread as a brand new fuel placement the moment the real data shows up.
         if (!canTrackChanges) {
-            // NOW store the initial state and enable tracking
-            if (FUEL_SLOT_INDEX < containerHandler.slots.size()) {
-                Slot fuelSlot = containerHandler.getSlot(FUEL_SLOT_INDEX);
-                initialFuelSlotItem = fuelSlot.getItem().copy();
+            if (FUEL_SLOT_INDEX >= containerHandler.slots.size()) return;
+            Slot fuelSlot = containerHandler.getSlot(FUEL_SLOT_INDEX);
+            ItemStack current = fuelSlot.getItem();
+
+            if (ItemStack.matches(current, pendingStableItem)) {
+                stableTickCount++;
+            } else {
+                pendingStableItem = current.copy();
+                stableTickCount = 1;
+            }
+
+            if (stableTickCount >= STABILIZATION_TICKS) {
+                initialFuelSlotItem = pendingStableItem.copy();
                 canTrackChanges = true; // Enable tracking for next tick
+                pendingStableItem = ItemStack.EMPTY;
+                stableTickCount = 0;
             }
             return;
         }

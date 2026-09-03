@@ -11,8 +11,6 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.List;
 
 /**
@@ -41,10 +39,6 @@ public class FuelDayScreen extends Screen {
     private int listBottom;
     private int listLeft;
     private int listWidth;
-
-    // Add dialog
-    private boolean addDialogOpen = false;
-    private EditBox addDateField;
 
     // Edit dialog
     private boolean editDialogOpen = false;
@@ -80,8 +74,8 @@ public class FuelDayScreen extends Screen {
         listTop = HEADER_HEIGHT + 10;
         listBottom = height - 10;
 
-        if (!addDialogOpen && !editDialogOpen) {
-            addRenderableWidget(Button.builder(Component.literal("+ Add Day"), btn -> openAddDialog())
+        if (!editDialogOpen) {
+            addRenderableWidget(Button.builder(Component.literal("+ Add Day"), btn -> addQueuedDay())
                     .bounds(width / 2 - 55, 10, 110, 20)
                     .build());
         }
@@ -91,31 +85,13 @@ public class FuelDayScreen extends Screen {
     // Dialogs
     // -------------------------------------------------------------------------
 
-    private void openAddDialog() {
-        addDialogOpen = true;
-        clearWidgets();
-
-        int dialogX = width / 2 - 100;
-        int dialogY = height / 2 - 40;
-
-        addDateField = new EditBox(font, dialogX, dialogY + 14, 200, 20, Component.literal("Date"));
-        addDateField.setMaxLength(10);
-        addDateField.setValue(LocalDate.now().toString());
-        addDateField.setHint(Component.literal("YYYY-MM-DD").withStyle(ChatFormatting.GRAY));
-        addRenderableWidget(addDateField);
-
-        addRenderableWidget(Button.builder(Component.literal("Add"), btn -> {
-            String date = addDateField.getValue().trim();
-            if (isValidDate(date)) {
-                FuelCycleTracker.addManualDayRecord(date);
-                closeDialog();
-            }
-        }).bounds(dialogX, dialogY + 48, 95, 20).build());
-
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 105, dialogY + 48, 95, 20).build());
-
-        setFocused(addDateField);
+    /**
+     * Appends a new queued day carrying over the previous day's minion count and fuel
+     * cost — no manual input needed, matching how queuing extra fuel-days from an
+     * actual fuel placement works.
+     */
+    private void addQueuedDay() {
+        FuelCycleTracker.appendQueuedDay();
     }
 
     private void openEditDialog(String date) {
@@ -230,20 +206,10 @@ public class FuelDayScreen extends Screen {
     }
 
     private void closeDialog() {
-        addDialogOpen = false;
         editDialogOpen = false;
         editDate = null;
         clearWidgets();
         init();
-    }
-
-    private boolean isValidDate(String date) {
-        try {
-            LocalDate.parse(date);
-            return true;
-        } catch (DateTimeParseException e) {
-            return false;
-        }
     }
 
     // -------------------------------------------------------------------------
@@ -264,19 +230,8 @@ public class FuelDayScreen extends Screen {
         int titleWidth = font.width(titleComp);
         context.text(font, titleComp, width / 2 - titleWidth / 2, 2, -1, true);
 
-        if (!addDialogOpen && !editDialogOpen) {
+        if (!editDialogOpen) {
             renderEntryList(context, mouseX, mouseY);
-        }
-
-        if (addDialogOpen) {
-            int dialogX = width / 2 - 110;
-            int dialogY = height / 2 - 50;
-            context.fill(dialogX, dialogY, dialogX + 220, dialogY + 90, 0xEE000000);
-            Component title = Component.literal("Add Day");
-            int tw = font.width(title);
-            context.text(font, title, width / 2 - tw / 2, dialogY + 4, -1, true);
-            context.text(font, Component.literal("Date:").withStyle(ChatFormatting.GRAY),
-                    dialogX + 10, dialogY + 18, 0xFFAAAAAA, true);
         }
 
         if (editDialogOpen) {
@@ -474,7 +429,7 @@ public class FuelDayScreen extends Screen {
         double mouseX = client.mouseHandler.xpos() * (double) client.getWindow().getGuiScaledWidth() / (double) client.getWindow().getScreenWidth();
         double mouseY = client.mouseHandler.ypos() * (double) client.getWindow().getGuiScaledHeight() / (double) client.getWindow().getScreenHeight();
 
-        if (addDialogOpen || editDialogOpen) return false;
+        if (editDialogOpen) return false;
 
         List<FuelCycleTracker.DayRecord> records = FuelCycleTracker.getDayRecordsDescending();
         int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
@@ -515,7 +470,7 @@ public class FuelDayScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        if (addDialogOpen || editDialogOpen) return false;
+        if (editDialogOpen) return false;
         scrollOffset -= (int) verticalAmount;
         return true;
     }
@@ -548,7 +503,7 @@ public class FuelDayScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (addDialogOpen || editDialogOpen) {
+        if (editDialogOpen) {
             if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
                 closeDialog();
                 return true;

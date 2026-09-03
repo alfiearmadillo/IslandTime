@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  * {@code config/IslandTime/loadouts/<name>.txt}.
  * Groups are stored in {@code config/IslandTime/loadouts/groups.json}.
  *
- * A loadout can belong to at most one group. {@code /it cyclesettings}
+ * A loadout can belong to at most one group. {@code /it settingscycle}
  * loads the next loadout in the group that contains the most recently
  * loaded loadout.
  */
@@ -37,7 +37,7 @@ public class SettingsLoadoutManager {
     private static final Type GROUPS_TYPE = new TypeToken<Map<String, List<String>>>() {}.getType();
 
     /**
-     * Tracks the most recently loaded loadout name so cyclesettings knows where we are.
+     * Tracks the most recently loaded loadout name so settingscycle knows where we are.
      * Persisted to disk (see {@link #CURRENT_FILE}) so it survives a relog/game restart,
      * not just the current session, and read back lazily the first time it's needed
      * rather than at class-load time (which may run before the game directory is set up).
@@ -235,7 +235,7 @@ public class SettingsLoadoutManager {
     public static void cycle(Minecraft client) {
         String active = getCurrentLoadout();
         if (active == null) {
-            sendMessage(client, Component.literal("[IslandTime] No active loadout. Use /it loadsettings <name> first.").withStyle(ChatFormatting.RED));
+            sendMessage(client, Component.literal("[IslandTime] No active loadout. Use /it settingsload <name> first.").withStyle(ChatFormatting.RED));
             return;
         }
 

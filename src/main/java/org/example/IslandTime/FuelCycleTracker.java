@@ -586,8 +586,48 @@ public class FuelCycleTracker {
         }
     }
 
-    public static DayRecord addManualDayRecord(String date) {
+    /**
+     * Appends a brand new queued day directly after whichever existing day-record is
+     * latest (by {@link DayRecord#cycleStartMs}), carrying over that day's effective
+     * minion count and fuel cost as manual overrides — so the new day is immediately
+     * useful without requiring any input, matching what queuing extra fuel-days from an
+     * actual fuel placement would look like. Everything else (AFK/mob-kill coins,
+     * gabagool, notes) starts fresh like any other new day. If no day-records exist yet,
+     * starts a brand new queue from today with zero minions/cost.
+     */
+    public static DayRecord appendQueuedDay() {
+        List<DayRecord> existing = getDayRecordsDescending();
+
+        long nextCycleStart;
+        int minionCount;
+        double fuelCost;
+        if (!existing.isEmpty()) {
+            DayRecord last = existing.get(0);
+            long lastStart = last.cycleStartMs > 0
+                    ? last.cycleStartMs
+                    : LocalDate.parse(last.date).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            nextCycleStart = lastStart + DAY_MS;
+            minionCount = last.getEffectiveMinionCount();
+            fuelCost = last.getEffectiveFuelCost();
+        } else {
+            nextCycleStart = System.currentTimeMillis();
+            minionCount = 0;
+            fuelCost = 0.0;
+        }
+
+        // Guard against colliding with an already-existing record at that calendar date
+        // (e.g. a rare DST edge case) by advancing a further day at a time until free.
+        String date;
+        do {
+            date = LocalDate.ofInstant(Instant.ofEpochMilli(nextCycleStart), ZoneId.systemDefault()).toString();
+            if (!dayRecords.containsKey(date)) break;
+            nextCycleStart += DAY_MS;
+        } while (true);
+
         DayRecord record = getOrCreateDayRecord(date);
+        record.cycleStartMs = nextCycleStart;
+        record.manualMinionCount = minionCount;
+        record.manualFuelCost = fuelCost;
         save();
         return record;
     }
