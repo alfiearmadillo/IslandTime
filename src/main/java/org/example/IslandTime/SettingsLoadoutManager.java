@@ -32,11 +32,53 @@ public class SettingsLoadoutManager {
 
     private static final File LOADOUTS_DIR = new File("config/IslandTime/loadouts");
     private static final File GROUPS_FILE = new File("config/IslandTime/loadouts/groups.json");
+    private static final File CURRENT_FILE = new File("config/IslandTime/loadouts/current.txt");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Type GROUPS_TYPE = new TypeToken<Map<String, List<String>>>() {}.getType();
 
-    /** Tracks the most recently loaded loadout name so cyclesettings knows where we are. */
+    /**
+     * Tracks the most recently loaded loadout name so cyclesettings knows where we are.
+     * Persisted to disk (see {@link #CURRENT_FILE}) so it survives a relog/game restart,
+     * not just the current session, and read back lazily the first time it's needed
+     * rather than at class-load time (which may run before the game directory is set up).
+     */
     private static String currentLoadout = null;
+    private static boolean currentLoadoutLoadedFromDisk = false;
+
+    /** Lazily loads the persisted current-loadout name from disk, once. */
+    private static String getCurrentLoadout() {
+        if (!currentLoadoutLoadedFromDisk) {
+            currentLoadoutLoadedFromDisk = true;
+            if (CURRENT_FILE.exists()) {
+                try {
+                    String name = Files.readString(CURRENT_FILE.toPath()).trim();
+                    // Only trust it if that loadout still actually exists on disk.
+                    if (!name.isEmpty() && new File(LOADOUTS_DIR, name + ".txt").exists()) {
+                        currentLoadout = name;
+                    }
+                } catch (IOException ignored) {
+                    // Fall through with currentLoadout left as null
+                }
+            }
+        }
+        return currentLoadout;
+    }
+
+    /** Updates the in-memory + on-disk record of which loadout is currently active. */
+    private static void setCurrentLoadout(String name) {
+        currentLoadout = name;
+        currentLoadoutLoadedFromDisk = true;
+        try {
+            LOADOUTS_DIR.mkdirs();
+            if (name == null) {
+                Files.deleteIfExists(CURRENT_FILE.toPath());
+            } else {
+                Files.writeString(CURRENT_FILE.toPath(), name);
+            }
+        } catch (IOException e) {
+            System.err.println("[IslandTime] Failed to persist current loadout: " + e.getMessage());
+        }
+    }
 
     /** Returns Minecraft's options.txt file. */
     private static File getOptionsFile() {
@@ -53,7 +95,7 @@ public class SettingsLoadoutManager {
         File dest = new File(LOADOUTS_DIR, name + ".txt");
         try {
             Files.copy(getOptionsFile().toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            currentLoadout = name;
+            setCurrentLoadout(name);
             sendMessage(client, Component.literal("[IslandTime] Saved settings loadout: ").withStyle(ChatFormatting.GOLD)
                     .append(Component.literal(name).withStyle(ChatFormatting.GREEN)));
         } catch (IOException e) {
@@ -72,7 +114,7 @@ public class SettingsLoadoutManager {
         try {
             Files.copy(src.toPath(), getOptionsFile().toPath(), StandardCopyOption.REPLACE_EXISTING);
             client.options.load();
-            currentLoadout = name;
+            setCurrentLoadout(name);
             sendMessage(client, Component.literal("[IslandTime] Loaded settings loadout: ").withStyle(ChatFormatting.GOLD)
                     .append(Component.literal(name).withStyle(ChatFormatting.GREEN)));
         } catch (IOException e) {
@@ -99,7 +141,7 @@ public class SettingsLoadoutManager {
             groups.entrySet().removeIf(e -> e.getValue().isEmpty());
             if (changed) saveGroups(groups);
 
-            if (name.equals(currentLoadout)) currentLoadout = null;
+            if (name.equals(getCurrentLoadout())) setCurrentLoadout(null);
 
             sendMessage(client, Component.literal("[IslandTime] Deleted settings loadout: ").withStyle(ChatFormatting.GOLD)
                     .append(Component.literal(name).withStyle(ChatFormatting.GREEN)));
@@ -123,7 +165,7 @@ public class SettingsLoadoutManager {
             for (String n : names) {
                 Component line = Component.literal("  - ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(n).withStyle(ChatFormatting.GREEN));
-                if (n.equals(currentLoadout)) {
+                if (n.equals(getCurrentLoadout())) {
                     line = line.copy().append(Component.literal(" (active)").withStyle(ChatFormatting.AQUA));
                 }
                 sendMessage(client, line);
@@ -191,7 +233,8 @@ public class SettingsLoadoutManager {
      * Cycle to the next loadout in whichever group contains the current loadout.
      */
     public static void cycle(Minecraft client) {
-        if (currentLoadout == null) {
+        String active = getCurrentLoadout();
+        if (active == null) {
             sendMessage(client, Component.literal("[IslandTime] No active loadout. Use /it loadsettings <name> first.").withStyle(ChatFormatting.RED));
             return;
         }
@@ -199,7 +242,7 @@ public class SettingsLoadoutManager {
         Map<String, List<String>> groups = loadGroups();
         for (Map.Entry<String, List<String>> entry : groups.entrySet()) {
             List<String> members = entry.getValue();
-            int idx = members.indexOf(currentLoadout);
+            int idx = members.indexOf(active);
             if (idx >= 0) {
                 String next = members.get((idx + 1) % members.size());
                 load(client, next);
@@ -208,7 +251,7 @@ public class SettingsLoadoutManager {
         }
 
         sendMessage(client, Component.literal("[IslandTime] Current loadout '").withStyle(ChatFormatting.RED)
-                .append(Component.literal(currentLoadout).withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(active).withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal("' is not in any settings group.").withStyle(ChatFormatting.RED)));
     }
 
