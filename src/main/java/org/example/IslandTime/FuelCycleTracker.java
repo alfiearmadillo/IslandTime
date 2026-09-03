@@ -725,7 +725,7 @@ public class FuelCycleTracker {
             return cachedFuelUnitCost;
         }
         JsonObject bazaar = PriceCache.getBazaar();
-        double unitCost = PriceCache.getCheapestInfernoFuelDistillatePrice(bazaar);
+        double unitCost = PriceCache.getInfernoFuelUnitCost(bazaar);
         if (unitCost > 0) {
             cachedFuelUnitCost = unitCost;
             cachedFuelUnitCostCohortStart = cohortStart;

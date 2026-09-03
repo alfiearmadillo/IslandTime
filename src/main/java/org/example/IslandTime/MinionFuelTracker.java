@@ -113,6 +113,21 @@ public class MinionFuelTracker {
         return null;
     }
 
+    /**
+     * Same freshness check as {@link #consumeLastArmorStandKey()} but without consuming
+     * it — used to detect "did the player just right-click a DIFFERENT physical minion"
+     * even while a minion GUI of the exact same title is already open (see
+     * {@link #checkFuelSlot()}), without prematurely throwing away the key before we've
+     * decided whether this tick is actually the one that should consume it.
+     */
+    private static String peekLastArmorStandKey() {
+        if (lastArmorStandKey != null &&
+                System.currentTimeMillis() - lastArmorStandInteractMs <= ARMOR_STAND_INTERACT_MAX_AGE_MS) {
+            return lastArmorStandKey;
+        }
+        return null;
+    }
+
     public static void checkFuelSlot() {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null) return;
@@ -165,8 +180,19 @@ public class MinionFuelTracker {
         // We're in a minion GUI
         wasInMinionGui = true;
 
-        // Check if we just opened a new minion or switched to a different one
-        if (!title.equals(currentMinionName)) {
+        // Check if we just opened a new minion or switched to a different one. A plain
+        // title comparison alone isn't enough: many physical minions share the exact same
+        // GUI title (e.g. 32 identical-tier "Inferno Minion XI" armor stands), so if the
+        // player switches from one to another WITHOUT the screen ever going null in
+        // between (e.g. quickly right-clicking a neighboring armor stand while a same-tier
+        // minion's GUI is still open), the title never changes even though it's now a
+        // genuinely different physical minion — so also treat a still-unconsumed, fresh
+        // armor-stand right-click whose key differs from the one we're currently tracking
+        // as a switch, even when the title matches.
+        String pendingArmorStandKey = peekLastArmorStandKey();
+        boolean switchedMinion = !title.equals(currentMinionName)
+                || (pendingArmorStandKey != null && !pendingArmorStandKey.equals(currentMinionKey));
+        if (switchedMinion) {
             // RESET EVERYTHING for the new minion
             currentMinionName = title;
             // Prefer the position+equipment key of whichever armor stand was just
@@ -246,6 +272,18 @@ public class MinionFuelTracker {
                     newFuelUnits = Math.max(1, currentCount);
                 }
             }
+
+            // Diagnostic logging (console only, not chat) for every detected fuel-slot
+            // change, regardless of whether it resulted in any counted fuel units — this
+            // is intentionally always-on (not gated behind a debug flag) since it only
+            // writes to the log file, not chat, and is the only way to retroactively
+            // diagnose a placement that silently failed to register (e.g. topping up an
+            // already-active minion whose remaining fuel item's count/hover-name
+            // comparison didn't behave as expected).
+            System.out.println("[MinionFuelTracker] Fuel slot changed for \"" + currentMinionKey + "\": "
+                    + "initial=[" + (initialFuelSlotItem.isEmpty() ? "empty" : initialFuelSlotItem.getCount() + "x " + initialFuelSlotItem.getHoverName().getString()) + "]"
+                    + " -> current=[" + (currentItem.isEmpty() ? "empty" : currentItem.getCount() + "x " + currentItem.getHoverName().getString()) + "]"
+                    + " sameFuelType=" + sameFuelType + " newFuelUnits=" + newFuelUnits);
 
             if (newFuelUnits > 0) {
                 // The fuel was placed! Send the message (if enabled)
