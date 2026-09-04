@@ -1,5 +1,6 @@
 package org.example.islandtime;
 
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -8,25 +9,26 @@ import java.util.List;
 /**
  * Stores recent chat messages for display in {@link PlayerListScreen}'s chat mirror.
  *
- * <p>Fed directly from {@code SackChatPacketMixin}'s packet-level hook on {@code
- * handleSystemChat} (the same hook that feeds {@link SackIncomeTracker}), not from Fabric API's
- * cancelable {@code ClientReceiveMessageEvents.GAME} event. This matters because other
- * client-side mods (e.g. SkyHanni's "Sack Change Hider") can cancel a system message before the
- * {@code GAME} event fires, hiding it from the vanilla chat HUD — if this store only listened to
- * {@code GAME}, the very messages a user most needs to inspect via the mirror's shift+right-click
- * component dump (like a hidden "[Sacks]" line) would never appear in it at all.
+ * <p>Ordinary messages are captured from Fabric API's {@code GAME} event so they follow the same
+ * single delivery path as the vanilla chat HUD. Sack messages are captured by
+ * {@code SackChatPacketMixin} instead, before mods such as SkyHanni can cancel them, so they remain
+ * available for diagnostics without affecting sack-income tracking.
  */
 public class ChatMessageStore {
     private static final int MAX_MESSAGES = 100;
     private static final List<Component> messages = new ArrayList<>();
 
-    /** No-op kept for compatibility; capture now happens implicitly via SackChatPacketMixin. */
     public static void register() {
+        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            if (!overlay && !SackIncomeTracker.isSackChatMessage(message)) {
+                addRawMessage(message);
+            }
+        });
     }
 
     /**
-     * Called from {@code SackChatPacketMixin} for every system chat packet received, before any
-     * other mod has a chance to cancel or hide it.
+     * Called from the chat event for ordinary messages and from {@code SackChatPacketMixin} for
+     * sack messages.
      */
     public static void addRawMessage(Component message) {
         if (message == null) return;

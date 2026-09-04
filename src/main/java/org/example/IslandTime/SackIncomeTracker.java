@@ -64,9 +64,7 @@ public class SackIncomeTracker {
      * "Added", and only the first direct sibling whose hover starts with "Removed", are read.
      */
     public static void onSackChatMessage(Component message) {
-        if (message == null) return;
-        String plain = message.getString();
-        if (!plain.startsWith("[Sacks]")) return;
+        if (!isSackChatMessage(message)) return;
 
         String addedText = firstSiblingHoverStartingWith(message, "Added");
         String removedText = firstSiblingHoverStartingWith(message, "Removed");
@@ -99,6 +97,10 @@ public class SackIncomeTracker {
         if (removed) {
             FuelExpiredAlertTracker.onSackEmptied();
         }
+    }
+
+    public static boolean isSackChatMessage(Component message) {
+        return message != null && message.getString().startsWith("[Sacks]");
     }
 
     /**
