@@ -115,6 +115,14 @@ public class ConfigManager {
 
         // Fuel Cycles tracking
         config.fuelCycles.enabled = TrackingToggleConfig.isFuelCycleEnabled();
+        config.fuelCycles.useTestDataFile = FuelCycleTracker.isTestModeEnabled();
+        config.fuelCycles.mobKillCoinsAt100PercentString = String.valueOf(FuelCycleTracker.getMobKillCoinsAt100Baseline());
+        FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(FuelCycleTracker.getCurrentCycleDateKey());
+        config.fuelCycles.todayGabagoolPriceString = today != null ? String.valueOf(today.gabagoolPrice) : "0";
+        // Blank = "use the auto-tracked value from sack chat messages" (see SackIncomeTracker).
+        config.fuelCycles.todayGabagoolAmountString = (today != null && today.manualGabagoolAmount != null)
+                ? String.valueOf(today.manualGabagoolAmount)
+                : "";
 
         // Favourite GUI tracking
         config.favouriteGui.enabled = FavouriteGuiManager.isTrackingEnabled();
@@ -130,6 +138,7 @@ public class ConfigManager {
         config.alertSpeeds.trackedItemSpeed = convertAlertSpeedToInt(ItemTracker.getAlertSpeed().name());
         config.alertSpeeds.islandSpeed = convertAlertSpeedToInt(IslandAlertTracker.getAlertSpeed().name());
         config.alertSpeeds.disconnectSpeed = convertAlertSpeedToInt(DisconnectAlertTracker.getAlertSpeed().name());
+        config.alertSpeeds.fuelExpiredSpeed = convertAlertSpeedToInt(FuelExpiredAlertTracker.getAlertSpeed().name());
 
         // Item tracking UUID (editable)
         String uuid = ItemTracker.getTrackedUuid();
@@ -168,6 +177,52 @@ public class ConfigManager {
         if (TrackingToggleConfig.isFuelCycleEnabled() != config.fuelCycles.enabled) {
             TrackingToggleConfig.setFuelCycleEnabled(config.fuelCycles.enabled);
         }
+        if (FuelCycleTracker.isTestModeEnabled() != config.fuelCycles.useTestDataFile) {
+            FuelCycleTracker.setTestModeEnabled(config.fuelCycles.useTestDataFile);
+        }
+        try {
+            double baseline = Double.parseDouble(config.fuelCycles.mobKillCoinsAt100PercentString.trim());
+            if (baseline != FuelCycleTracker.getMobKillCoinsAt100Baseline()) {
+                FuelCycleTracker.setMobKillCoinsAt100Baseline(baseline);
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid number, keep existing value
+        }
+        String todayDate = FuelCycleTracker.getCurrentCycleDateKey();
+        try {
+            double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
+            FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
+            if (today == null || today.gabagoolPrice != price) {
+                FuelCycleTracker.setGabagoolPrice(todayDate, price);
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid number, keep existing value
+        }
+        try {
+            String amountText = config.fuelCycles.todayGabagoolAmountString.trim();
+            FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
+            Double currentManual = today != null ? today.manualGabagoolAmount : null;
+            if (amountText.isEmpty()) {
+                if (currentManual != null) {
+                    FuelCycleTracker.clearManualGabagoolAmount(todayDate);
+                }
+            } else {
+                double parsedAmount = Double.parseDouble(amountText);
+                // A leading "+"/"-" means "adjust the auto-tracked amount by this much"
+                // (e.g. "+100000" to correct for a missed sack message) rather than "set the
+                // absolute total to this value" — gabagool amounts are never legitimately
+                // negative, so the sign is unambiguous.
+                double autoAmount = today != null ? today.gabagoolAmountAuto : 0.0;
+                double amount = (amountText.startsWith("+") || amountText.startsWith("-"))
+                        ? Math.max(0.0, autoAmount + parsedAmount)
+                        : Math.max(0.0, parsedAmount);
+                if (currentManual == null || currentManual != amount) {
+                    FuelCycleTracker.setGabagoolAmount(todayDate, amount);
+                }
+            }
+        } catch (NumberFormatException ignored) {
+            // Invalid number, keep existing value
+        }
 
         // Favourite GUI tracking
         if (FavouriteGuiManager.isTrackingEnabled() != config.favouriteGui.enabled) {
@@ -196,6 +251,11 @@ public class ConfigManager {
         String disconnectSpeed = convertIntToAlertSpeed(config.alertSpeeds.disconnectSpeed);
         if (!DisconnectAlertTracker.getAlertSpeed().name().equals(disconnectSpeed)) {
             DisconnectAlertTracker.setAlertSpeed(DisconnectAlertTracker.AlertSpeed.valueOf(disconnectSpeed));
+        }
+
+        String fuelExpiredSpeed = convertIntToAlertSpeed(config.alertSpeeds.fuelExpiredSpeed);
+        if (!FuelExpiredAlertTracker.getAlertSpeed().name().equals(fuelExpiredSpeed)) {
+            FuelExpiredAlertTracker.setAlertSpeed(FuelExpiredAlertTracker.AlertSpeed.valueOf(fuelExpiredSpeed));
         }
 
         // Item tracking UUID (manual editing)

@@ -20,7 +20,7 @@ public class IslandTimeConfig extends Config {
     public IslandTime islandTime = new IslandTime();
 
     @Expose
-    @Category(name = "Fuel Cycles", desc = "Track fuel cycles for your minions")
+    @Category(name = "Fuel Cycles", desc = "Track minion fuel and profit per fuel day")
     public FuelCycles fuelCycles = new FuelCycles();
 
     @Expose
@@ -89,22 +89,63 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @ConfigOption(name = "View Fuel Time", desc = "Click to view fuel cycles for your minions (last 4 cycles). You can also use /fueltime <cycle> to view a specific cycle number (e.g., /fueltime 6)")
-        @ConfigEditorButton(buttonText = " View Fuel Time ")
+        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing per-fuel-day fuel and profit stats. Each entry is one real 24h fuel-day — placing a stack of, say, 4 fuel creates 4 entries immediately (one currently active, three future/queued), and each day gets its own alert the moment its own fuel runs out. Titled with its actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm), and a Total Profit widget in the top-right corner sums every tracked day. You can also use /it fueldays or /it fueltime")
+        @ConfigEditorButton(buttonText = " Open Fuel Day Tracker ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
-                if (client.player != null) {
-                    client.player.connection.sendCommand("fueltime");
-                }
+                client.execute(() -> client.setScreen(new FuelDayScreen()));
             }
         };
 
         @Expose
-        @ConfigOption(name = "Enable Tracking", desc = "Track fuel cycles for your minions")
+        @ConfigOption(name = "Enable Tracking", desc = "Track minion fuel and profit per fuel day")
         @ConfigEditorBoolean
         public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Use Test Data File",
+                desc = "When enabled, fuel/profit tracking reads and writes to a separate test data file " +
+                        "(fuel_days_test.json) instead of your real tracked data (fuel_days.json), so you can " +
+                        "safely try things out without risking your actual minion history. Toggling this reloads " +
+                        "the Fuel Day Tracker GUI's data from whichever file is now active."
+        )
+        @ConfigEditorBoolean
+        public boolean useTestDataFile = false;
+
+        @Expose
+        @ConfigOption(
+                name = "Coins/Day @ 100% AFK",
+                desc = "Baseline coins/day from mob kills at 100% AFK time, used to estimate each fuel-day's mob-kill " +
+                        "profit based on that day's actual AFK%. Snapshotted per-day when recorded, so changing this " +
+                        "later (e.g. after a game update) doesn't affect past days. Edit past days individually in the Fuel Day Tracker GUI."
+        )
+        @ConfigEditorText
+        public String mobKillCoinsAt100PercentString = "0";
+
+        @Expose
+        @ConfigOption(
+                name = "Current Day's Gabagool Price",
+                desc = "Manually entered sell price for a single Crude Gabagool during the currently active fuel day " +
+                        "(sacks can't be read automatically). Applies to whichever fuel-day is currently in progress — " +
+                        "not necessarily today's calendar date, if that day's fuel is still running past midnight. Edit past days individually in the Fuel Day Tracker GUI."
+        )
+        @ConfigEditorText
+        public String todayGabagoolPriceString = "0";
+
+        @Expose
+        @ConfigOption(
+                name = "Current Day's Gabagool Amount Override",
+                desc = "Manual override for the amount of Crude Gabagool collected during the currently active fuel " +
+                        "day. Leave blank to use the amount auto-tracked from Hypixel's '[Sacks]' chat messages " +
+                        "(requires sack messages enabled in-game). Enter an absolute total, or prefix with + or - " +
+                        "(e.g. +100000 or -20000) to adjust the auto-tracked amount by that much instead of " +
+                        "replacing it. Edit past days individually in the Fuel Day Tracker GUI."
+        )
+        @ConfigEditorText
+        public String todayGabagoolAmountString = "";
     }
 
     public static class FavouriteGui {
@@ -220,6 +261,11 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Disconnect Alert Speed", desc = "How often to alert when disconnected\nOFF: No alerts | FAST: After 10s, then every 5 min\nNORMAL: After 10s, then every 30 min | SLOW: After 10s, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int disconnectSpeed = 2; // NORMAL
+
+        @Expose
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's queued fuel-days run out, until you empty your sacks (removing gabagool stops the pings)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
+        public int fuelExpiredSpeed = 2; // NORMAL
     }
 
     public static class ChatRelay {
@@ -617,7 +663,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class SettingsLoadouts {
-        @ConfigOption(name = "Save Current Settings", desc = "Type a name and click to save your current settings as a loadout. You can also use /it savesettings <name>")
+        @ConfigOption(name = "Save Current Settings", desc = "Type a name and click to save your current settings as a loadout. You can also use /it settingssave <name>")
         @ConfigEditorButton(buttonText = " Save Settings ")
         public Runnable saveSettingsButton = new Runnable() {
             @Override
@@ -625,32 +671,32 @@ public class IslandTimeConfig extends Config {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.sendSystemMessage(
-                        net.minecraft.network.chat.Component.literal("§e[IslandTime] Use /it savesettings <name> to save your current settings as a loadout.")
+                        net.minecraft.network.chat.Component.literal("§e[IslandTime] Use /it settingssave <name> to save your current settings as a loadout.")
                     );
                 }
             }
         };
 
-        @ConfigOption(name = "List Loadouts & Groups", desc = "Click to list all saved loadouts and settings groups. You can also use /it listsettings")
+        @ConfigOption(name = "List Loadouts & Groups", desc = "Click to list all saved loadouts and settings groups. You can also use /it settingslist")
         @ConfigEditorButton(buttonText = " List Loadouts ")
         public Runnable listSettingsButton = new Runnable() {
             @Override
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.connection.sendCommand("it listsettings");
+                    client.player.connection.sendCommand("it settingslist");
                 }
             }
         };
 
-        @ConfigOption(name = "Cycle Settings", desc = "Click to cycle to the next loadout in the current settings group. You can also use /it cyclesettings")
+        @ConfigOption(name = "Cycle Settings", desc = "Click to cycle to the next loadout in the current settings group. You can also use /it settingscycle")
         @ConfigEditorButton(buttonText = " Cycle Settings ")
         public Runnable cycleSettingsButton = new Runnable() {
             @Override
             public void run() {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.connection.sendCommand("it cyclesettings");
+                    client.player.connection.sendCommand("it settingscycle");
                 }
             }
         };

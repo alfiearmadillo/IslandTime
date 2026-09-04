@@ -16,6 +16,7 @@ public class IslandTimeMod implements ClientModInitializer {
         ItemTracker.load();
         IslandAlertTracker.load();
         DisconnectAlertTracker.load();
+        FuelExpiredAlertTracker.load();
         FavouriteGuiManager.load();
         TrackingToggleConfig.load(); // applies toggle flags to trackers
         TooltipOverrideConfig.load(); // NEW: load tooltip override flag
@@ -28,6 +29,7 @@ public class IslandTimeMod implements ClientModInitializer {
         AgingItemsConfig.load();
         IslandChatRelay.register();
         ChatMessageStore.register();
+        MinionFuelTracker.registerArmorStandInteractionListener();
 
         // Initialize MoulConfig
         ConfigManager.initialize();
@@ -47,6 +49,7 @@ public class IslandTimeMod implements ClientModInitializer {
             FuelCycleTracker.tick(statsIncreasing);
             IslandAlertTracker.tick(isOnIsland);
             DisconnectAlertTracker.tick(client);
+            FuelExpiredAlertTracker.tick();
             BackpackHoverHandler.tick(client);
         });
 
@@ -76,6 +79,7 @@ public class IslandTimeMod implements ClientModInitializer {
             ItemTracker.save();
             IslandAlertTracker.save();
             DisconnectAlertTracker.save();
+            FuelExpiredAlertTracker.save();
             DiscordWebhookManager.save();
             TrackingToggleConfig.save();
             FavouriteGuiManager.save();
