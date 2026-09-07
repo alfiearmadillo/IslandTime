@@ -10,6 +10,9 @@ import java.util.List;
  * Announces Critter Safari progress for you, so you don't have to type "Forest done" in party chat
  * every time you clear a biome.
  *
+ * <p>Announcements go to party chat as {@code /pchat <message>}, or, when that is turned off, to your
+ * own chat only as a local {@code [IslandTime]} message that nobody else can see.
+ *
  * <p>A message is sent the moment a biome's critters are all caught, and the biome that finishes the
  * run reports "All done" instead of its own name. The Macaw frequently fails to spawn in the Forest,
  * so an option lets it be skipped; when it is, the wording says so ("Forest done minus Macaw").
@@ -45,10 +48,12 @@ public class CritterSafariAnnouncer {
         client.execute(() -> {
             if (client.player == null) return;
             if (partyChat && client.player.connection != null) {
-                client.player.connection.sendCommand("pc " + announcement);
+                // sendCommand() takes the command without its leading slash, so this is "/pchat <msg>".
+                client.player.connection.sendCommand("pchat " + announcement);
             } else {
-                client.player.sendSystemMessage(
-                        Component.literal(announcement).withStyle(ChatFormatting.GREEN));
+                client.player.sendSystemMessage(Component.literal("[IslandTime] ")
+                        .withStyle(ChatFormatting.AQUA)
+                        .append(Component.literal(announcement).withStyle(ChatFormatting.GREEN)));
             }
         });
     }

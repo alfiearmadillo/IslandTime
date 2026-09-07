@@ -704,7 +704,7 @@ public class IslandTimeConfig extends Config {
 
         @ConfigAccordionId(id = 2)
         @Expose
-        @ConfigOption(name = "Send To Party Chat", desc = "Send announcements to party chat. Turn this off to only print them to your own chat")
+        @ConfigOption(name = "Send To Party Chat", desc = "Send announcements to party chat with /pchat. Turn this off to print them only in your own chat as a local [IslandTime] message that nobody else sees")
         @ConfigEditorBoolean
         public boolean announceToParty = true;
 
