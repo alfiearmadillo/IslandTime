@@ -18,8 +18,9 @@ import java.util.regex.Pattern;
  * Haunted). "SPARKLING" catches are the same species with a bonus reward, not separate entries, so
  * they are folded into the normal critter they name.
  *
- * <p>State is reset when the Safari Manager starts a new run
- * ({@code [NPC] Safari Manager: Looks good to me. Have fun out there!}).
+ * <p>State is reset when the Safari Manager starts a new run, either
+ * ({@code [NPC] Safari Manager: Looks good to me. Have fun out there!}) or, when going in solo,
+ * ({@code [NPC] Safari Manager: I already saw your ticket, so you're free to go.}).
  *
  * <p>This class deliberately has no Minecraft dependencies — chat lines are handed to
  * {@link #onChatMessage(String)} from the chat listener registered in {@code IslandTimeMod}.
@@ -29,9 +30,13 @@ public class CritterSafariTracker {
     /** Strips Minecraft §-formatting codes before parsing (same approach as IslandChatRelay). */
     private static final Pattern FORMAT_STRIP = Pattern.compile("§[0-9a-fk-orA-FK-OR]");
 
-    /** Exact NPC line Hypixel sends when a new Safari run begins. */
-    private static final String RUN_START_MESSAGE =
-            "Safari Manager: Looks good to me. Have fun out there!";
+    /**
+     * Exact NPC lines Hypixel sends when a new Safari run begins. The first is shown when entering
+     * with a party (the Safari Manager checks your ticket), the second when going in solo.
+     */
+    private static final List<String> RUN_START_MESSAGES = List.of(
+            "Safari Manager: Looks good to me. Have fun out there!",
+            "Safari Manager: I already saw your ticket, so you're free to go.");
 
     // "CAPTURE! You caught a Gimmiegold and gained a Gimmiegold Shard! (2)"
     // "CAPTURE! You caught a SPARKLING Nozzlenose and received a Rainbow Feather and 2x Nozzlenose Shard!"
@@ -109,11 +114,16 @@ public class CritterSafariTracker {
     }
 
     /**
-     * Returns true if the line is the Safari Manager's "new run" confirmation.
+     * Returns true if the line is one of the Safari Manager's "new run" confirmations
+     * (either the party or the solo variant).
      */
     public static boolean isRunStartMessage(String message) {
         if (message == null) return false;
-        return strip(message).contains(RUN_START_MESSAGE);
+        String line = strip(message);
+        for (String startMessage : RUN_START_MESSAGES) {
+            if (line.contains(startMessage)) return true;
+        }
+        return false;
     }
 
     /**
