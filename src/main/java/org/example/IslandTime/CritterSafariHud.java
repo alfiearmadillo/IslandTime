@@ -10,6 +10,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -27,6 +28,9 @@ public class CritterSafariHud {
     private static final int PADDING = 4;
     private static final int LINE_HEIGHT = 10;
     private static final int COLUMN_GAP = 8;
+
+    private static final int MIN_SCALE = 50;
+    private static final int MAX_SCALE = 300;
 
     private static final int BG_COLOR = 0xC0000000;
     private static final int BORDER_COLOR = 0xFF28007F;
@@ -108,81 +112,144 @@ public class CritterSafariHud {
     }
 
     /**
-     * Draws the widget with its top-left corner at the given position.
+     * Draws the widget with its top-left corner at the given position, honouring the widget scale.
      */
     public static void render(GuiGraphicsExtractor context, int x, int y) {
+        float scale = getScale();
+        context.pose().pushMatrix();
+        context.pose().translate((float) x, (float) y);
+        context.pose().scale(scale, scale);
+        renderUnscaled(context);
+        context.pose().popMatrix();
+    }
+
+    /**
+     * Draws the widget at the origin in unscaled coordinates. Only critters that are still missing
+     * are listed, so the widget shrinks as the run progresses.
+     */
+    private static void renderUnscaled(GuiGraphicsExtractor context) {
         Font font = Minecraft.getInstance().font;
-        List<String> biomes = CritterSafariTracker.getBiomes();
 
-        int width = getWidth();
-        int height = getHeight();
+        int width = getBaseWidth();
+        int height = getBaseHeight();
 
-        context.fill(x, y, x + width, y + height, BG_COLOR);
-        context.fill(x, y, x + width, y + 1, BORDER_COLOR);
-        context.fill(x, y + height - 1, x + width, y + height, BORDER_COLOR);
-        context.fill(x, y, x + 1, y + height, BORDER_COLOR);
-        context.fill(x + width - 1, y, x + width, y + height, BORDER_COLOR);
+        context.fill(0, 0, width, height, BG_COLOR);
+        context.fill(0, 0, width, 1, BORDER_COLOR);
+        context.fill(0, height - 1, width, height, BORDER_COLOR);
+        context.fill(0, 0, 1, height, BORDER_COLOR);
+        context.fill(width - 1, 0, width, height, BORDER_COLOR);
 
-        Component title = Component.literal("Critter Safari ")
-                .withStyle(ChatFormatting.GOLD)
-                .append(Component.literal(
-                                CritterSafariTracker.getCaughtCount() + "/" + CritterSafariTracker.getTotalCount())
-                        .withStyle(CritterSafariTracker.getCaughtCount() == CritterSafariTracker.getTotalCount()
-                                ? ChatFormatting.GREEN
-                                : ChatFormatting.YELLOW));
-        context.text(font, title, x + PADDING, y + PADDING, -1, true);
+        Component title = title();
+        context.text(font, title, (width - font.width(title)) / 2, PADDING, -1, true);
 
-        int columnX = x + PADDING;
-        int topY = y + PADDING + LINE_HEIGHT + 2;
-        for (String biome : biomes) {
+        int columnX = PADDING;
+        int topY = PADDING + LINE_HEIGHT + 2;
+        for (String biome : remainingBiomes()) {
+            List<String> remaining = remainingCritters(biome);
             int rowY = topY;
             context.text(font, Component.literal(biome).withStyle(ChatFormatting.AQUA),
                     columnX, rowY, -1, true);
             rowY += LINE_HEIGHT;
 
-            for (String critter : CritterSafariTracker.getCritters(biome)) {
-                boolean isCaught = CritterSafariTracker.isCaught(critter);
-                Component line = Component.literal((isCaught ? "\u2714 " : "\u2718 ") + critter)
-                        .withStyle(isCaught ? ChatFormatting.GREEN : ChatFormatting.GRAY);
-                context.text(font, line, columnX, rowY, -1, true);
+            for (String critter : remaining) {
+                context.text(font, Component.literal(critter).withStyle(ChatFormatting.GRAY),
+                        columnX, rowY, -1, true);
                 rowY += LINE_HEIGHT;
             }
 
-            columnX += columnWidth(font, biome) + COLUMN_GAP;
+            columnX += columnWidth(font, biome, remaining) + COLUMN_GAP;
         }
+    }
+
+    /** Header component: the name plus a centered caught/total counter. */
+    private static Component title() {
+        int caught = CritterSafariTracker.getCaughtCount();
+        int total = CritterSafariTracker.getTotalCount();
+        return Component.literal("Critter Safari ")
+                .withStyle(ChatFormatting.GOLD)
+                .append(Component.literal(caught + "/" + total)
+                        .withStyle(caught == total ? ChatFormatting.GREEN : ChatFormatting.YELLOW));
+    }
+
+    /** Biomes that still have at least one uncaught critter. */
+    private static List<String> remainingBiomes() {
+        List<String> biomes = new ArrayList<>();
+        for (String biome : CritterSafariTracker.getBiomes()) {
+            if (!remainingCritters(biome).isEmpty()) biomes.add(biome);
+        }
+        return biomes;
+    }
+
+    /** Critters of the given biome that have not been caught yet this run. */
+    private static List<String> remainingCritters(String biome) {
+        List<String> remaining = new ArrayList<>();
+        for (String critter : CritterSafariTracker.getCritters(biome)) {
+            if (!CritterSafariTracker.isCaught(critter)) remaining.add(critter);
+        }
+        return remaining;
+    }
+
+    /** Scale factor applied to the whole widget. */
+    public static float getScale() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        return (config == null ? 100 : clampScale(config.critterSafari.hudScale)) / 100.0f;
+    }
+
+    public static int getScalePercent() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        return config == null ? 100 : clampScale(config.critterSafari.hudScale);
+    }
+
+    /** Stores a new widget scale, clamped to the range offered by the config slider. */
+    public static void setScalePercent(int percent) {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (config == null) return;
+        config.critterSafari.hudScale = clampScale(percent);
+    }
+
+    private static int clampScale(int percent) {
+        return Math.max(MIN_SCALE, Math.min(MAX_SCALE, percent));
     }
 
     /**
      * Widget width in scaled GUI pixels.
      */
     public static int getWidth() {
-        Font font = Minecraft.getInstance().font;
-        int width = 0;
-        for (String biome : CritterSafariTracker.getBiomes()) {
-            width += columnWidth(font, biome) + COLUMN_GAP;
-        }
-        width -= COLUMN_GAP;
-        int titleWidth = font.width(Component.literal("Critter Safari "
-                + CritterSafariTracker.getCaughtCount() + "/" + CritterSafariTracker.getTotalCount()));
-        return Math.max(width, titleWidth) + PADDING * 2;
+        return Math.round(getBaseWidth() * getScale());
     }
 
     /**
      * Widget height in scaled GUI pixels.
      */
     public static int getHeight() {
-        int rows = 0;
-        for (String biome : CritterSafariTracker.getBiomes()) {
-            rows = Math.max(rows, CritterSafariTracker.getCritters(biome).size());
-        }
-        // title + biome header + longest critter column
-        return PADDING * 2 + LINE_HEIGHT * (rows + 2) + 2;
+        return Math.round(getBaseHeight() * getScale());
     }
 
-    private static int columnWidth(Font font, String biome) {
+    /** Widget width before the scale factor is applied. */
+    private static int getBaseWidth() {
+        Font font = Minecraft.getInstance().font;
+        int width = 0;
+        for (String biome : remainingBiomes()) {
+            width += columnWidth(font, biome, remainingCritters(biome)) + COLUMN_GAP;
+        }
+        width -= COLUMN_GAP;
+        return Math.max(width, font.width(title())) + PADDING * 2;
+    }
+
+    /** Widget height before the scale factor is applied. */
+    private static int getBaseHeight() {
+        int rows = 0;
+        for (String biome : remainingBiomes()) {
+            rows = Math.max(rows, remainingCritters(biome).size());
+        }
+        // title + biome header + longest critter column
+        return PADDING * 2 + LINE_HEIGHT * (rows + (rows == 0 ? 0 : 1)) + LINE_HEIGHT + 2;
+    }
+
+    private static int columnWidth(Font font, String biome, List<String> critters) {
         int width = font.width(Component.literal(biome));
-        for (String critter : CritterSafariTracker.getCritters(biome)) {
-            width = Math.max(width, font.width(Component.literal("\u2714 " + critter)));
+        for (String critter : critters) {
+            width = Math.max(width, font.width(Component.literal(critter)));
         }
         return width;
     }

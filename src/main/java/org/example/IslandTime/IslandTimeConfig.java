@@ -666,7 +666,7 @@ public class IslandTimeConfig extends Config {
         };
 
         @Expose
-        @ConfigOption(name = "Enabled", desc = "Show a widget listing every unique critter of the current Critter Safari run. Only visible while you are inside the Safari, and resets when the Safari Manager starts a new run")
+        @ConfigOption(name = "Enabled", desc = "Show a widget listing the critters you still need for the current Critter Safari run. Caught critters are removed from the list. Only visible while you are inside the Safari, and resets when the Safari Manager starts a new run")
         @ConfigEditorBoolean
         public boolean enabled = true;
 
@@ -684,6 +684,11 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Widget Y", desc = "Vertical widget position as a percentage of the screen (0 = top, 100 = bottom)")
         @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
         public int hudY = 30;
+
+        @Expose
+        @ConfigOption(name = "Widget Scale", desc = "Size of the widget as a percentage. You can also scroll the mouse wheel in the Move Widget screen to resize it")
+        @ConfigEditorSlider(minValue = 50, maxValue = 300, minStep = 5)
+        public int hudScale = 100;
 
         // ── Sparkling Alert ──────────────────────────────────────────────────
 

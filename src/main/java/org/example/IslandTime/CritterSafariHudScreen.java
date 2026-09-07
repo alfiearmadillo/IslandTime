@@ -15,6 +15,9 @@ import org.lwjgl.glfw.GLFW;
  */
 public class CritterSafariHudScreen extends Screen {
 
+    /** Percentage points added or removed per mouse wheel notch. */
+    private static final int SCALE_STEP = 5;
+
     private boolean dragging = false;
     private int dragOffsetX = 0;
     private int dragOffsetY = 0;
@@ -36,7 +39,8 @@ public class CritterSafariHudScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, width, height, 0xC0101010);
 
-        Component hint = Component.literal("Drag the widget to move it — press ESC to save")
+        Component hint = Component.literal("Drag the widget to move it, scroll to resize it ("
+                        + CritterSafariHud.getScalePercent() + "%) — press ESC to save")
                 .withStyle(ChatFormatting.GOLD);
         int hintWidth = font.width(hint);
         context.text(font, hint, width / 2 - hintWidth / 2, 6, -1, true);
@@ -86,6 +90,17 @@ public class CritterSafariHudScreen extends Screen {
     }
 
     @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        if (verticalAmount == 0) return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+
+        CritterSafariHud.setScalePercent(
+                CritterSafariHud.getScalePercent() + (int) Math.signum(verticalAmount) * SCALE_STEP);
+        // Resizing changes the widget bounds, so re-clamp it back inside the screen.
+        clampWidgetToScreen();
+        return true;
+    }
+
+    @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         dragging = false;
         return super.mouseReleased(event);
@@ -105,6 +120,12 @@ public class CritterSafariHudScreen extends Screen {
         CritterSafariHud.setPosition(widgetX, widgetY);
         ConfigManager.saveToFile();
         super.removed();
+    }
+
+    private void clampWidgetToScreen() {
+        widgetX = clamp(widgetX, 0, Math.max(0, width - CritterSafariHud.getWidth()));
+        widgetY = clamp(widgetY, 0, Math.max(0, height - CritterSafariHud.getHeight()));
+        CritterSafariHud.setPosition(widgetX, widgetY);
     }
 
     private static double scaledMouseX() {
