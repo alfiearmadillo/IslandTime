@@ -13,6 +13,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.joml.Matrix4fc;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.LayeringTransform;
@@ -51,10 +52,19 @@ public class SparklingAlert {
     private static final double SCAN_RANGE = 64.0;
     private static final double SCAN_RANGE_SQ = SCAN_RANGE * SCAN_RANGE;
 
-    /** Client ticks between entity scans; the tracer itself still follows the entity every frame. */
-    private static final int SCAN_INTERVAL_TICKS = 5;
+    /** Client ticks between entity scans; the tracer itself follows the entity every frame. */
+    private static final int SCAN_INTERVAL_TICKS = 2;
 
     private static final float LINE_WIDTH = 2.0f;
+
+    // Name tag styling. Vanilla name tags use a 0.025 scale; this is deliberately larger so a
+    // sparkling stands out in a crowd of ordinary critters.
+    private static final float NAME_TAG_SCALE = 0.06f;
+    private static final double NAME_TAG_OFFSET = 0.6;
+    private static final int NAME_TAG_COLOR = 0xFFFFAA00;
+    private static final int NAME_TAG_BACKGROUND = 0x40000000;
+    /** Full-bright packed light, so the label is legible in dark caves. */
+    private static final int FULL_BRIGHT = 0xF000F0;
 
     // Line pipeline with depth testing disabled so the tracer is visible through terrain,
     // mirroring the through-walls pipeline used by BlockHighlightRenderer.
@@ -153,7 +163,7 @@ public class SparklingAlert {
     }
 
     // -------------------------------------------------------------------------
-    // Tracer rendering
+    // Tracer and name tag rendering
     // -------------------------------------------------------------------------
 
     private static void render(LevelRenderContext context) {
@@ -161,11 +171,26 @@ public class SparklingAlert {
         if (sparklings.isEmpty()) return;
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        if (config == null || !config.critterSafari.sparklingAlert || !config.critterSafari.sparklingTracer) return;
+        if (config == null || !config.critterSafari.sparklingAlert) return;
+
+        boolean tracer = config.critterSafari.sparklingTracer;
+        boolean nameTag = config.critterSafari.sparklingNameTag;
+        if (!tracer && !nameTag) return;
 
         Minecraft client = Minecraft.getInstance();
         if (client.player == null) return;
 
+        // Positions are interpolated with the frame's partial tick, otherwise the tracer would only
+        // move 20 times a second and visibly stutter behind the critter.
+        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        Vec3 cameraPos = context.levelState().cameraRenderState.pos;
+
+        if (tracer) renderTracers(context, client, sparklings, config, partialTick, cameraPos);
+        if (nameTag) renderNameTags(context, client, sparklings, partialTick, cameraPos);
+    }
+
+    private static void renderTracers(LevelRenderContext context, Minecraft client, List<Entity> sparklings,
+                                      IslandTimeConfig config, float partialTick, Vec3 cameraPos) {
         int colorIdx = Math.max(0, Math.min(config.critterSafari.sparklingTracerColor,
                 BlockHighlightRenderer.COLORS.length - 1));
         float[] color = BlockHighlightRenderer.COLORS[colorIdx];
@@ -173,27 +198,55 @@ public class SparklingAlert {
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
 
-        var cameraState = context.levelState().cameraRenderState;
-        double camX = cameraState.pos.x;
-        double camY = cameraState.pos.y;
-        double camZ = cameraState.pos.z;
-
         poseStack.pushPose();
-        poseStack.translate(-camX, -camY, -camZ);
+        poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         Matrix4fc pose = poseStack.last().pose();
 
         VertexConsumer buffer = bufferSource.getBuffer(NO_DEPTH_LINES);
-        Vec3 start = client.player.getEyePosition();
+        Vec3 start = client.player.getEyePosition(partialTick);
 
         for (Entity entity : sparklings) {
             if (entity.isRemoved()) continue;
-            Vec3 pos = entity.position();
+            Vec3 pos = entity.getPosition(partialTick);
             Vec3 end = new Vec3(pos.x, pos.y + entity.getBbHeight() / 2.0, pos.z);
             drawLine(pose, buffer, start, end, color[0], color[1], color[2]);
         }
 
         poseStack.popPose();
         bufferSource.endBatch(NO_DEPTH_LINES);
+    }
+
+    /**
+     * Draws a large "SPARKLING" label above each tracked critter, billboarded towards the camera and
+     * visible through walls, mirroring how vanilla renders name tags.
+     */
+    private static void renderNameTags(LevelRenderContext context, Minecraft client, List<Entity> sparklings,
+                                       float partialTick, Vec3 cameraPos) {
+        Font font = client.font;
+        PoseStack poseStack = context.poseStack();
+        MultiBufferSource.BufferSource bufferSource = context.bufferSource();
+        Component label = Component.literal(SPARKLING_MARKER);
+        float halfWidth = font.width(label) / 2.0f;
+
+        for (Entity entity : sparklings) {
+            if (entity.isRemoved()) continue;
+            Vec3 pos = entity.getPosition(partialTick);
+
+            poseStack.pushPose();
+            poseStack.translate(pos.x - cameraPos.x,
+                    pos.y + entity.getBbHeight() + NAME_TAG_OFFSET - cameraPos.y,
+                    pos.z - cameraPos.z);
+            poseStack.mulPose(context.levelState().cameraRenderState.orientation);
+            poseStack.scale(NAME_TAG_SCALE, -NAME_TAG_SCALE, NAME_TAG_SCALE);
+
+            font.drawInBatch(label, -halfWidth, 0.0f, NAME_TAG_COLOR, false,
+                    poseStack.last().pose(), bufferSource, Font.DisplayMode.SEE_THROUGH,
+                    NAME_TAG_BACKGROUND, FULL_BRIGHT);
+
+            poseStack.popPose();
+        }
+
+        bufferSource.endBatch();
     }
 
     private static void drawLine(Matrix4fc pose, VertexConsumer buffer, Vec3 start, Vec3 end,

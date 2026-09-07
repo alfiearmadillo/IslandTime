@@ -29,6 +29,13 @@ public class CritterSafariHud {
     private static final int LINE_HEIGHT = 10;
     private static final int COLUMN_GAP = 8;
 
+    /** How long a caught critter stays on the list, fading out, before it disappears. */
+    private static final long FADE_MILLIS = 1000L;
+
+    private static final int COLOR_UNCAUGHT = 0xFFAAAAAA;
+    private static final int COLOR_ESCAPED = 0xFFFF5555;
+    private static final int COLOR_CAUGHT = 0x55FF55;
+
     private static final int MIN_SCALE = 50;
     private static final int MAX_SCALE = 300;
 
@@ -58,6 +65,7 @@ public class CritterSafariHud {
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             if (!overlay) {
                 CritterSafariTracker.onChatMessage(message.getString());
+                CritterSafariAnnouncer.pollAndSend();
             }
         });
 
@@ -152,13 +160,37 @@ public class CritterSafariHud {
             rowY += LINE_HEIGHT;
 
             for (String critter : remaining) {
-                context.text(font, Component.literal(critter).withStyle(ChatFormatting.GRAY),
-                        columnX, rowY, -1, true);
+                int color = critterColor(critter);
+                if (color != 0) {
+                    context.text(font, Component.literal(critter), columnX, rowY, color, true);
+                }
                 rowY += LINE_HEIGHT;
             }
 
             columnX += columnWidth(font, biome, remaining) + COLUMN_GAP;
         }
+    }
+
+    /**
+     * Colour for a critter row: red once it has broken out of a capsule, and a green that fades to
+     * nothing over {@link #FADE_MILLIS} once it is caught. Returns 0 when the row has fully faded.
+     */
+    private static int critterColor(String critter) {
+        long caughtTime = CritterSafariTracker.getCaughtTime(critter);
+        if (caughtTime > 0) {
+            long elapsed = System.currentTimeMillis() - caughtTime;
+            if (elapsed >= FADE_MILLIS) return 0;
+            int alpha = Math.min(255, (int) (255 * (1.0f - elapsed / (float) FADE_MILLIS)));
+            if (alpha <= 0) return 0;
+            return (alpha << 24) | COLOR_CAUGHT;
+        }
+        return CritterSafariTracker.hasEscaped(critter) ? COLOR_ESCAPED : COLOR_UNCAUGHT;
+    }
+
+    /** True while a caught critter is still fading out and therefore still occupies a row. */
+    private static boolean isFading(String critter) {
+        long caughtTime = CritterSafariTracker.getCaughtTime(critter);
+        return caughtTime > 0 && System.currentTimeMillis() - caughtTime < FADE_MILLIS;
     }
 
     /** Header component: the name plus a centered caught/total counter. */
@@ -180,11 +212,11 @@ public class CritterSafariHud {
         return biomes;
     }
 
-    /** Critters of the given biome that have not been caught yet this run. */
+    /** Critters of the given biome still to catch, plus any that are still fading out. */
     private static List<String> remainingCritters(String biome) {
         List<String> remaining = new ArrayList<>();
         for (String critter : CritterSafariTracker.getCritters(biome)) {
-            if (!CritterSafariTracker.isCaught(critter)) remaining.add(critter);
+            if (!CritterSafariTracker.isCaught(critter) || isFading(critter)) remaining.add(critter);
         }
         return remaining;
     }

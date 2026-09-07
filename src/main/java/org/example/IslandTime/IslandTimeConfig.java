@@ -690,6 +690,30 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorSlider(minValue = 50, maxValue = 300, minStep = 5)
         public int hudScale = 100;
 
+        // ── Announcements ────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 2)
+        @ConfigOption(name = "Announcements", desc = "Automatically report each biome as you finish it")
+        public boolean announceAccordion = false;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(name = "Announce Completion", desc = "Send a message as soon as every critter of a biome has been caught (e.g. 'Forest done'). The biome that finishes the run sends 'All done' instead of its own name")
+        @ConfigEditorBoolean
+        public boolean announceCompletion = false;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(name = "Send To Party Chat", desc = "Send announcements to party chat. Turn this off to only print them to your own chat")
+        @ConfigEditorBoolean
+        public boolean announceToParty = true;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(name = "Forest Minus Macaw", desc = "Treat the Forest as done without the Macaw, which often does not spawn. Announcements say 'minus Macaw' while it is still missing")
+        @ConfigEditorBoolean
+        public boolean announceMinusMacaw = false;
+
         // ── Sparkling Alert ──────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 1)
@@ -713,6 +737,12 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Show Tracer", desc = "Draw a line from you to each nearby SPARKLING critter, visible through walls")
         @ConfigEditorBoolean
         public boolean sparklingTracer = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Show Name Tag", desc = "Draw a large SPARKLING label above each nearby sparkling critter, visible through walls")
+        @ConfigEditorBoolean
+        public boolean sparklingNameTag = true;
 
         @ConfigAccordionId(id = 1)
         @Expose

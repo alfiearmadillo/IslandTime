@@ -55,6 +55,10 @@ public class CritterSafariTracker {
     private static final Pattern LOOT_SHARE_FINDING =
             Pattern.compile("^LOOT SHARE! You received .+ finding (?:the )?([^!]+)!");
 
+    // "The Gimmiegold escaped your Critter Capsule!"
+    private static final Pattern ESCAPED =
+            Pattern.compile("^(?:The |A |An )?(?:SPARKLING )?(.+?) escaped your Critter Capsule!");
+
     /** The complete Critterdex, grouped by Safari biome, in wiki/biome order. */
     private static final Map<String, List<String>> CRITTERS_BY_BIOME = new LinkedHashMap<>();
 
@@ -82,8 +86,23 @@ public class CritterSafariTracker {
         }
     }
 
+    /** The Forest critter that frequently fails to spawn, so a run can be called done without it. */
+    public static final String MACAW = "Macaw";
+
     /** Canonical names of the critters caught so far this run. */
     private static final Set<String> caught = new LinkedHashSet<>();
+
+    /** Critters that broke out of a capsule this run and have not been caught since. */
+    private static final Set<String> escaped = new LinkedHashSet<>();
+
+    /** Catch timestamps (epoch millis), used by the widget to fade a critter out before removing it. */
+    private static final Map<String, Long> caughtAt = new LinkedHashMap<>();
+
+    /** Biomes already announced this run, so each completion is only reported once. */
+    private static final Set<String> announcedBiomes = new LinkedHashSet<>();
+
+    /** Whether the run completion has been announced, tracked separately from the biomes. */
+    private static boolean runAnnounced = false;
 
     private CritterSafariTracker() {}
 
@@ -106,9 +125,16 @@ public class CritterSafariTracker {
             return null;
         }
 
+        String escapee = parseEscapedCritter(message);
+        if (escapee != null) {
+            if (!caught.contains(escapee)) escaped.add(escapee);
+            return null;
+        }
+
         String critter = parseCaughtCritter(message);
-        if (critter != null) {
-            caught.add(critter);
+        if (critter != null && caught.add(critter)) {
+            caughtAt.put(critter, System.currentTimeMillis());
+            escaped.remove(critter);
         }
         return critter;
     }
@@ -147,6 +173,17 @@ public class CritterSafariTracker {
         return null;
     }
 
+    /**
+     * Extracts the critter named by a "broke out of your capsule" chat line, or null if the line is
+     * not one. Only known critters are returned.
+     */
+    public static String parseEscapedCritter(String message) {
+        if (message == null) return null;
+        String line = strip(message).trim();
+        if (!line.contains("escaped your Critter Capsule")) return null;
+        return canonicalise(firstGroup(ESCAPED, line));
+    }
+
     private static String firstGroup(Pattern pattern, String line) {
         Matcher matcher = pattern.matcher(line);
         return matcher.find() ? matcher.group(1) : null;
@@ -172,10 +209,86 @@ public class CritterSafariTracker {
 
     public static void reset() {
         caught.clear();
+        escaped.clear();
+        caughtAt.clear();
+        announcedBiomes.clear();
+        runAnnounced = false;
     }
 
     public static boolean isCaught(String critter) {
         return critter != null && caught.contains(critter);
+    }
+
+    /** True while a critter has broken out of a capsule and has not been caught since. */
+    public static boolean hasEscaped(String critter) {
+        return critter != null && escaped.contains(critter);
+    }
+
+    /** Epoch millis when the critter was caught, or 0 if it has not been caught this run. */
+    public static long getCaughtTime(String critter) {
+        return caughtAt.getOrDefault(critter, 0L);
+    }
+
+    /**
+     * True when every critter of the biome has been caught. When {@code macawOptional} is set the
+     * rarely-spawning Macaw does not hold the Forest back.
+     */
+    public static boolean isBiomeComplete(String biome, boolean macawOptional) {
+        for (String critter : getCritters(biome)) {
+            if (caught.contains(critter)) continue;
+            if (macawOptional && MACAW.equals(critter)) continue;
+            return false;
+        }
+        return true;
+    }
+
+    /** True when every biome is complete, honouring the Macaw exemption. */
+    public static boolean isRunComplete(boolean macawOptional) {
+        for (String biome : CRITTERS_BY_BIOME.keySet()) {
+            if (!isBiomeComplete(biome, macawOptional)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Returns the announcements for biomes completed since the last poll, and marks them announced.
+     *
+     * <p>The biome that finishes the run reports "All done" instead of its own name, and the Macaw
+     * exemption is reflected in the wording when the Macaw is still missing.
+     */
+    public static List<String> pollAnnouncements(boolean macawOptional) {
+        List<String> announcements = new ArrayList<>();
+        for (String biome : CRITTERS_BY_BIOME.keySet()) {
+            if (announcedBiomes.contains(biome)) continue;
+            if (!isBiomeComplete(biome, macawOptional)) continue;
+            announcedBiomes.add(biome);
+            announcements.add(biomeAnnouncement(biome, macawOptional));
+        }
+
+        // The biome that finishes the run reports the run instead of itself. Completion is tracked
+        // separately from the biomes so that relaxing the Macaw rule mid-run still announces it.
+        if (!runAnnounced && isRunComplete(macawOptional)) {
+            runAnnounced = true;
+            if (announcements.isEmpty()) {
+                announcements.add(runAnnouncement(macawOptional));
+            } else {
+                announcements.set(announcements.size() - 1, runAnnouncement(macawOptional));
+            }
+        }
+        return announcements;
+    }
+
+    private static String biomeAnnouncement(String biome, boolean macawOptional) {
+        return biome + " done" + (macawExempt(biome, macawOptional) ? " minus Macaw" : "");
+    }
+
+    private static String runAnnouncement(boolean macawOptional) {
+        return "All done" + (macawOptional && !caught.contains(MACAW) ? " minus Macaw" : "");
+    }
+
+    /** True when the biome is only "done" because the Macaw exemption is letting it through. */
+    private static boolean macawExempt(String biome, boolean macawOptional) {
+        return macawOptional && !caught.contains(MACAW) && getCritters(biome).contains(MACAW);
     }
 
     public static int getCaughtCount() {
