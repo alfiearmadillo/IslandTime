@@ -679,6 +679,36 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Widget Y", desc = "Vertical widget position as a percentage of the screen (0 = top, 100 = bottom)")
         @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
         public int hudY = 30;
+
+        // ── Sparkling Alert ──────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 1)
+        @ConfigOption(name = "Sparkling Alert", desc = "Alerts you when a SPARKLING critter (bonus Rainbow Feather) spawns nearby")
+        public boolean sparklingAccordion = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Enable Sparkling Alert", desc = "Watch for SPARKLING critters while you are inside the Critter Safari. Each newly spotted sparkling plays a sound and gets a tracer line")
+        @ConfigEditorBoolean
+        public boolean sparklingAlert = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Play Sound", desc = "Play an XP pling when a SPARKLING critter is first spotted")
+        @ConfigEditorBoolean
+        public boolean sparklingSound = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Show Tracer", desc = "Draw a line from you to each nearby SPARKLING critter, visible through walls")
+        @ConfigEditorBoolean
+        public boolean sparklingTracer = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Tracer Color", desc = "Color of the SPARKLING critter tracer line")
+        @ConfigEditorDropdown(values = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"})
+        public int sparklingTracerColor = 4;
     }
 
     public static class Messages {
