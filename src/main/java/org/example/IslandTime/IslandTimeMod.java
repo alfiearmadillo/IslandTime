@@ -51,6 +51,7 @@ public class IslandTimeMod implements ClientModInitializer {
             DisconnectAlertTracker.tick(client);
             FuelExpiredAlertTracker.tick();
             BackpackHoverHandler.tick(client);
+            SparklingAlert.tick(client);
         });
 
         // Start the localhost poller when the player connects to a server,
@@ -60,11 +61,18 @@ public class IslandTimeMod implements ClientModInitializer {
                 ResourcePackManager.applyCachedPack();
         });
 
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
-                IslandChatRelay.stopPolling());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+                IslandChatRelay.stopPolling();
+                // Hypixel never announces leaving the Safari, so end the run on disconnect.
+                CritterSafariTracker.reset();
+        });
 
         // Register block highlight renderer
         BlockHighlightRenderer.register();
+
+        // Register the Critter Safari widget, its chat listener, and the sparkling tracer
+        CritterSafariHud.register();
+        SparklingAlert.register();
 
         // Register commands
         IslandTimeCommand.register();

@@ -284,6 +284,12 @@ public class IslandTimeCommand {
                             client.execute(() -> client.setScreen(new PlayerListScreen()));
                             return 1;
                         }))
+                .then(literal("critters")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new CritterSafariHudScreen()));
+                            return 1;
+                        }))
                 .then(literal("fueldays")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();

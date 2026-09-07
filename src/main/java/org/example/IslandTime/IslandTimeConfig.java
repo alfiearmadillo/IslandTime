@@ -56,6 +56,10 @@ public class IslandTimeConfig extends Config {
     public BlockHighlight blockHighlight = new BlockHighlight();
 
     @Expose
+    @Category(name = "Critter Safari", desc = "On-screen tracker for unique critters caught during a Critter Safari run")
+    public CritterSafari critterSafari = new CritterSafari();
+
+    @Expose
     @Category(name = "Player List", desc = "Manage a list of players for quick party/invite actions")
     public PlayerList playerList = new PlayerList();
 
@@ -648,6 +652,103 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Default Range", desc = "Default scan range for new entries (in blocks)")
         @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
+    }
+
+    public static class CritterSafari {
+        @ConfigOption(name = "Move Widget", desc = "Click to open a screen where you can drag the Critter Safari widget anywhere on your screen. You can also use /it critters")
+        @ConfigEditorButton(buttonText = " Move Widget ")
+        public Runnable moveWidgetButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new CritterSafariHudScreen()));
+            }
+        };
+
+        @Expose
+        @ConfigOption(name = "Enabled", desc = "Show a widget listing the critters you still need for the current Critter Safari run. Caught critters are removed from the list. Only visible while you are inside the Safari, and resets when the Safari Manager starts a new run")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(name = "Only Show In Safari", desc = "Only show the widget and the Sparkling Alert while the tab list reports that you are inside the Critter Safari. Turn this off if the widget stays hidden while you are in the Safari")
+        @ConfigEditorBoolean
+        public boolean onlyInSafari = true;
+
+        @Expose
+        @ConfigOption(name = "Widget X", desc = "Horizontal widget position as a percentage of the screen (0 = left, 100 = right)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int hudX = 50;
+
+        @Expose
+        @ConfigOption(name = "Widget Y", desc = "Vertical widget position as a percentage of the screen (0 = top, 100 = bottom)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int hudY = 30;
+
+        @Expose
+        @ConfigOption(name = "Widget Scale", desc = "Size of the widget as a percentage. You can also scroll the mouse wheel in the Move Widget screen to resize it")
+        @ConfigEditorSlider(minValue = 50, maxValue = 300, minStep = 5)
+        public int hudScale = 100;
+
+        // ── Announcements ────────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 2)
+        @ConfigOption(name = "Announcements", desc = "Automatically report each biome as you finish it")
+        public boolean announceAccordion = false;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(name = "Announce Completion", desc = "Send a message as soon as every critter of a biome has been caught (e.g. 'Forest done'). The biome that finishes the run sends 'All done' instead of its own name")
+        @ConfigEditorBoolean
+        public boolean announceCompletion = false;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(name = "Send To Party Chat", desc = "Send announcements to party chat with /pchat. Turn this off to print them only in your own chat as a local [IslandTime] message that nobody else sees")
+        @ConfigEditorBoolean
+        public boolean announceToParty = true;
+
+        @ConfigAccordionId(id = 2)
+        @Expose
+        @ConfigOption(name = "Forest Minus Macaw", desc = "Treat the Forest as done without the Macaw, which often does not spawn. Announcements say 'minus Macaw' while it is still missing")
+        @ConfigEditorBoolean
+        public boolean announceMinusMacaw = false;
+
+        // ── Sparkling Alert ──────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 1)
+        @ConfigOption(name = "Sparkling Alert", desc = "Alerts you when a SPARKLING critter (bonus Rainbow Feather) spawns nearby")
+        public boolean sparklingAccordion = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Enable Sparkling Alert", desc = "Watch for SPARKLING critters while you are inside the Critter Safari. Each newly spotted sparkling plays a sound and gets a tracer line")
+        @ConfigEditorBoolean
+        public boolean sparklingAlert = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Play Sound", desc = "Play an XP pling when a SPARKLING critter is first spotted")
+        @ConfigEditorBoolean
+        public boolean sparklingSound = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Show Tracer", desc = "Draw a line from you to each nearby SPARKLING critter, visible through walls")
+        @ConfigEditorBoolean
+        public boolean sparklingTracer = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Show Name Tag", desc = "Draw a large SPARKLING label above each nearby sparkling critter, visible through walls")
+        @ConfigEditorBoolean
+        public boolean sparklingNameTag = true;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(name = "Tracer Color", desc = "Color of the SPARKLING critter tracer line")
+        @ConfigEditorDropdown(values = {"YELLOW", "RED", "GREEN", "BLUE", "MAGENTA", "CYAN", "WHITE"})
+        public int sparklingTracerColor = 4;
     }
 
     public static class Messages {
