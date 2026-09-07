@@ -56,6 +56,10 @@ public class IslandTimeConfig extends Config {
     public BlockHighlight blockHighlight = new BlockHighlight();
 
     @Expose
+    @Category(name = "Critter Safari", desc = "On-screen tracker for unique critters caught during a Critter Safari run")
+    public CritterSafari critterSafari = new CritterSafari();
+
+    @Expose
     @Category(name = "Player List", desc = "Manage a list of players for quick party/invite actions")
     public PlayerList playerList = new PlayerList();
 
@@ -648,6 +652,33 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Default Range", desc = "Default scan range for new entries (in blocks)")
         @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
+    }
+
+    public static class CritterSafari {
+        @ConfigOption(name = "Move Widget", desc = "Click to open a screen where you can drag the Critter Safari widget anywhere on your screen. You can also use /it critters")
+        @ConfigEditorButton(buttonText = " Move Widget ")
+        public Runnable moveWidgetButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new CritterSafariHudScreen()));
+            }
+        };
+
+        @Expose
+        @ConfigOption(name = "Enabled", desc = "Show a widget listing every unique critter of the current Critter Safari run. Only visible while you are inside the Safari, and resets when the Safari Manager starts a new run")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(name = "Widget X", desc = "Horizontal widget position as a percentage of the screen (0 = left, 100 = right)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int hudX = 50;
+
+        @Expose
+        @ConfigOption(name = "Widget Y", desc = "Vertical widget position as a percentage of the screen (0 = top, 100 = bottom)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int hudY = 30;
     }
 
     public static class Messages {

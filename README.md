@@ -21,6 +21,7 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, minion fuel
 - **Sign Helpers** — Adds paste buttons to the sign edit screen with configurable pre-set text per line
 - **WAILA (What Am I Looking At)** — Inspect any targeted block with `/it waila` to see block ID, position, state properties, tile entity data, skull textures, and SkyBlock custom IDs
 - **Block Highlight** — Multi-entry block highlight system with a dedicated GUI (`/it highlights`). Each entry has its own target (block ID, `sb:` SkyBlock ID, or `skull:` texture hash), color, range, intensity, through-walls toggle, and optional area filter. Quickly add highlights from WAILA results or via `/it highlight add`
+- **Critter Safari Tracker** — On-screen widget listing all 37 unique Critter Safari critters (grouped by Forest/Cavern/Icy/Haunted biome) with caught/uncaught state and a `caught/total` counter, so you can see at a glance which critters you still need this run. Catches are read from the `CAPTURE!` and `LOOT SHARE!` chat messages (including `SPARKLING` catches and the Hideyho "You found" variant), and the tracker resets when the Safari Manager starts a new run (`[NPC] Safari Manager: Looks good to me. Have fun out there!`). Only rendered while you are inside the Safari, using the same tab-list area detection as Block Highlight. Toggle it and drag it anywhere on screen from the Critter Safari config category or `/it critters`
 - **Copy Skin** — Copy the skin texture of a targeted player head block to clipboard with `/it copyskin`, or copy from a skull item in any inventory/GUI by pressing a configurable keybind (default: `V`). Preserves transparency. The keybind and toggle are configurable in the MoulConfig GUI under Misc
 - **Aging Items** — Compare profit per hour for all levelling items (Bottle of Jyrre, Dark Cacao Truffle, Discrite, Moby-Duck, Not Very Moldy Bread, Rosewater Flask) using live Bazaar prices. Configure time-bag and inventory slot counts for estimated hourly income. Add or remove custom item pairs with `/it agingItems add/remove`
 - **Cookie Profit** — Compare profit per bit from spending Booster Cookie bits on Kismet Feathers, Magma Buckets, and Plasma Buckets using live Bazaar prices. Accounts for material costs (enchanted lava buckets) on crafted items. Configure your bits-per-cookie in the MoulConfig GUI
@@ -64,6 +65,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it highlight` or `/it highlights` | Open the Block Highlights GUI |
 | `/it highlight add <target> [color]` | Add a highlight entry (target: block ID, `sb:ID`, or `skull:HASH`) |
 | `/it highlight remove <target>` | Remove a highlight entry by target |
+| `/it critters` | Open the Critter Safari widget mover (drag the widget to reposition it) |
 | `/it players` | Open the player list GUI (add/edit/delete/party/invite) |
 | `/it fueldays` | Open the fuel day tracker GUI (same as `/it fueltime`) |
 | `/it ghost` | Client-side block removal tool |

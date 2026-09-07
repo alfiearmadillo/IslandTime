@@ -60,11 +60,17 @@ public class IslandTimeMod implements ClientModInitializer {
                 ResourcePackManager.applyCachedPack();
         });
 
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
-                IslandChatRelay.stopPolling());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+                IslandChatRelay.stopPolling();
+                // Hypixel never announces leaving the Safari, so end the run on disconnect.
+                CritterSafariTracker.reset();
+        });
 
         // Register block highlight renderer
         BlockHighlightRenderer.register();
+
+        // Register the Critter Safari widget and its chat listener
+        CritterSafariHud.register();
 
         // Register commands
         IslandTimeCommand.register();
