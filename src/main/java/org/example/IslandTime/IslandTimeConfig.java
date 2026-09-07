@@ -671,6 +671,11 @@ public class IslandTimeConfig extends Config {
         public boolean enabled = true;
 
         @Expose
+        @ConfigOption(name = "Only Show In Safari", desc = "Only show the widget and the Sparkling Alert while the tab list reports that you are inside the Critter Safari. Turn this off if the widget stays hidden while you are in the Safari")
+        @ConfigEditorBoolean
+        public boolean onlyInSafari = true;
+
+        @Expose
         @ConfigOption(name = "Widget X", desc = "Horizontal widget position as a percentage of the screen (0 = left, 100 = right)")
         @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
         public int hudX = 50;

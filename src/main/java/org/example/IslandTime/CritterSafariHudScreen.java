@@ -41,6 +41,14 @@ public class CritterSafariHudScreen extends Screen {
         int hintWidth = font.width(hint);
         context.text(font, hint, width / 2 - hintWidth / 2, 6, -1, true);
 
+        // Diagnostic: shows what the tab list currently reports, so a mismatch is easy to spot.
+        String area = BlockHighlightRenderer.detectCurrentArea();
+        Component areaLine = Component.literal("Detected area: " + (area == null ? "none" : area)
+                        + (CritterSafariHud.isInSafariArea() ? " (widget shown here)" : " (widget hidden here)"))
+                .withStyle(CritterSafariHud.isInSafariArea() ? ChatFormatting.GREEN : ChatFormatting.GRAY);
+        int areaWidth = font.width(areaLine);
+        context.text(font, areaLine, width / 2 - areaWidth / 2, 18, -1, true);
+
         CritterSafariHud.render(context, widgetX, widgetY);
 
         super.extractRenderState(context, mouseX, mouseY, delta);

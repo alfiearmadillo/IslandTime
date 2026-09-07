@@ -12,7 +12,6 @@ import net.minecraft.resources.Identifier;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 /**
  * Draws the Critter Safari tracker widget, listing every unique critter of the current run
@@ -33,12 +32,13 @@ public class CritterSafariHud {
     private static final int BORDER_COLOR = 0xFF28007F;
 
     /**
-     * Area names reported by the tab list inside the Critter Safari. While standing in the instance
-     * the area line shows the biome sub-area rather than the island name, so all five are accepted.
+     * Keywords matched against the area reported by the tab list. Hypixel shortens the island name
+     * (the area line reads "Safari" rather than "Critter Safari"), and inside the instance the line
+     * can show the biome sub-area instead, so the check is a substring match over all of them.
      * The "Critter Safari Entrance" in Torrhus Canyon is deliberately not part of the instance.
      */
-    private static final Set<String> SAFARI_AREAS = Set.of(
-            "critter safari", "forest biome", "cavern biome", "icy biome", "icy caves", "haunted biome");
+    private static final List<String> SAFARI_AREA_KEYWORDS = List.of(
+            "safari", "critter", "forest biome", "cavern biome", "icy biome", "icy caves", "haunted biome");
 
     private CritterSafariHud() {}
 
@@ -71,11 +71,17 @@ public class CritterSafariHud {
      * Returns true when the tab list reports an area belonging to the Critter Safari.
      */
     public static boolean isInSafariArea() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (config != null && !config.critterSafari.onlyInSafari) return true;
+
         String area = BlockHighlightRenderer.detectCurrentArea();
         if (area == null) return false;
         String normalized = area.trim().toLowerCase(Locale.ROOT);
         if (normalized.contains("entrance")) return false;
-        return SAFARI_AREAS.contains(normalized);
+        for (String keyword : SAFARI_AREA_KEYWORDS) {
+            if (normalized.contains(keyword)) return true;
+        }
+        return false;
     }
 
     private static boolean isEnabled() {
