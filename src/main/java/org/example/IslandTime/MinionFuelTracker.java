@@ -344,6 +344,11 @@ public class MinionFuelTracker {
                 // Uses the armor-stand-UUID-based key (currentMinionKey), not the raw
                 // GUI title, so multiple minions of the same type/tier are tracked
                 // independently instead of being merged into one.
+                // If the slot was empty when the GUI stabilized, discard any stale
+                // saved expiry before starting the newly placed fuel.
+                if (initialWasGlassPane) {
+                    FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
+                }
                 FuelCycleTracker.onMinionFueled(currentMinionKey, newFuelUnits);
             }
 
