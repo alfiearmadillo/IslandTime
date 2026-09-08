@@ -510,10 +510,9 @@ public class FuelCycleTracker {
         return cohortStartMs > 0 ? daySlotKey(cohortStartMs, activeDaySlotIndex) : LocalDate.now().toString();
     }
 
-    public static DayRecord getOrCreateToday() {
-        DayRecord record = getOrCreateDayRecord(getCurrentCycleDateKey());
-        save();
-        return record;
+    /** Returns the currently active fuel-day, without creating one when no fuel was placed. */
+    public static DayRecord getToday() {
+        return dayRecords.get(getCurrentCycleDateKey());
     }
 
     public static void setManualMinionCount(String date, Integer value) {
