@@ -21,6 +21,7 @@ import net.minecraft.nbt.CompoundTag;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -444,7 +445,7 @@ public class BlockHighlightRenderer {
                 }
             }
 
-            Level level = client.level;
+            ClientLevel level = client.level;
             BlockPos scanCenter = lastScanPos;
             int scanRadius = maxRange;
 
@@ -640,7 +641,7 @@ public class BlockHighlightRenderer {
         }
     }
 
-    private static List<EntityHighlightBox> scanEntities(Level level, BlockPos scanCenter,
+    private static List<EntityHighlightBox> scanEntities(ClientLevel level, BlockPos scanCenter,
                                                           Map<String, float[]> colors,
                                                           Map<String, Float> alphas,
                                                           Map<String, Boolean> throughWalls,
