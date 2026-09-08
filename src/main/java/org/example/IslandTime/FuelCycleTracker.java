@@ -671,6 +671,7 @@ public class FuelCycleTracker {
                 record.minionsRefueledAuto--;
             }
         }
+        removeEmptyFutureDayRecords();
 
         if (minionExpiries.isEmpty()) {
             cohortStartMs = 0;
@@ -679,6 +680,21 @@ public class FuelCycleTracker {
             wasOnIslandLastTick = false;
         }
         save();
+    }
+
+    /** Drops queued records that no longer have any tracked minions after stale fuel is removed. */
+    private static void removeEmptyFutureDayRecords() {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+            if (!entry.getValue().isEmpty()) continue;
+            DayRecord record = dayRecords.get(entry.getKey());
+            if (record == null || record.cycleStartMs <= now
+                    || record.minionsRefueledAuto > 0 || record.manualMinionCount != null) {
+                continue;
+            }
+            dayRecords.remove(entry.getKey(), record);
+            minionsCountedByDaySlot.remove(entry.getKey(), entry.getValue());
+        }
     }
 
     /**
