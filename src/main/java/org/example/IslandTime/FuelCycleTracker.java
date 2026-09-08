@@ -889,35 +889,6 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Reprices every automatic record using the current buy-order recipe. Manual total
-     * overrides still win when displayed, but their automatic backing value is updated so
-     * clearing the override later uses the new pricing strategy too.
-     */
-    private static void refreshAllFuelCostsFromBuyOrders() {
-        saveExecutor.submit(() -> {
-            try {
-                double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar());
-                if (unitCost <= 0) return;
-
-                boolean changed = false;
-                for (DayRecord record : dayRecords.values()) {
-                    if (record.lockedFuelCostPerMinion == null
-                            && record.minionsRefueledAuto <= 0
-                            && record.manualMinionCount == null) {
-                        continue;
-                    }
-                    record.lockedFuelCostPerMinion = unitCost;
-                    record.fuelCost = unitCost * record.getEffectiveMinionCount();
-                    changed = true;
-                }
-                if (changed) save();
-            } catch (Exception e) {
-                System.err.println("[FuelCycleTracker] Historical fuel cost refresh failed: " + e.getMessage());
-            }
-        });
-    }
-
-    /**
      * Called every tick.
      * @param isStatsIncreasing whether the tracked item's stats are currently increasing
      */
@@ -1228,7 +1199,6 @@ public class FuelCycleTracker {
                     minionExpiries.values().removeIf(expiry -> now >= expiry);
 
                     purgeStaleLegacyMinionKeys();
-                    refreshAllFuelCostsFromBuyOrders();
                 }
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Load failed: " + e.getMessage());
@@ -1242,7 +1212,6 @@ public class FuelCycleTracker {
         // legacy live history.
         if (!testModeEnabled) {
             migrateLegacyFile();
-            refreshAllFuelCostsFromBuyOrders();
         }
     }
 
