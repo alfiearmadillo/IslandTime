@@ -15,6 +15,9 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class MinionFuelTracker {
 
     private static ItemStack initialFuelSlotItem = ItemStack.EMPTY;
@@ -49,6 +52,12 @@ public class MinionFuelTracker {
     private static ItemStack pendingStableItem = ItemStack.EMPTY;
     private static int stableTickCount = 0;
     private static final int STABILIZATION_TICKS = 3;
+
+    // Keep the last confirmed slot contents for every physical minion. A single global
+    // baseline loses an insertion when the player closes one GUI and later reopens it
+    // after adding fuel, especially when cycling quickly through identical minions.
+    private static final Map<String, ItemStack> lastObservedFuelSlots = new HashMap<>();
+    private static final Map<String, Long> lastObservedFuelSlotTimes = new HashMap<>();
 
     private static boolean showFuelMessages = true;
 
@@ -248,7 +257,18 @@ public class MinionFuelTracker {
             }
 
             if (stableTickCount >= STABILIZATION_TICKS) {
-                initialFuelSlotItem = pendingStableItem.copy();
+                ItemStack stableItem = pendingStableItem.copy();
+                ItemStack lastObserved = lastObservedFuelSlots.get(currentMinionKey);
+                if (lastObserved != null && !ItemStack.matches(lastObserved, stableItem)) {
+                    // Leave the previous snapshot as the comparison baseline. The next
+                    // normal tick will process the net change, including fuel added while
+                    // this minion GUI was closed.
+                    initialFuelSlotItem = lastObserved.copy();
+                } else {
+                    initialFuelSlotItem = stableItem;
+                    lastObservedFuelSlots.put(currentMinionKey, stableItem.copy());
+                    lastObservedFuelSlotTimes.put(currentMinionKey, System.currentTimeMillis());
+                }
                 canTrackChanges = true; // Enable tracking for next tick
                 pendingStableItem = ItemStack.EMPTY;
                 stableTickCount = 0;
@@ -274,8 +294,10 @@ public class MinionFuelTracker {
                     currentItem.getItem() == Items.ORANGE_STAINED_GLASS_PANE &&
                     currentItem.getHoverName().getString().equals("Fuel");
 
-            boolean currentIsActualFuel = !currentItem.isEmpty() && !currentIsGlassPane;
-            boolean initialWasActualFuel = !initialFuelSlotItem.isEmpty() && !initialWasGlassPane;
+            boolean currentIsEmpty = currentItem.isEmpty() || currentIsGlassPane;
+            boolean initialWasEmpty = initialFuelSlotItem.isEmpty() || initialWasGlassPane;
+            boolean currentIsActualFuel = !currentIsEmpty;
+            boolean initialWasActualFuel = !initialWasEmpty;
 
             // Whether the current fuel item is the same fuel type as whatever was
             // previously in the slot (compared by display name, since fuel items
@@ -284,7 +306,7 @@ public class MinionFuelTracker {
                     currentItem.getHoverName().getString().equals(initialFuelSlotItem.getHoverName().getString());
 
             int newFuelUnits = 0;
-            if (initialWasGlassPane && currentIsActualFuel) {
+            if (initialWasEmpty && currentIsActualFuel) {
                 // Slot went from empty (glass pane placeholder) to holding fuel:
                 // the whole stack is newly placed fuel.
                 newFuelUnits = Math.max(1, currentItem.getCount());
@@ -299,6 +321,15 @@ public class MinionFuelTracker {
                 if (sameFuelType) {
                     if (currentCount > initialCount) {
                         newFuelUnits = currentCount - initialCount;
+                    } else {
+                        // The visible stack count drops as fuel units expire. If the
+                        // player added fuel while this GUI was closed, that addition can
+                        // be hidden by one or more units expiring in the meantime.
+                        long observedAt = lastObservedFuelSlotTimes.getOrDefault(
+                                currentMinionKey, System.currentTimeMillis());
+                        int unitsExpired = (int) Math.min(Integer.MAX_VALUE,
+                                Math.max(0L, System.currentTimeMillis() - observedAt) / FuelCycleTracker.DAY_MS);
+                        newFuelUnits = Math.max(0, currentCount - initialCount + unitsExpired);
                     }
                 } else {
                     // Different fuel type placed on top of remaining fuel - treat
@@ -307,7 +338,7 @@ public class MinionFuelTracker {
                     // fuel remains active; an expired minion starts at the refuel time.
                     newFuelUnits = Math.max(1, currentCount);
                 }
-            } else if (initialWasActualFuel && currentIsGlassPane) {
+            } else if (initialWasActualFuel && currentIsEmpty) {
                 FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
             }
 
@@ -346,7 +377,7 @@ public class MinionFuelTracker {
                 // independently instead of being merged into one.
                 // If the slot was empty when the GUI stabilized, discard any stale
                 // saved expiry before starting the newly placed fuel.
-                if (initialWasGlassPane) {
+                if (initialWasEmpty) {
                     FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
                 }
                 FuelCycleTracker.onMinionFueled(currentMinionKey, newFuelUnits);
@@ -355,6 +386,8 @@ public class MinionFuelTracker {
             // Update the initial state to the current state
             // This prevents repeated messages
             initialFuelSlotItem = currentItem.copy();
+            lastObservedFuelSlots.put(currentMinionKey, currentItem.copy());
+            lastObservedFuelSlotTimes.put(currentMinionKey, System.currentTimeMillis());
         }
     }
 
