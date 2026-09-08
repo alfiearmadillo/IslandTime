@@ -13,8 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Manages a persistent list of block highlight entries stored as JSON.
- * Each entry has its own block target, color, range, through-walls toggle, and enabled state.
+ * Manages a persistent list of highlight entries stored as JSON.
+ * Each entry has its own block or entity target, color, range, through-walls toggle, and enabled state.
  */
 public class BlockHighlightManager {
 
@@ -27,11 +27,13 @@ public class BlockHighlightManager {
     /**
      * A single highlight entry. The target can be:
      * - A block ID like "diamond_ore" or "minecraft:diamond_ore"
+     * - An entity ID prefixed with "entity:" like "entity:item_frame" or "entity:armor_stand"
+     *   (any registered entity type is supported)
      * - A skull texture hash prefixed with "skull:" like "skull:abc123..."
      * - A SkyBlock item ID prefixed with "sb:" like "sb:DITTO_SKULL"
      */
     public static class HighlightEntry {
-        public String target;       // block ID, "skull:TEXTURE_HASH", or "sb:SKYBLOCK_ID"
+        public String target;       // block/entity ID, "skull:TEXTURE_HASH", or "sb:SKYBLOCK_ID"
         public String color;        // hex "#rrggbb" or named color
         public int range = 48;      // scan range in blocks
         public boolean throughWalls = true;
@@ -61,6 +63,21 @@ public class BlockHighlightManager {
         }
 
         /**
+         * Returns true if this entry explicitly targets an entity type.
+         */
+        public boolean isEntityTarget() {
+            return target != null && target.startsWith("entity:");
+        }
+
+        /**
+         * Returns the entity ID (without the "entity:" prefix), or null for other targets.
+         */
+        public String getEntityId() {
+            if (!isEntityTarget()) return null;
+            return target.substring(7);
+        }
+
+        /**
          * Returns the skull texture hash (without the "skull:" prefix).
          */
         public String getSkullHash() {
@@ -78,10 +95,10 @@ public class BlockHighlightManager {
 
         /**
          * Returns the block ID (with minecraft: prefix if needed).
-         * Returns null for skull and skyblock targets.
+         * Returns null for entity, skull, and skyblock targets.
          */
         public String getBlockId() {
-            if (isSkullTarget() || isSkyBlockTarget()) return null;
+            if (isEntityTarget() || isSkullTarget() || isSkyBlockTarget()) return null;
             if (target == null) return null;
             String normalized = target.trim().toLowerCase();
             if (!normalized.contains(":")) {

@@ -21,6 +21,7 @@ import net.minecraft.nbt.CompoundTag;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -38,6 +39,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
@@ -48,9 +50,9 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 
 /**
- * Renders colored overlays on blocks matching configured targets.
- * Supports regular block IDs and skull texture hashes (skull:HASH).
- * Highlights use the block's actual collision/visual shape for accurate sizing.
+ * Renders colored overlays on blocks and entities matching configured targets.
+ * Supports regular block IDs, entity IDs (entity:TYPE), and skull texture hashes (skull:HASH).
+ * Highlights use the block's actual collision/visual shape or an entity's bounding box.
  */
 public class BlockHighlightRenderer {
 
@@ -87,7 +89,13 @@ public class BlockHighlightRenderer {
                                float maxX, float maxY, float maxZ,
                                boolean throughWalls) {}
 
+    record EntityHighlightBox(double minX, double minY, double minZ,
+                              double maxX, double maxY, double maxZ,
+                              float r, float g, float b, float a,
+                              boolean throughWalls) {}
+
     private static List<HighlightBox> highlightedBoxes = List.of();
+    private static List<EntityHighlightBox> highlightedEntityBoxes = List.of();
 
     // Caching
     private static BlockPos lastScanPos = null;
@@ -132,7 +140,7 @@ public class BlockHighlightRenderer {
     }
 
     /**
-     * Parsed scan target: either a set of block IDs or skull texture hashes with per-target settings.
+     * Parsed scan target: block IDs, entity IDs, or skull texture hashes with per-target settings.
      */
     private static class ScanTarget {
         final Map<Block, float[]> blockColors = new HashMap<>();
@@ -147,6 +155,10 @@ public class BlockHighlightRenderer {
         final Map<String, Float> skyblockIdAlpha = new HashMap<>();
         final Map<String, Boolean> skyblockIdThroughWalls = new HashMap<>();
         final Map<String, Integer> skyblockIdRange = new HashMap<>();
+        final Map<String, float[]> entityColors = new HashMap<>();
+        final Map<String, Float> entityAlpha = new HashMap<>();
+        final Map<String, Boolean> entityThroughWalls = new HashMap<>();
+        final Map<String, Integer> entityRange = new HashMap<>();
     }
 
     /**
@@ -216,21 +228,42 @@ public class BlockHighlightRenderer {
                     targets.skyblockIdThroughWalls.put(sbId, he.throughWalls);
                     targets.skyblockIdRange.put(sbId, he.range);
                 }
+            } else if (he.isEntityTarget()) {
+                addEntityTarget(targets, he.getEntityId(), color, alpha, he.throughWalls, he.range);
             } else {
                 String blockId = he.getBlockId();
                 if (blockId == null) continue;
                 Identifier targetId = Identifier.tryParse(blockId);
                 if (targetId == null) continue;
-                if (!BuiltInRegistries.BLOCK.containsKey(targetId)) continue;
-                Block block = BuiltInRegistries.BLOCK.getValue(targetId);
-                targets.blockColors.put(block, color);
-                targets.blockAlpha.put(block, alpha);
-                targets.blockThroughWalls.put(block, he.throughWalls);
-                targets.blockRange.put(block, he.range);
+                if (BuiltInRegistries.BLOCK.containsKey(targetId)) {
+                    Block block = BuiltInRegistries.BLOCK.getValue(targetId);
+                    targets.blockColors.put(block, color);
+                    targets.blockAlpha.put(block, alpha);
+                    targets.blockThroughWalls.put(block, he.throughWalls);
+                    targets.blockRange.put(block, he.range);
+                } else {
+                    // Allow entity IDs without the optional entity: prefix as well.
+                    addEntityTarget(targets, targetId.toString(), color, alpha, he.throughWalls, he.range);
+                }
             }
         }
 
         return targets;
+    }
+
+    private static void addEntityTarget(ScanTarget targets, String entityId, float[] color,
+                                        float alpha, boolean throughWalls, int range) {
+        if (entityId == null || entityId.isBlank()) return;
+        if (!entityId.contains(":")) {
+            entityId = "minecraft:" + entityId;
+        }
+        Identifier id = Identifier.tryParse(entityId);
+        if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) return;
+        String key = id.toString();
+        targets.entityColors.put(key, color);
+        targets.entityAlpha.put(key, alpha);
+        targets.entityThroughWalls.put(key, throughWalls);
+        targets.entityRange.put(key, range);
     }
 
     /**
@@ -336,12 +369,14 @@ public class BlockHighlightRenderer {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.level == null) {
             highlightedBoxes = List.of();
+            highlightedEntityBoxes = List.of();
             return;
         }
 
         IslandTimeConfig config = ConfigManager.getConfig();
         if (config == null) {
             highlightedBoxes = List.of();
+            highlightedEntityBoxes = List.of();
             return;
         }
 
@@ -352,6 +387,7 @@ public class BlockHighlightRenderer {
 
         if (!hasManagerEntries) {
             highlightedBoxes = List.of();
+            highlightedEntityBoxes = List.of();
             return;
         }
 
@@ -378,8 +414,10 @@ public class BlockHighlightRenderer {
 
             ScanTarget targets = buildScanTargets(config);
 
-            if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty() && targets.skyblockIdColors.isEmpty()) {
+            if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty()
+                    && targets.skyblockIdColors.isEmpty() && targets.entityColors.isEmpty()) {
                 highlightedBoxes = List.of();
+                highlightedEntityBoxes = List.of();
                 return;
             }
 
@@ -388,6 +426,7 @@ public class BlockHighlightRenderer {
             for (int r : targets.blockRange.values()) maxRange = Math.max(maxRange, r);
             for (int r : targets.skullHashRange.values()) maxRange = Math.max(maxRange, r);
             for (int r : targets.skyblockIdRange.values()) maxRange = Math.max(maxRange, r);
+            for (int r : targets.entityRange.values()) maxRange = Math.max(maxRange, r);
 
             Set<Block> targetBlocks = targets.blockColors.keySet();
             boolean hasSkullTargets = !targets.skullHashColors.isEmpty();
@@ -406,7 +445,7 @@ public class BlockHighlightRenderer {
                 }
             }
 
-            Level level = client.level;
+            ClientLevel level = client.level;
             BlockPos scanCenter = lastScanPos;
             int scanRadius = maxRange;
 
@@ -419,12 +458,19 @@ public class BlockHighlightRenderer {
             Map<String, Float> sbIdAlphas = new HashMap<>(targets.skyblockIdAlpha);
             Map<String, Boolean> sbIdWalls = new HashMap<>(targets.skyblockIdThroughWalls);
             Map<String, Integer> sbIdRanges = new HashMap<>(targets.skyblockIdRange);
+            Map<String, float[]> entityColors = new HashMap<>(targets.entityColors);
+            Map<String, Float> entityAlphas = new HashMap<>(targets.entityAlpha);
+            Map<String, Boolean> entityWalls = new HashMap<>(targets.entityThroughWalls);
+            Map<String, Integer> entityRanges = new HashMap<>(targets.entityRange);
             Map<Block, float[]> bColors = new HashMap<>(targets.blockColors);
             Map<Block, Float> bAlphas = new HashMap<>(targets.blockAlpha);
             Map<Block, Boolean> bWalls = new HashMap<>(targets.blockThroughWalls);
             Map<Block, Integer> bRanges = new HashMap<>(targets.blockRange);
 
             final boolean capturedHasSkyBlockTargets = hasSkyBlockTargets;
+
+            highlightedEntityBoxes = scanEntities(level, scanCenter, entityColors, entityAlphas,
+                    entityWalls, entityRanges);
 
             scanFuture = CompletableFuture.runAsync(() -> {
                 List<HighlightBox> boxes = new ArrayList<>();
@@ -595,8 +641,36 @@ public class BlockHighlightRenderer {
         }
     }
 
+    private static List<EntityHighlightBox> scanEntities(ClientLevel level, BlockPos scanCenter,
+                                                          Map<String, float[]> colors,
+                                                          Map<String, Float> alphas,
+                                                          Map<String, Boolean> throughWalls,
+                                                          Map<String, Integer> ranges) {
+        if (colors.isEmpty()) return List.of();
+
+        List<EntityHighlightBox> boxes = new ArrayList<>();
+        for (Entity entity : level.entitiesForRendering()) {
+            try {
+                String entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+                float[] color = colors.get(entityId);
+                if (color == null) continue;
+                int range = ranges.getOrDefault(entityId, 48);
+                if (entity.blockPosition().distSqr(scanCenter) > (long) range * range) continue;
+
+                AABB bounds = entity.getBoundingBox().inflate(0.01);
+                boxes.add(new EntityHighlightBox(bounds.minX, bounds.minY, bounds.minZ,
+                        bounds.maxX, bounds.maxY, bounds.maxZ,
+                        color[0], color[1], color[2],
+                        alphas.getOrDefault(entityId, 0.4f),
+                        throughWalls.getOrDefault(entityId, true)));
+            } catch (Exception ignored) {
+            }
+        }
+        return boxes;
+    }
+
     private static void render(LevelRenderContext context) {
-        if (highlightedBoxes.isEmpty()) return;
+        if (highlightedBoxes.isEmpty() && highlightedEntityBoxes.isEmpty()) return;
 
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
@@ -639,6 +713,14 @@ public class BlockHighlightRenderer {
                         x0, y0, z0, x1, y1, z1,
                         box.r, box.g, box.b, box.a);
             }
+        }
+
+        for (EntityHighlightBox box : highlightedEntityBoxes) {
+            VertexConsumer buffer = box.throughWalls() ? noDepthBuffer : depthBuffer;
+            renderFilledBox(pose, buffer,
+                    (float) box.minX(), (float) box.minY(), (float) box.minZ(),
+                    (float) box.maxX(), (float) box.maxY(), (float) box.maxZ(),
+                    box.r(), box.g(), box.b(), box.a());
         }
 
         poseStack.popPose();
