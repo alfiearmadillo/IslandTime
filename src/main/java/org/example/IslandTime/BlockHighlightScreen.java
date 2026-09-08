@@ -14,7 +14,7 @@ import org.lwjgl.glfw.GLFW;
 import java.util.List;
 
 /**
- * GUI screen for block highlight management.
+ * GUI screen for block and entity highlight management.
  * Displays a scrollable list of highlight entries with controls for:
  * add, edit (target/color/range/intensity/through-walls), enable/disable, delete.
  */
@@ -97,7 +97,7 @@ public class BlockHighlightScreen extends Screen {
 
         addTargetField = new EditBox(font, dialogX, dialogY + 14, 240, 20, Component.literal("Target"));
         addTargetField.setMaxLength(256);
-        addTargetField.setHint(Component.literal("Block ID, sb:ID, or skull:HASH").withStyle(ChatFormatting.GRAY));
+        addTargetField.setHint(Component.literal("Block ID, entity:TYPE, sb:ID, or skull:HASH").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(addTargetField);
 
         addColorField = new EditBox(font, dialogX, dialogY + 48, 240, 20, Component.literal("Color"));

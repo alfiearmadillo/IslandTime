@@ -610,7 +610,7 @@ public class IslandTimeCommand {
 
     private static int highlightAdd(Minecraft client, String input) {
         // Input format: "target" or "target color"
-        // target can be: stone (block), sb:DITTO_SKULL (skyblock id), skull:HASH
+        // target can be: stone (block), entity:item_frame (entity), sb:DITTO_SKULL (skyblock id), skull:HASH
         String[] parts = input.trim().split("\\s+", 2);
         String target = parts[0];
         String color = "yellow";
@@ -726,7 +726,7 @@ public class IslandTimeCommand {
                 // Page 8 - Ghost, WAILA & Block Highlights
                 {"/it ghost", "Client-side remove the block you are looking at. Can be disabled in /it under Misc."},
                 {"/it highlight", "Open the Block Highlights GUI (same as /it highlights). Use /it highlight add <id> to add from chat."},
-                {"/it highlight add <id>", "Add to highlights. stone=block, sb:DITTO_SKULL=skyblock ID, skull:HASH=texture hash. Optionally add color: /it highlight add stone red"},
+                {"/it highlight add <target>", "Add a block or entity to highlights. Use entity:item_frame for item frames; sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color."},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/it help [page]", "Show this help (pages 1-11)"},
