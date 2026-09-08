@@ -192,7 +192,7 @@ public class ConfigManager {
         try {
             double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
             FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
-            if (today == null || today.gabagoolPrice != price) {
+            if (today != null && today.gabagoolPrice != price) {
                 FuelCycleTracker.setGabagoolPrice(todayDate, price);
             }
         } catch (NumberFormatException ignored) {

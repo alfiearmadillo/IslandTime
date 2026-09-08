@@ -517,27 +517,31 @@ public class FuelCycleTracker {
     }
 
     public static void setManualMinionCount(String date, Integer value) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.manualMinionCount = value;
         save();
     }
 
     public static void setGabagoolPrice(String date, double value) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.gabagoolPrice = Math.max(0.0, value);
         save();
     }
 
     /** Sets a manual override for gabagool amount, taking precedence over the auto-tracked value. */
     public static void setGabagoolAmount(String date, double value) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.manualGabagoolAmount = Math.max(0.0, value);
         save();
     }
 
     /** Clears the manual override, reverting the day back to using the auto-tracked gabagool amount. */
     public static void clearManualGabagoolAmount(String date) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.manualGabagoolAmount = null;
         save();
     }
@@ -549,39 +553,45 @@ public class FuelCycleTracker {
      */
     public static void addAutoGabagoolAmount(String date, double delta) {
         if (delta <= 0) return;
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.gabagoolAmountAuto += delta;
         save();
     }
 
     /** Sets a manual override for this day's fuel cost, taking precedence over the auto-estimated value. */
     public static void setFuelCost(String date, double value) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.manualFuelCost = Math.max(0.0, value);
         save();
     }
 
     /** Clears the manual fuel cost override, reverting the day back to the auto-estimated bazaar cost. */
     public static void clearManualFuelCost(String date) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.manualFuelCost = null;
         save();
     }
 
     public static void setMobKillCoinsAt100(String date, double value) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.mobKillCoinsAt100 = Math.max(0.0, value);
         save();
     }
 
     public static void setNotes(String date, String value) {
-        DayRecord record = getOrCreateDayRecord(date);
+        DayRecord record = dayRecords.get(date);
+        if (record == null) return;
         record.notes = value != null ? value : "";
         save();
     }
 
     public static void removeDayRecord(String date) {
         if (dayRecords.remove(date) != null) {
+            minionsCountedByDaySlot.remove(date);
             save();
         }
     }
@@ -736,8 +746,10 @@ public class FuelCycleTracker {
                     for (int u = 0; u < fuelCount; u++) {
                         long slotStart = unitsStartFinal + (long) u * DAY_MS;
                         int dayIndex = (int) ((slotStart - cohortStartFinal) / DAY_MS);
-                        DayRecord r = getOrCreateDayRecord(daySlotKey(cohortStartFinal, dayIndex));
-                        r.fuelCost += unitCost;
+                        DayRecord r = dayRecords.get(daySlotKey(cohortStartFinal, dayIndex));
+                        if (r != null) {
+                            r.fuelCost += unitCost;
+                        }
                     }
                     save();
                 }
@@ -829,9 +841,11 @@ public class FuelCycleTracker {
             long delta = now - lastTickTime;
             if (delta < 5000) {
                 String daySlot = daySlotKey(cohortStartMs, currentDayIndex);
-                DayRecord record = getOrCreateDayRecord(daySlot);
-                record.cycleStartMs = cohortStartMs + (long) currentDayIndex * DAY_MS;
-                record.activeMs += delta;
+                DayRecord record = dayRecords.get(daySlot);
+                if (record != null) {
+                    record.cycleStartMs = cohortStartMs + (long) currentDayIndex * DAY_MS;
+                    record.activeMs += delta;
+                }
             }
         }
 
