@@ -183,7 +183,7 @@ public class FuelCycleTracker {
     private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick  = false;
 
-    // The lowest-BIN unit price snapshotted the FIRST time it was needed for the currently
+    // The buy-order unit price snapshotted the FIRST time it was needed for the currently
     // active cohort (whichever cohortStartMs it was captured for), so every fuel unit
     // placed anywhere within the same cohort — even in separate onMinionFueled() calls
     // minutes or hours apart — is costed at the same price, instead of drifting with
@@ -266,10 +266,10 @@ public class FuelCycleTracker {
         /** Milliseconds during which fuel was active and the tracked item's stats were increasing. */
         public long activeMs = 0;
 
-        /** Legacy persisted total lowest-BIN cost of the fuel placed this day. */
+        /** Legacy persisted total buy-order cost of the fuel placed this day. */
         public double fuelCost = 0.0;
 
-        /** Lowest-BIN recipe cost per minion, snapshotted when this cohort was first priced.
+        /** Buy-order recipe cost per minion, snapshotted when this cohort was first priced.
          *  Null for records saved before per-minion pricing was introduced. */
         public Double lockedFuelCostPerMinion = null;
 
@@ -867,7 +867,7 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Returns the lowest-BIN unit price to use for every fuel-cost calculation within the
+     * Returns the buy-order unit price to use for every fuel-cost calculation within the
      * cohort that started at {@code cohortStart}, fetching and caching it from the live
      * bazaar the first time it's needed for that cohort and simply returning the cached
      * value for every later call (from the same or a different fueling event) within
@@ -880,12 +880,41 @@ public class FuelCycleTracker {
         if (cachedFuelUnitCostCohortStart == cohortStart && cachedFuelUnitCost > 0) {
             return cachedFuelUnitCost;
         }
-        double unitCost = PriceCache.getInfernoFuelUnitCost(null);
+        double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar());
         if (unitCost > 0) {
             cachedFuelUnitCost = unitCost;
             cachedFuelUnitCostCohortStart = cohortStart;
         }
         return unitCost;
+    }
+
+    /**
+     * Reprices every automatic record using the current buy-order recipe. Manual total
+     * overrides still win when displayed, but their automatic backing value is updated so
+     * clearing the override later uses the new pricing strategy too.
+     */
+    private static void refreshAllFuelCostsFromBuyOrders() {
+        saveExecutor.submit(() -> {
+            try {
+                double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar());
+                if (unitCost <= 0) return;
+
+                boolean changed = false;
+                for (DayRecord record : dayRecords.values()) {
+                    if (record.lockedFuelCostPerMinion == null
+                            && record.minionsRefueledAuto <= 0
+                            && record.manualMinionCount == null) {
+                        continue;
+                    }
+                    record.lockedFuelCostPerMinion = unitCost;
+                    record.fuelCost = unitCost * record.getEffectiveMinionCount();
+                    changed = true;
+                }
+                if (changed) save();
+            } catch (Exception e) {
+                System.err.println("[FuelCycleTracker] Historical fuel cost refresh failed: " + e.getMessage());
+            }
+        });
     }
 
     /**
@@ -1199,6 +1228,7 @@ public class FuelCycleTracker {
                     minionExpiries.values().removeIf(expiry -> now >= expiry);
 
                     purgeStaleLegacyMinionKeys();
+                    refreshAllFuelCostsFromBuyOrders();
                 }
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Load failed: " + e.getMessage());
@@ -1212,6 +1242,7 @@ public class FuelCycleTracker {
         // legacy live history.
         if (!testModeEnabled) {
             migrateLegacyFile();
+            refreshAllFuelCostsFromBuyOrders();
         }
     }
 

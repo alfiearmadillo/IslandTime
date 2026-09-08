@@ -12,7 +12,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Caches Bazaar and AH lowest-BIN data for 5 minutes to avoid hammering APIs.
+ * Caches Bazaar and AH price data for 5 minutes to avoid hammering APIs.
  */
 public class PriceCache {
 
@@ -43,14 +43,14 @@ public class PriceCache {
     };
 
     /**
-     * Returns the insta-buy price of the cheapest of the 5 Epic Inferno Minion Fuel
+     * Returns the buy-order price of the cheapest of the 5 Epic Inferno Minion Fuel
      * distillates, or -1 if the bazaar data is unavailable or none of the products exist.
      */
     public static double getCheapestInfernoFuelDistillatePrice(JsonObject products) {
         if (products == null) return -1;
         double cheapest = -1;
         for (String id : INFERNO_FUEL_DISTILLATE_IDS) {
-            double price = getInstaBuyPrice(products, id);
+            double price = getBuyOrderPrice(products, id);
             if (price > 0 && (cheapest < 0 || price < cheapest)) {
                 cheapest = price;
             }
@@ -68,19 +68,19 @@ public class PriceCache {
     private static final int    INFERNO_FUEL_DISTILLATE_QTY = 6;
 
     /**
-     * Returns the full lowest-BIN crafting cost of one Epic (medium) Inferno Minion Fuel:
+     * Returns the full buy-order crafting cost of one Epic (medium) Inferno Minion Fuel:
      * 24x Sulphuric Coal, 3x Very Crude Gabagool, 6x the cheapest of the 5 distillates,
      * and 2x Inferno Fuel Block. All five distillates are checked before selecting the
      * cheapest one.
      */
     public static double getInfernoFuelUnitCost(JsonObject products) {
-        double sulphuricCoalPrice = getLowestBinOnly(products, SULPHURIC_COAL_ID);
+        double sulphuricCoalPrice = getBuyOrderPrice(products, SULPHURIC_COAL_ID);
         if (sulphuricCoalPrice <= 0) return -1;
-        double veryCrudeGabagoolPrice = getLowestBinOnly(products, VERY_CRUDE_GABAGOOL_ID);
+        double veryCrudeGabagoolPrice = getBuyOrderPrice(products, VERY_CRUDE_GABAGOOL_ID);
         if (veryCrudeGabagoolPrice <= 0) return -1;
-        double distillatePrice = getCheapestInfernoFuelDistillateBinPrice(products);
+        double distillatePrice = getCheapestInfernoFuelDistillateBuyOrderPrice(products);
         if (distillatePrice <= 0) return -1;
-        double fuelBlockPrice = getLowestBinOnly(products, INFERNO_FUEL_BLOCK_ID);
+        double fuelBlockPrice = getBuyOrderPrice(products, INFERNO_FUEL_BLOCK_ID);
         if (fuelBlockPrice <= 0) return -1;
         return sulphuricCoalPrice * SULPHURIC_COAL_QTY
                 + veryCrudeGabagoolPrice * VERY_CRUDE_GABAGOOL_QTY
@@ -88,11 +88,11 @@ public class PriceCache {
                 + fuelBlockPrice * INFERNO_FUEL_BLOCK_QTY;
     }
 
-    /** Returns the lowest BIN price among all five Inferno Fuel distillates. */
-    private static double getCheapestInfernoFuelDistillateBinPrice(JsonObject products) {
+    /** Returns the lowest buy-order price among all five Inferno Fuel distillates. */
+    private static double getCheapestInfernoFuelDistillateBuyOrderPrice(JsonObject products) {
         double cheapest = -1;
         for (String id : INFERNO_FUEL_DISTILLATE_IDS) {
-            double price = getLowestBinOnly(products, id);
+            double price = getBuyOrderPrice(products, id);
             if (price > 0 && (cheapest < 0 || price < cheapest)) {
                 cheapest = price;
             }
@@ -124,6 +124,7 @@ public class PriceCache {
 
     /** Insta-sell price (highest buy order — what you'd get selling instantly). */
     public static double getInstaSellPrice(JsonObject products, String productId) {
+        if (products == null) return -1;
         JsonObject product = products.getAsJsonObject(productId);
         if (product == null) return -1;
         JsonObject qs = product.getAsJsonObject("quick_status");
