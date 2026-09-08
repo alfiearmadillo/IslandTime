@@ -2,7 +2,6 @@ package org.example.islandtime;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -184,7 +183,7 @@ public class FuelCycleTracker {
     private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick  = false;
 
-    // The bazaar unit price snapshotted the FIRST time it was needed for the currently
+    // The lowest-BIN unit price snapshotted the FIRST time it was needed for the currently
     // active cohort (whichever cohortStartMs it was captured for), so every fuel unit
     // placed anywhere within the same cohort — even in separate onMinionFueled() calls
     // minutes or hours apart — is costed at the same price, instead of drifting with
@@ -804,7 +803,7 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Returns the bazaar unit price to use for every fuel-cost calculation within the
+     * Returns the lowest-BIN unit price to use for every fuel-cost calculation within the
      * cohort that started at {@code cohortStart}, fetching and caching it from the live
      * bazaar the first time it's needed for that cohort and simply returning the cached
      * value for every later call (from the same or a different fueling event) within
@@ -817,8 +816,7 @@ public class FuelCycleTracker {
         if (cachedFuelUnitCostCohortStart == cohortStart && cachedFuelUnitCost > 0) {
             return cachedFuelUnitCost;
         }
-        JsonObject bazaar = PriceCache.getBazaar();
-        double unitCost = PriceCache.getInfernoFuelUnitCost(bazaar);
+        double unitCost = PriceCache.getInfernoFuelUnitCost(null);
         if (unitCost > 0) {
             cachedFuelUnitCost = unitCost;
             cachedFuelUnitCostCohortStart = cohortStart;
