@@ -788,13 +788,12 @@ public class FuelCycleTracker {
             }
         }
 
-        // Estimate fuel cost from the bazaar in the background so we never
-        // block the client thread while a container screen is open. Each unit's cost
-        // lands on the same day-record it was attributed to above, splitting a
-        // multi-day placement's cost across the days it actually covers. The unit price
-        // itself is snapshotted once per cohort (see getCohortFuelUnitCost()) so
-        // re-fueling the same cohort later doesn't cost different days at different
-        // live prices — nothing about an already-recorded day changes after the fact.
+        // Estimate the per-minion recipe price from the bazaar in the background so we
+        // never block the client thread while a container screen is open. Each day gets
+        // the same locked price for the cohort, while its total is derived from the
+        // minion count attributed above. The unit price itself is snapshotted once per
+        // cohort (see getCohortFuelUnitCost()) so re-fueling the same cohort later
+        // doesn't cost different days at different live prices.
         final long unitsStartFinal  = unitsStart;
         final long cohortStartFinal = cohortStartMs;
         saveExecutor.submit(() -> {
