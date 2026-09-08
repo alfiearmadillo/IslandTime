@@ -136,7 +136,7 @@ public class FuelDayScreen extends Screen {
         editFuelCostField.setValue(record.manualFuelCost != null
                 ? String.valueOf(record.manualFuelCost)
                 : "");
-        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.fuelCost) + " (or +/-N)").withStyle(ChatFormatting.GRAY));
+        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.getEffectiveFuelCost()) + " (or +/-N)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editFuelCostField);
 
         editNotesField = new EditBox(font, dialogX, dialogY + 156, 240, 20, Component.literal("Notes"));
@@ -174,7 +174,7 @@ public class FuelDayScreen extends Screen {
                 FuelCycleTracker.clearManualFuelCost(editDate);
             } else {
                 try {
-                    double fuelCostValue = resolveDeltaOrAbsolute(fuelCostText, record.fuelCost);
+                    double fuelCostValue = resolveDeltaOrAbsolute(fuelCostText, record.getEffectiveFuelCost());
                     FuelCycleTracker.setFuelCost(editDate, fuelCostValue);
                 } catch (NumberFormatException ignored) {}
             }

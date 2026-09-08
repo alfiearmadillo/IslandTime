@@ -266,11 +266,15 @@ public class FuelCycleTracker {
         /** Milliseconds during which fuel was active and the tracked item's stats were increasing. */
         public long activeMs = 0;
 
-        /** Estimated total lowest-BIN cost of the fuel placed this day. */
+        /** Legacy persisted total lowest-BIN cost of the fuel placed this day. */
         public double fuelCost = 0.0;
 
-        /** Manual override for this day's fuel cost — null means "use the auto-estimated
-         *  {@link #fuelCost} value". Useful when the live bazaar price at fueling time
+        /** Lowest-BIN recipe cost per minion, snapshotted when this cohort was first priced.
+         *  Null for records saved before per-minion pricing was introduced. */
+        public Double lockedFuelCostPerMinion = null;
+
+        /** Manual override for this day's total fuel cost — null means "use the auto-estimated
+         *  cost from {@link #lockedFuelCostPerMinion} and {@link #getEffectiveMinionCount()}". Useful when the live bazaar price at fueling time
          *  wasn't representative (e.g. you already had distillates stockpiled, or bought
          *  them at a different price than the bazaar snapshot used). */
         public Double manualFuelCost = null;
@@ -303,9 +307,23 @@ public class FuelCycleTracker {
             return manualMinionCount != null ? manualMinionCount : minionsRefueledAuto;
         }
 
-        /** Effective fuel cost used for profit calc: manual override if set, else auto-estimated. */
+        /** Automatic total fuel cost, recalculated from the effective minion count. */
+        public double getAutoFuelCost() {
+            if (lockedFuelCostPerMinion != null && lockedFuelCostPerMinion >= 0.0) {
+                return lockedFuelCostPerMinion * getEffectiveMinionCount();
+            }
+
+            // Older records only persisted a total. Scale that total when possible so
+            // manual minion-count corrections still update their displayed cost.
+            if (minionsRefueledAuto > 0) {
+                return fuelCost * (getEffectiveMinionCount() / (double) minionsRefueledAuto);
+            }
+            return fuelCost;
+        }
+
+        /** Effective total fuel cost used for profit calc: manual override if set, else auto-estimated. */
         public double getEffectiveFuelCost() {
-            return manualFuelCost != null ? manualFuelCost : fuelCost;
+            return manualFuelCost != null ? manualFuelCost : getAutoFuelCost();
         }
 
         public double getAfkPercent() {
@@ -788,7 +806,8 @@ public class FuelCycleTracker {
                         int dayIndex = (int) ((slotStart - cohortStartFinal) / DAY_MS);
                         DayRecord r = dayRecords.get(daySlotKey(cohortStartFinal, dayIndex));
                         if (r != null) {
-                            r.fuelCost += unitCost;
+                            r.lockedFuelCostPerMinion = unitCost;
+                            r.fuelCost = unitCost * r.minionsRefueledAuto;
                         }
                     }
                     save();
