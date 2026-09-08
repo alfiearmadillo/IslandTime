@@ -307,6 +307,8 @@ public class MinionFuelTracker {
                     // since FuelCycleTracker.onMinionFueled() only ever extends it.
                     newFuelUnits = Math.max(1, currentCount);
                 }
+            } else if (initialWasActualFuel && currentIsGlassPane) {
+                FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
             }
 
             // Diagnostic logging (console only, not chat) for every detected fuel-slot

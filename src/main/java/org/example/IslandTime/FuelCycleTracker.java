@@ -656,6 +656,32 @@ public class FuelCycleTracker {
     }
 
     /**
+     * Removes a minion from the active fuel cohort when its fuel slot is observed empty.
+     * Without this, manually emptied minions remain in {@code minionExpiries} until their
+     * old tracked expiry, causing later fueling to be split across stale future day-slots.
+     */
+    public static void onMinionFuelRemoved(String minionKey) {
+        if (minionKey == null || minionKey.isEmpty()) return;
+        if (minionExpiries.remove(minionKey) == null) return;
+
+        for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+            if (!entry.getValue().remove(minionKey)) continue;
+            DayRecord record = dayRecords.get(entry.getKey());
+            if (record != null && record.cycleEndMs <= 0 && record.minionsRefueledAuto > 0) {
+                record.minionsRefueledAuto--;
+            }
+        }
+
+        if (minionExpiries.isEmpty()) {
+            cohortStartMs = 0;
+            activeDaySlotIndex = 0;
+            minionsCountedByDaySlot.clear();
+            wasOnIslandLastTick = false;
+        }
+        save();
+    }
+
+    /**
      * Called when the minion identified by {@code minionKey} (the block position +
      * equipment of the armor stand entity right-clicked to open its GUI, or its GUI
      * title as a fallback — the same string {@link MinionFuelTracker} uses to tell
