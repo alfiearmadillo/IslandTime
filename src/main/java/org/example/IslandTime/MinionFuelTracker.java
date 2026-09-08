@@ -303,8 +303,8 @@ public class MinionFuelTracker {
                 } else {
                     // Different fuel type placed on top of remaining fuel - treat
                     // the whole new stack as freshly added fuel. The previous
-                    // cycle info (minions refueled, expiry so far) is preserved
-                    // since FuelCycleTracker.onMinionFueled() only ever extends it.
+                    // cycle info (minions refueled, expiry so far) is preserved while
+                    // fuel remains active; an expired minion starts at the refuel time.
                     newFuelUnits = Math.max(1, currentCount);
                 }
             } else if (initialWasActualFuel && currentIsGlassPane) {

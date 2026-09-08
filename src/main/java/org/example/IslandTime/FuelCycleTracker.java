@@ -679,7 +679,17 @@ public class FuelCycleTracker {
      */
     public static void onMinionFuelRemoved(String minionKey) {
         if (minionKey == null || minionKey.isEmpty()) return;
-        if (minionExpiries.remove(minionKey) == null) return;
+        if (!removeMinionFuelState(minionKey)) return;
+
+        removeEmptyFutureDayRecords();
+
+        resetCohortIfEmpty();
+        save();
+    }
+
+    /** Removes one minion's expiry and its contribution to any still-open day slots. */
+    private static boolean removeMinionFuelState(String minionKey) {
+        if (minionExpiries.remove(minionKey) == null) return false;
 
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(minionKey)) continue;
@@ -688,15 +698,46 @@ public class FuelCycleTracker {
                 record.minionsRefueledAuto--;
             }
         }
-        removeEmptyFutureDayRecords();
+        return true;
+    }
 
-        if (minionExpiries.isEmpty()) {
-            cohortStartMs = 0;
-            activeDaySlotIndex = 0;
-            minionsCountedByDaySlot.clear();
-            wasOnIslandLastTick = false;
+    /** Removes expired state left behind when a minion was not opened as its fuel ran out. */
+    private static void removeExpiredMinionFuel(long now) {
+        List<String> expiredKeys = minionExpiries.entrySet().stream()
+                .filter(entry -> entry.getValue() <= now)
+                .map(Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.toList());
+        for (String expiredKey : expiredKeys) {
+            removeExpiredMinionState(expiredKey, now);
         }
-        save();
+        if (!expiredKeys.isEmpty()) {
+            removeEmptyFutureDayRecords();
+            resetCohortIfEmpty();
+        }
+    }
+
+    /** Removes expired state without changing counts for day-slots that already started. */
+    private static boolean removeExpiredMinionState(String minionKey, long now) {
+        if (minionExpiries.remove(minionKey) == null) return false;
+
+        for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+            if (!entry.getValue().remove(minionKey)) continue;
+            DayRecord record = dayRecords.get(entry.getKey());
+            if (record != null && record.cycleStartMs > now && record.cycleEndMs <= 0
+                    && record.minionsRefueledAuto > 0) {
+                record.minionsRefueledAuto--;
+            }
+        }
+        return true;
+    }
+
+    /** Starts the next fuel cohort from the next actual fueling event once none remain active. */
+    private static void resetCohortIfEmpty() {
+        if (!minionExpiries.isEmpty()) return;
+        cohortStartMs = 0;
+        activeDaySlotIndex = 0;
+        minionsCountedByDaySlot.clear();
+        wasOnIslandLastTick = false;
     }
 
     /** Drops queued records that no longer have any tracked minions after stale fuel is removed. */
@@ -719,12 +760,14 @@ public class FuelCycleTracker {
      * equipment of the armor stand entity right-clicked to open its GUI, or its GUI
      * title as a fallback — the same string {@link MinionFuelTracker} uses to tell
      * minions apart) is fueled with
-     * {@code fuelCount} units of fuel (e.g. placing a stack of 10 at once). Each unit
-     * extends that specific minion's own fuel expiry by 24h, queued back-to-back — other
-     * minions' timers are untouched, so fueling a batch of minions never serializes their
-     * fuel-days onto one shared timeline. Because the key is per-physical-minion rather
-     * than per-title, fueling several minions of the same type/tier is correctly tracked
-     * as separate minions instead of being merged into one.
+     * {@code fuelCount} units of fuel (e.g. placing a stack of 10 at once). While fuel is
+     * still active, each unit extends that specific minion's own fuel expiry by 24h,
+     * queued back-to-back — other minions' timers are untouched, so fueling a batch of
+     * minions never serializes their fuel-days onto one shared timeline. If its previous
+     * fuel has already run out, the new units start at this fueling event instead of being
+     * appended to the old expiry. Because the key is per-physical-minion rather than
+     * per-title, fueling several minions of the same type/tier is correctly tracked as
+     * separate minions instead of being merged into one.
      *
      * Per-minion data is only ever used internally for this expiry bookkeeping — the
      * day-level aggregate (minionsRefueledAuto, etc.) stays a single number per
@@ -741,10 +784,13 @@ public class FuelCycleTracker {
         if (minionKey == null || minionKey.isEmpty()) minionKey = "unknown";
         long now = System.currentTimeMillis();
 
-        // Captured before mutating minionExpiries: true only when NO minion currently
-        // has fuel tracked at all, i.e. this fueling event is starting a brand new
-        // cohort from scratch (the previous one fully ran dry). Used below to decide
-        // whether to reset the cohort's day-slot bookkeeping.
+        // Discard expired entries that were not observed through a minion GUI while
+        // they ran dry. This is important after downtime: the next refuel must start
+        // at the actual fueling time rather than being appended to the old expiry.
+        removeExpiredMinionFuel(now);
+
+        // True only when NO minion currently has active fuel, i.e. this fueling event
+        // is starting a brand new cohort from scratch.
         boolean freshCycleStart = minionExpiries.isEmpty();
 
         Long existingExpiry = minionExpiries.get(minionKey);
