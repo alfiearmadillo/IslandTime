@@ -139,7 +139,7 @@ public class BlockHighlightRenderer {
     }
 
     /**
-     * Parsed scan target: either a set of block IDs or skull texture hashes with per-target settings.
+     * Parsed scan target: block IDs, entity IDs, or skull texture hashes with per-target settings.
      */
     private static class ScanTarget {
         final Map<Block, float[]> blockColors = new HashMap<>();
@@ -253,6 +253,9 @@ public class BlockHighlightRenderer {
     private static void addEntityTarget(ScanTarget targets, String entityId, float[] color,
                                         float alpha, boolean throughWalls, int range) {
         if (entityId == null || entityId.isBlank()) return;
+        if (!entityId.contains(":")) {
+            entityId = "minecraft:" + entityId;
+        }
         Identifier id = Identifier.tryParse(entityId);
         if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) return;
         String key = id.toString();
