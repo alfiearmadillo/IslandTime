@@ -618,8 +618,8 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class BlockHighlight {
-        @ConfigOption(name = "Open Block Highlights", desc = "Click to open the block highlights GUI for managing individual entries. You can also use /it highlights")
-        @ConfigEditorButton(buttonText = " Open Block Highlights ")
+        @ConfigOption(name = "Open Highlights", desc = "Click to open the highlights GUI for managing blocks and any registered entity type, such as item frames or armor stands. You can also use /it highlights")
+        @ConfigEditorButton(buttonText = " Open Highlights ")
         public Runnable openBlockHighlightsButton = new Runnable() {
             @Override
             public void run() {
@@ -629,7 +629,7 @@ public class IslandTimeConfig extends Config {
         };
 
         @Expose
-        @ConfigOption(name = "Enabled", desc = "Toggle the block highlight on or off")
+        @ConfigOption(name = "Enabled", desc = "Toggle block and entity highlights on or off")
         @ConfigEditorBoolean
         public boolean enabled = true;
 

@@ -725,8 +725,8 @@ public class IslandTimeCommand {
 
                 // Page 8 - Ghost, WAILA & Block Highlights
                 {"/it ghost", "Client-side remove the block you are looking at. Can be disabled in /it under Misc."},
-                {"/it highlight", "Open the Block Highlights GUI (same as /it highlights). Use /it highlight add <id> to add from chat."},
-                {"/it highlight add <target>", "Add a block or entity to highlights. Use entity:item_frame for item frames; sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color."},
+                {"/it highlight", "Open the Highlights GUI (same as /it highlights). Use /it highlight add <target> to add from chat."},
+                {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color."},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
                 {"/it help [page]", "Show this help (pages 1-11)"},

@@ -27,7 +27,8 @@ public class BlockHighlightManager {
     /**
      * A single highlight entry. The target can be:
      * - A block ID like "diamond_ore" or "minecraft:diamond_ore"
-     * - An entity ID prefixed with "entity:" like "entity:item_frame"
+     * - An entity ID prefixed with "entity:" like "entity:item_frame" or "entity:armor_stand"
+     *   (any registered entity type is supported)
      * - A skull texture hash prefixed with "skull:" like "skull:abc123..."
      * - A SkyBlock item ID prefixed with "sb:" like "sb:DITTO_SKULL"
      */
