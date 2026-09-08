@@ -267,7 +267,7 @@ public class FuelCycleTracker {
         /** Milliseconds during which fuel was active and the tracked item's stats were increasing. */
         public long activeMs = 0;
 
-        /** Estimated total bazaar cost of the fuel placed this day (cheapest of the 5 distillates). */
+        /** Estimated total lowest-BIN cost of the fuel placed this day. */
         public double fuelCost = 0.0;
 
         /** Manual override for this day's fuel cost — null means "use the auto-estimated

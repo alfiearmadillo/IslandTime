@@ -27,6 +27,7 @@ public class PriceCache {
 
     // Per-item cache for AH lowest BIN prices
     private static final Map<String, CachedPrice> lowestBinCache = new ConcurrentHashMap<>();
+    private static final Map<String, CachedPrice> strictLowestBinCache = new ConcurrentHashMap<>();
 
     /**
      * The 5 Epic-tier Inferno Minion Fuel distillates (used to craft the medium
@@ -57,35 +58,46 @@ public class PriceCache {
         return cheapest;
     }
 
-    /** Crafting the Epic (medium) Inferno Minion Fuel tier from distillates additionally
-     *  requires these fixed-quantity bazaar-tradeable ingredients — the actual fuel cost
-     *  is far more than just the distillates themselves. */
+    /** Full Epic (medium) Inferno Minion Fuel recipe quantities. */
+    private static final String SULPHURIC_COAL_ID = "SULPHURIC_COAL";
+    private static final int    SULPHURIC_COAL_QTY = 24;
+    private static final String VERY_CRUDE_GABAGOOL_ID = "VERY_CRUDE_GABAGOOL";
+    private static final int    VERY_CRUDE_GABAGOOL_QTY = 3;
     private static final String INFERNO_FUEL_BLOCK_ID = "INFERNO_FUEL_BLOCK";
     private static final int    INFERNO_FUEL_BLOCK_QTY = 2;
-    private static final String HEAVY_GABAGOOL_ID = "HEAVY_GABAGOOL";
-    private static final int    HEAVY_GABAGOOL_QTY = 1;
     private static final int    INFERNO_FUEL_DISTILLATE_QTY = 6;
 
     /**
-     * Returns the full insta-buy crafting cost of one Epic (medium) Inferno Minion Fuel —
-     * 6x the cheapest of the 5 distillates, plus 2x Inferno Fuel Block and 1x Heavy
-     * Gabagool (the other fixed ingredients of that recipe) — or -1 if the bazaar data is
-     * unavailable or any required ingredient's price can't be found. Unlike
-     * {@link #getCheapestInfernoFuelDistillatePrice(JsonObject)} (which only prices the
-     * distillate itself), this is the actual full cost of crafting one usable unit of
-     * fuel, since a distillate alone isn't fuel.
+     * Returns the full lowest-BIN crafting cost of one Epic (medium) Inferno Minion Fuel:
+     * 24x Sulphuric Coal, 3x Very Crude Gabagool, 6x the cheapest of the 5 distillates,
+     * and 2x Inferno Fuel Block. All five distillates are checked before selecting the
+     * cheapest one.
      */
     public static double getInfernoFuelUnitCost(JsonObject products) {
-        if (products == null) return -1;
-        double distillatePrice = getCheapestInfernoFuelDistillatePrice(products);
+        double sulphuricCoalPrice = getLowestBinOnly(products, SULPHURIC_COAL_ID);
+        if (sulphuricCoalPrice <= 0) return -1;
+        double veryCrudeGabagoolPrice = getLowestBinOnly(products, VERY_CRUDE_GABAGOOL_ID);
+        if (veryCrudeGabagoolPrice <= 0) return -1;
+        double distillatePrice = getCheapestInfernoFuelDistillateBinPrice(products);
         if (distillatePrice <= 0) return -1;
-        double fuelBlockPrice = getInstaBuyPrice(products, INFERNO_FUEL_BLOCK_ID);
+        double fuelBlockPrice = getLowestBinOnly(products, INFERNO_FUEL_BLOCK_ID);
         if (fuelBlockPrice <= 0) return -1;
-        double heavyGabagoolPrice = getInstaBuyPrice(products, HEAVY_GABAGOOL_ID);
-        if (heavyGabagoolPrice <= 0) return -1;
-        return distillatePrice * INFERNO_FUEL_DISTILLATE_QTY
-                + fuelBlockPrice * INFERNO_FUEL_BLOCK_QTY
-                + heavyGabagoolPrice * HEAVY_GABAGOOL_QTY;
+        return sulphuricCoalPrice * SULPHURIC_COAL_QTY
+                + veryCrudeGabagoolPrice * VERY_CRUDE_GABAGOOL_QTY
+                + distillatePrice * INFERNO_FUEL_DISTILLATE_QTY
+                + fuelBlockPrice * INFERNO_FUEL_BLOCK_QTY;
+    }
+
+    /** Returns the lowest BIN price among all five Inferno Fuel distillates. */
+    private static double getCheapestInfernoFuelDistillateBinPrice(JsonObject products) {
+        double cheapest = -1;
+        for (String id : INFERNO_FUEL_DISTILLATE_IDS) {
+            double price = getLowestBinOnly(products, id);
+            if (price > 0 && (cheapest < 0 || price < cheapest)) {
+                cheapest = price;
+            }
+        }
+        return cheapest;
     }
 
     public static JsonObject getBazaar() {
@@ -142,6 +154,18 @@ public class PriceCache {
         return price;
     }
 
+    /** AH lowest BIN price via Coflnet, without falling back to sold-auction prices. */
+    public static double getLowestBinOnly(JsonObject unusedBulkData, String itemId) {
+        long now = System.currentTimeMillis();
+        CachedPrice cached = strictLowestBinCache.get(itemId);
+        if (cached != null && (now - cached.time) < CACHE_DURATION_MS) {
+            return cached.price;
+        }
+        double price = fetchCoflnetBinPrice(itemId);
+        strictLowestBinCache.put(itemId, new CachedPrice(price, now));
+        return price;
+    }
+
     // ── Formatting ─────────────────────────────────────────────────────────
 
     public static String formatCoins(double coins) {
@@ -191,6 +215,11 @@ public class PriceCache {
         if (price > 0) return price;
         // Fall back to recent sold auctions (for items with no active BINs)
         return fetchCoflnetSold(itemId);
+    }
+
+    private static double fetchCoflnetBinPrice(String itemId) {
+        double price = fetchCoflnetItemPrice(itemId);
+        return price > 0 ? price : fetchCoflnetActiveBin(itemId);
     }
 
     /** Coflnet /api/item/price/{tag}/bin — returns a simple lowest BIN price. */
