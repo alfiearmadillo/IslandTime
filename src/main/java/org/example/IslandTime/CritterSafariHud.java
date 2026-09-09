@@ -67,6 +67,7 @@ public class CritterSafariHud {
                 String rawMessage = message.getString();
                 CritterSafariTracker.onChatMessage(rawMessage);
                 CritterSafariAnnouncer.pollAndSend();
+                CritterSafariAnnouncer.respondToMissingRequest(rawMessage);
             }
         });
 

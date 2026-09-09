@@ -31,6 +31,8 @@ public class CritterSafariTracker {
     private static final Pattern FORMAT_STRIP = Pattern.compile("§[0-9a-fk-orA-FK-OR]");
     private static final Pattern MISSING_REQUEST =
             Pattern.compile("(^|\\s)!missing(?=\\s|$)", Pattern.CASE_INSENSITIVE);
+    private static final int MISSING_MESSAGE_LIMIT = 200;
+    private static final String MISSING_MORE_SUFFIX = " (and more...)";
 
     /**
      * Exact NPC lines Hypixel sends when a new Safari run begins. The first is shown when entering
@@ -358,7 +360,46 @@ public class CritterSafariTracker {
                 groups.add(entry.getKey() + "(" + String.join(", ", missing) + ")");
             }
         }
-        return groups.isEmpty() ? "All creatures caught." : String.join(", ", groups);
+        if (groups.isEmpty()) return "All creatures caught.";
+
+        String fullMessage = String.join(", ", groups);
+        if (fullMessage.length() <= MISSING_MESSAGE_LIMIT) return fullMessage;
+
+        StringBuilder capped = new StringBuilder();
+        boolean firstGroup = true;
+        boolean truncated = false;
+        for (Map.Entry<String, List<String>> entry : CRITTERS_BY_BIOME.entrySet()) {
+            List<String> missing = new ArrayList<>();
+            for (String critter : entry.getValue()) {
+                if (!caught.contains(critter)) missing.add(critter);
+            }
+            if (missing.isEmpty()) continue;
+
+            String prefix = (firstGroup ? "" : ", ") + entry.getKey() + "(";
+            if (capped.length() + prefix.length() + MISSING_MORE_SUFFIX.length()
+                    > MISSING_MESSAGE_LIMIT) {
+                truncated = true;
+                break;
+            }
+            capped.append(prefix);
+            firstGroup = false;
+
+            for (int i = 0; i < missing.size(); i++) {
+                String creature = (i == 0 ? "" : ", ") + missing.get(i);
+                if (capped.length() + creature.length() + 1 + MISSING_MORE_SUFFIX.length()
+                        > MISSING_MESSAGE_LIMIT) {
+                    capped.append(")");
+                    truncated = true;
+                    break;
+                }
+                capped.append(creature);
+            }
+            if (truncated) break;
+            capped.append(")");
+        }
+
+        if (!truncated) return fullMessage;
+        return capped.append(MISSING_MORE_SUFFIX).toString();
     }
 
     /** True when the biome is only "done" because the Macaw exemption is letting it through. */
