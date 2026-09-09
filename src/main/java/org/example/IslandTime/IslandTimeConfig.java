@@ -698,7 +698,7 @@ public class IslandTimeConfig extends Config {
 
         @ConfigAccordionId(id = 2)
         @Expose
-        @ConfigOption(name = "Announce Completion", desc = "Send a message as soon as every critter of a biome has been caught (e.g. 'Forest done'). The biome that finishes the run sends 'All done' instead of its own name")
+        @ConfigOption(name = "Announce Completion", desc = "Send a message as soon as every critter of a biome has been caught (e.g. 'Forest done (1m 12.7s)'). The timer starts when the Safari ticket is handed in. The biome that finishes the run sends 'All done' instead of its own name")
         @ConfigEditorBoolean
         public boolean announceCompletion = false;
 
@@ -710,7 +710,7 @@ public class IslandTimeConfig extends Config {
 
         @ConfigAccordionId(id = 2)
         @Expose
-        @ConfigOption(name = "Forest Minus Macaw", desc = "Treat the Forest as done without the Macaw, which often does not spawn. Announcements say 'minus Macaw' while it is still missing")
+        @ConfigOption(name = "Forest Minus Macaw", desc = "Treat the Forest as done without the Macaw, which often does not spawn. Announcements say 'minus Macaw' while it is still missing, then correct themselves to 'Forest done' and 'All done' if Macaw is caught later")
         @ConfigEditorBoolean
         public boolean announceMinusMacaw = false;
 

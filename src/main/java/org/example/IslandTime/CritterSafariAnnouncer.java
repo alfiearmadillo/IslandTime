@@ -41,6 +41,12 @@ public class CritterSafariAnnouncer {
         }
     }
 
+    /** Replies in party chat when someone requests the critters still missing this run. */
+    public static void respondToMissingRequest(String rawMessage) {
+        if (!CritterSafariTracker.isMissingRequest(rawMessage)) return;
+        send(CritterSafariTracker.formatMissing(), true);
+    }
+
     private static void send(String announcement, boolean partyChat) {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;

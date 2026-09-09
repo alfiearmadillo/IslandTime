@@ -29,6 +29,8 @@ public class CritterSafariTracker {
 
     /** Strips Minecraft §-formatting codes before parsing (same approach as IslandChatRelay). */
     private static final Pattern FORMAT_STRIP = Pattern.compile("§[0-9a-fk-orA-FK-OR]");
+    private static final Pattern MISSING_REQUEST =
+            Pattern.compile("(^|\\s)!missing(?=\\s|$)", Pattern.CASE_INSENSITIVE);
 
     /**
      * Exact NPC lines Hypixel sends when a new Safari run begins. The first is shown when entering
@@ -104,6 +106,15 @@ public class CritterSafariTracker {
     /** Whether the run completion has been announced, tracked separately from the biomes. */
     private static boolean runAnnounced = false;
 
+    /** Whether the last Forest announcement omitted Macaw and needs correcting if Macaw is caught. */
+    private static boolean forestAnnouncedMinusMacaw = false;
+
+    /** Whether the last run announcement omitted Macaw and needs correcting if Macaw is caught. */
+    private static boolean runAnnouncedMinusMacaw = false;
+
+    /** Epoch millis when the Safari Manager confirmed that the current run started. */
+    private static long runStartMs = 0L;
+
     private CritterSafariTracker() {}
 
     // -------------------------------------------------------------------------
@@ -122,6 +133,7 @@ public class CritterSafariTracker {
 
         if (isRunStartMessage(message)) {
             reset();
+            runStartMs = System.currentTimeMillis();
             return null;
         }
 
@@ -213,6 +225,9 @@ public class CritterSafariTracker {
         caughtAt.clear();
         announcedBiomes.clear();
         runAnnounced = false;
+        forestAnnouncedMinusMacaw = false;
+        runAnnouncedMinusMacaw = false;
+        runStartMs = 0L;
     }
 
     public static boolean isCaught(String critter) {
@@ -258,32 +273,92 @@ public class CritterSafariTracker {
      */
     public static List<String> pollAnnouncements(boolean macawOptional) {
         List<String> announcements = new ArrayList<>();
+        boolean correctedForest = false;
+
+        // If Forest was previously announced with the exemption, catching Macaw later
+        // should still produce the normal "Forest done" wording.
+        if (forestAnnouncedMinusMacaw && caught.contains(MACAW)
+                && isBiomeComplete("Forest", false)) {
+            forestAnnouncedMinusMacaw = false;
+            correctedForest = true;
+            announcements.add(biomeAnnouncement("Forest", false));
+        }
+
         for (String biome : CRITTERS_BY_BIOME.keySet()) {
             if (announcedBiomes.contains(biome)) continue;
             if (!isBiomeComplete(biome, macawOptional)) continue;
             announcedBiomes.add(biome);
+            if ("Forest".equals(biome) && macawExempt(biome, macawOptional)) {
+                forestAnnouncedMinusMacaw = true;
+            }
             announcements.add(biomeAnnouncement(biome, macawOptional));
         }
 
-        // The biome that finishes the run reports the run instead of itself. Completion is tracked
-        // separately from the biomes so that relaxing the Macaw rule mid-run still announces it.
+        // The biome that finishes a new run reports the run instead of itself. Completion is
+        // tracked separately from the biomes so that relaxing the Macaw rule mid-run still
+        // announces it.
         if (!runAnnounced && isRunComplete(macawOptional)) {
             runAnnounced = true;
-            if (announcements.isEmpty()) {
-                announcements.add(runAnnouncement(macawOptional));
-            } else {
+            runAnnouncedMinusMacaw = macawOptional && !caught.contains(MACAW);
+            if (!announcements.isEmpty() && !correctedForest) {
                 announcements.set(announcements.size() - 1, runAnnouncement(macawOptional));
+            } else {
+                announcements.add(runAnnouncement(macawOptional));
             }
+        } else if (runAnnouncedMinusMacaw && caught.contains(MACAW)
+                && isRunComplete(false)) {
+            runAnnouncedMinusMacaw = false;
+            announcements.add(runAnnouncement(false));
         }
         return announcements;
     }
 
     private static String biomeAnnouncement(String biome, boolean macawOptional) {
-        return biome + " done" + (macawExempt(biome, macawOptional) ? " minus Macaw" : "");
+        return appendRunTime(biome + " done"
+                + (macawExempt(biome, macawOptional) ? " minus Macaw" : ""));
     }
 
     private static String runAnnouncement(boolean macawOptional) {
-        return "All done" + (macawOptional && !caught.contains(MACAW) ? " minus Macaw" : "");
+        return appendRunTime("All done"
+                + (macawOptional && !caught.contains(MACAW) ? " minus Macaw" : ""));
+    }
+
+    private static String appendRunTime(String announcement) {
+        if (runStartMs <= 0L) return announcement;
+        long elapsedMs = Math.max(0L, System.currentTimeMillis() - runStartMs);
+        long tenths = elapsedMs / 100L;
+        long hours = tenths / 36000L;
+        long minutes = (tenths / 600L) % 60L;
+        long seconds = (tenths / 10L) % 60L;
+        long decimal = tenths % 10L;
+        String duration = hours > 0
+                ? String.format(Locale.ROOT, "%dh %02dm %02d.%ds", hours, minutes, seconds, decimal)
+                : String.format(Locale.ROOT, "%dm %02d.%ds", minutes, seconds, decimal);
+        return announcement + " (" + duration + ")";
+    }
+
+    /** Returns true when a chat line contains the standalone !missing request. */
+    public static boolean isMissingRequest(String rawMessage) {
+        if (rawMessage == null) return false;
+        return MISSING_REQUEST.matcher(strip(rawMessage).trim())
+                .find();
+    }
+
+    /**
+     * Formats all uncaught critters grouped by biome, for the !missing chat response.
+     */
+    public static String formatMissing() {
+        List<String> groups = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : CRITTERS_BY_BIOME.entrySet()) {
+            List<String> missing = new ArrayList<>();
+            for (String critter : entry.getValue()) {
+                if (!caught.contains(critter)) missing.add(critter);
+            }
+            if (!missing.isEmpty()) {
+                groups.add(entry.getKey() + "(" + String.join(", ", missing) + ")");
+            }
+        }
+        return groups.isEmpty() ? "All creatures caught." : String.join(", ", groups);
     }
 
     /** True when the biome is only "done" because the Macaw exemption is letting it through. */
