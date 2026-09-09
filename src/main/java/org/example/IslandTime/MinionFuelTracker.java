@@ -189,8 +189,11 @@ public class MinionFuelTracker {
         // Get the title from the screen
         String title = containerScreen.getTitle().getString();
 
-        // Only track if this is a minion GUI
-        if (!title.toLowerCase().contains("minion")) {
+        // Only track an actual minion management GUI. The Bazaar's
+        // "Inferno Minion Fuel" menu also contains "minion" in its title, but its
+        // slot layout is unrelated and must never be treated as a minion fuel slot.
+        String normalizedTitle = title.toLowerCase(java.util.Locale.ROOT);
+        if (!normalizedTitle.contains("minion") || normalizedTitle.contains("minion fuel")) {
             // We're in a container but not a minion - reset if we were in a minion GUI
             if (wasInMinionGui) {
                 initialFuelSlotItem = ItemStack.EMPTY;
