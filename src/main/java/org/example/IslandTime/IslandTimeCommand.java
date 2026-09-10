@@ -132,6 +132,7 @@ public class IslandTimeCommand {
                             return 1;
                         }))
                 .then(buildFueltimeCommand())
+                .then(buildFuelcostCommand())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -340,6 +341,7 @@ public class IslandTimeCommand {
                             return 1;
                         }))
                 .then(buildFueltimeCommand())
+                .then(buildFuelcostCommand())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -680,6 +682,7 @@ public class IslandTimeCommand {
                 {"/it trackedIslandTime <DD-MM-YY>", "Show specific date (e.g., /it trackedIslandTime 1-1-26)"},
                 {"/it fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
                 {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
+                {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate"},
 
                 // Page 2 - Discord webhook & pings
                 {"/it webhook", "Show current webhook URL"},
@@ -956,6 +959,109 @@ public class IslandTimeCommand {
                             FuelCycleTracker.displayStats(ctx.getSource().getClient(), date);
                             return 1;
                         }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildFuelcostCommand() {
+        return literal("fuelcost")
+                .executes(ctx -> {
+                    showFuelCost(ctx.getSource().getClient(), 1);
+                    return 1;
+                })
+                .then(argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                        .executes(ctx -> {
+                            int count = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "count");
+                            showFuelCost(ctx.getSource().getClient(), count);
+                            return 1;
+                        }));
+    }
+
+    private static void showFuelCost(Minecraft client, int fuelCount) {
+        if (client.player == null) return;
+        client.player.sendSystemMessage(
+                Component.literal("Fetching Bazaar buy-order prices for " + fuelCount + " fuel"
+                                + (fuelCount == 1 ? "" : "s") + "...")
+                        .withStyle(ChatFormatting.GRAY));
+
+        new Thread(() -> {
+            try {
+                PriceCache.FuelCostBreakdown breakdown =
+                        PriceCache.getInfernoFuelCostBreakdown(PriceCache.getBazaar(), fuelCount);
+                if (breakdown == null) {
+                    sendFuelCostError(client, "Could not fetch all required Bazaar buy-order prices.");
+                    return;
+                }
+
+                client.execute(() -> {
+                    if (client.player == null) return;
+                    client.player.sendSystemMessage(
+                            Component.literal("Inferno Minion Fuel cost (" + breakdown.fuelCount + "):")
+                                    .withStyle(ChatFormatting.GOLD));
+                    sendFuelCostLine(client, "25x Sulphuric Coal",
+                            breakdown.sulphuricCoalPrice, 25, breakdown.fuelCount);
+                    sendFuelCostLine(client, "3x Very Crude Gabagool",
+                            breakdown.veryCrudeGabagoolPrice, 3, breakdown.fuelCount);
+                    for (Map.Entry<String, Double> entry : breakdown.distillatePrices.entrySet()) {
+                        boolean cheapest = entry.getKey().equals(breakdown.cheapestDistillateId);
+                        sendFuelCostLine(client,
+                                "6x " + fuelCostDisplayName(entry.getKey())
+                                        + (cheapest ? " (CHEAPEST)" : ""),
+                                entry.getValue(), 6, breakdown.fuelCount);
+                    }
+                    sendFuelCostLine(client, "2x Inferno Fuel Block",
+                            breakdown.fuelBlockPrice, 2, breakdown.fuelCount);
+                    client.player.sendSystemMessage(
+                            Component.literal("Per fuel: ").withStyle(ChatFormatting.YELLOW)
+                                    .append(Component.literal(PriceCache.formatCoins(breakdown.unitCost))
+                                            .withStyle(ChatFormatting.WHITE))
+                                    .append(Component.literal(" | Total: ").withStyle(ChatFormatting.YELLOW))
+                                    .append(Component.literal(PriceCache.formatCoins(breakdown.totalCost))
+                                            .withStyle(ChatFormatting.GREEN)));
+                });
+            } catch (Exception e) {
+                sendFuelCostError(client, "Fuel cost lookup failed: " + e.getMessage());
+            }
+        }, "IslandTime-FuelCost").start();
+    }
+
+    private static void sendFuelCostLine(Minecraft client, String label, double unitPrice,
+                                         int quantityPerFuel, int fuelCount) {
+        if (unitPrice <= 0) {
+            client.player.sendSystemMessage(
+                    Component.literal("  " + label + ": unavailable")
+                            .withStyle(ChatFormatting.DARK_RED));
+            return;
+        }
+        int totalQuantity = quantityPerFuel * fuelCount;
+        double totalPrice = unitPrice * totalQuantity;
+        client.player.sendSystemMessage(
+                Component.literal("  " + label + " @ ")
+                        .withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(PriceCache.formatCoinsPrecise(unitPrice))
+                                .withStyle(ChatFormatting.WHITE))
+                        .append(Component.literal(" = " + totalQuantity + "x ")
+                                .withStyle(ChatFormatting.GRAY))
+                        .append(Component.literal(PriceCache.formatCoins(totalPrice))
+                                .withStyle(ChatFormatting.AQUA)));
+    }
+
+    private static String fuelCostDisplayName(String productId) {
+        return switch (productId) {
+            case "BLAZE_ROD_DISTILLATE" -> "Blaze Rod Distillate";
+            case "GLOWSTONE_DUST_DISTILLATE" -> "Glowstone Distillate";
+            case "MAGMA_CREAM_DISTILLATE" -> "Magma Cream Distillate";
+            case "NETHER_STALK_DISTILLATE" -> "Nether Stalk Distillate";
+            case "CRUDE_GABAGOOL_DISTILLATE" -> "Crude Gabagool Distillate";
+            default -> productId;
+        };
+    }
+
+    private static void sendFuelCostError(Minecraft client, String message) {
+        client.execute(() -> {
+            if (client.player != null) {
+                client.player.sendSystemMessage(
+                        Component.literal("[FuelCost] " + message).withStyle(ChatFormatting.RED));
+            }
+        });
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildWebhookCommand() {
