@@ -262,6 +262,10 @@ public class FuelCycleTracker {
          *  (legacy/manual records) — see {@link #formatCycleRange(DayRecord)} for the
          *  display fallback. */
         public long cycleEndMs = 0;
+        /** True when the user manually corrected this day's displayed timestamps. */
+        public boolean manualCycleTimes = false;
+        /** Internal marker distinguishing a manually-entered end from a completed day. */
+        public boolean cycleClosed = false;
 
         /** Minions refueled today, auto-detected from fuel placements. */
         public int minionsRefueledAuto = 0;
@@ -352,7 +356,7 @@ public class FuelCycleTracker {
         public double getAfkPercent(long now) {
             if (activeMs <= 0) return 0.0;
             long elapsed = DAY_MS;
-            if (cycleEndMs <= 0 && cycleStartMs > 0) {
+            if ((cycleEndMs <= 0 || (manualCycleTimes && !cycleClosed)) && cycleStartMs > 0) {
                 long sinceStart = now - cycleStartMs;
                 if (sinceStart <= 0) return 0.0; // future/queued day — hasn't started yet
                 elapsed = Math.min(sinceStart, DAY_MS);
@@ -417,8 +421,18 @@ public class FuelCycleTracker {
     /** Returns all tracked day records, most recent first. */
     public static List<DayRecord> getDayRecordsDescending() {
         List<DayRecord> list = new ArrayList<>(dayRecords.values());
-        list.sort(Comparator.comparing((DayRecord d) -> d.date).reversed());
+        list.sort(Comparator.comparingLong(FuelCycleTracker::recordStartForSorting).reversed());
         return list;
+    }
+
+    private static long recordStartForSorting(DayRecord record) {
+        if (record.cycleStartMs > 0) return record.cycleStartMs;
+        try {
+            return LocalDate.parse(record.date.substring(0, 10)).atStartOfDay(ZoneId.systemDefault())
+                    .toInstant().toEpochMilli();
+        } catch (RuntimeException ignored) {
+            return Long.MIN_VALUE;
+        }
     }
 
     public static DayRecord getDayRecord(String date) {
@@ -437,7 +451,7 @@ public class FuelCycleTracker {
         long start = record.cycleStartMs;
         long end = record.cycleEndMs;
         if (start <= 0) {
-            start = LocalDate.parse(record.date).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            start = LocalDate.parse(record.date.substring(0, 10)).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
         }
         if (end <= 0) {
             end = start + DAY_MS;
@@ -456,6 +470,24 @@ public class FuelCycleTracker {
             record.cycleStartMs = System.currentTimeMillis();
             return record;
         });
+    }
+
+    private static DayRecord getOrCreateCycleDayRecord(long cohortStart, int dayIndex, boolean freshCohort) {
+        long slotStart = cohortStart + (long) dayIndex * DAY_MS;
+        String date = daySlotKey(cohortStart, dayIndex);
+        DayRecord existing = dayRecords.get(date);
+        if (freshCohort && existing != null && existing.cycleStartMs > 0 && existing.cycleStartMs != slotStart) {
+            String archivedKey = date + "~" + existing.cycleStartMs;
+            while (dayRecords.containsKey(archivedKey)) {
+                archivedKey += "~";
+            }
+            dayRecords.remove(date);
+            existing.date = archivedKey;
+            dayRecords.put(archivedKey, existing);
+            Set<String> counted = minionsCountedByDaySlot.remove(date);
+            if (counted != null) minionsCountedByDaySlot.put(archivedKey, counted);
+        }
+        return getOrCreateDayRecord(date);
     }
 
     /**
@@ -612,6 +644,100 @@ public class FuelCycleTracker {
         save();
     }
 
+    public static String formatEditableTimestamp(long epochMs) {
+        return CYCLE_LABEL_FORMAT.format(LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(epochMs), ZoneId.systemDefault()));
+    }
+
+    public static long parseEditableTimestamp(String value) {
+        LocalDateTime parsed = LocalDateTime.parse(value.trim(), CYCLE_LABEL_FORMAT);
+        return parsed.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
+
+    /**
+     * Updates a record's cycle timestamps. For an active or queued record, later records
+     * are moved with it so the queue remains contiguous; completed historical records are
+     * left untouched unless they are the record explicitly edited.
+     */
+    public static void setCycleTimes(String date, long startMs, long endMs) {
+        DayRecord selected = dayRecords.get(date);
+        if (selected == null || startMs <= 0 || endMs <= startMs) return;
+
+        long oldStart = selected.cycleStartMs;
+        if (oldStart <= 0) oldStart = startMs;
+        long oldEnd = selected.cycleEndMs;
+        long oldEffectiveEnd = oldEnd > oldStart ? oldEnd : oldStart + DAY_MS;
+        boolean wasActiveRecord = cohortStartMs > 0
+                && date.equals(daySlotKey(cohortStartMs, activeDaySlotIndex));
+        selected.cycleStartMs = startMs;
+        selected.cycleEndMs = endMs;
+        selected.manualCycleTimes = true;
+        selected.cycleClosed = oldEnd > 0;
+
+        if (wasActiveRecord) {
+            long shift = endMs - oldEffectiveEnd;
+            long newCohortStart = startMs - (long) activeDaySlotIndex * DAY_MS;
+            String newKey = daySlotKey(newCohortStart, activeDaySlotIndex);
+            if (!date.equals(newKey)) {
+                DayRecord collision = dayRecords.get(newKey);
+                if (collision != null && collision != selected) {
+                    String archivedKey = newKey + "~" + collision.cycleStartMs;
+                    while (dayRecords.containsKey(archivedKey)) archivedKey += "~";
+                    dayRecords.remove(newKey);
+                    collision.date = archivedKey;
+                    dayRecords.put(archivedKey, collision);
+                    Set<String> collisionCounted = minionsCountedByDaySlot.remove(newKey);
+                    if (collisionCounted != null) {
+                        minionsCountedByDaySlot.put(archivedKey, collisionCounted);
+                    }
+                }
+                dayRecords.remove(date);
+                selected.date = newKey;
+                dayRecords.put(newKey, selected);
+                Set<String> counted = minionsCountedByDaySlot.remove(date);
+                if (counted != null) minionsCountedByDaySlot.put(newKey, counted);
+            }
+            cohortStartMs = newCohortStart;
+            if (shift != 0) {
+                for (Map.Entry<String, Long> entry : minionExpiries.entrySet()) {
+                    entry.setValue(entry.getValue() + shift);
+                }
+            }
+        }
+
+        long now = System.currentTimeMillis();
+        boolean activeOrQueued = oldEnd <= 0 || oldStart >= now || oldEnd > now;
+        if (activeOrQueued) {
+            final long oldStartForSort = oldStart;
+            List<DayRecord> ordered = new ArrayList<>(dayRecords.values());
+            ordered.sort(Comparator.comparingLong(record -> {
+                if (record == selected) return oldStartForSort;
+                if (record.cycleStartMs > 0) return record.cycleStartMs;
+                try {
+                    return LocalDate.parse(record.date.substring(0, 10)).atStartOfDay(ZoneId.systemDefault())
+                            .toInstant().toEpochMilli();
+                } catch (RuntimeException ignored) {
+                    return Long.MAX_VALUE;
+                }
+            }));
+            int selectedIndex = ordered.indexOf(selected);
+            if (selectedIndex >= 0) {
+                long previousEnd = endMs;
+                for (int i = selectedIndex + 1; i < ordered.size(); i++) {
+                    DayRecord next = ordered.get(i);
+                    if (next.date != null && next.date.contains("~")) continue;
+                    long duration = next.cycleEndMs > next.cycleStartMs
+                            ? next.cycleEndMs - next.cycleStartMs : DAY_MS;
+                    next.cycleStartMs = previousEnd;
+                    next.cycleEndMs = previousEnd + duration;
+                    next.manualCycleTimes = true;
+                    previousEnd = next.cycleEndMs;
+                }
+            }
+        }
+        save();
+    }
+
     public static void removeDayRecord(String date) {
         if (dayRecords.remove(date) != null) {
             minionsCountedByDaySlot.remove(date);
@@ -638,7 +764,7 @@ public class FuelCycleTracker {
             DayRecord last = existing.get(0);
             long lastStart = last.cycleStartMs > 0
                     ? last.cycleStartMs
-                    : LocalDate.parse(last.date).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                    : recordStartForSorting(last);
             nextCycleStart = lastStart + DAY_MS;
             minionCount = last.getEffectiveMinionCount();
             fuelCost = last.getEffectiveFuelCost();
@@ -861,7 +987,7 @@ public class FuelCycleTracker {
         for (int u = 0; u < fuelCount; u++) {
             int dayIndex = firstDayIndex + u;
             String daySlot = daySlotKey(cohortStartMs, dayIndex);
-            DayRecord record = getOrCreateDayRecord(daySlot);
+            DayRecord record = getOrCreateCycleDayRecord(cohortStartMs, dayIndex, freshCycleStart);
             record.cycleStartMs = cohortStartMs + (long) dayIndex * DAY_MS;
 
             Set<String> counted = minionsCountedByDaySlot.computeIfAbsent(daySlot, k -> ConcurrentHashMap.newKeySet());
@@ -982,7 +1108,9 @@ public class FuelCycleTracker {
                 String daySlot = daySlotKey(cohortStartMs, currentDayIndex);
                 DayRecord record = dayRecords.get(daySlot);
                 if (record != null) {
-                    record.cycleStartMs = cohortStartMs + (long) currentDayIndex * DAY_MS;
+                    if (!record.manualCycleTimes) {
+                        record.cycleStartMs = cohortStartMs + (long) currentDayIndex * DAY_MS;
+                    }
                     record.activeMs += delta;
                 }
             }
@@ -1006,8 +1134,12 @@ public class FuelCycleTracker {
     private static void closeDaySlot(int dayIndex) {
         String daySlot = daySlotKey(cohortStartMs, dayIndex);
         DayRecord record = dayRecords.get(daySlot);
-        if (record == null || record.cycleEndMs > 0) return; // missing or already closed
-        record.cycleEndMs = cohortStartMs + (long) (dayIndex + 1) * DAY_MS;
+        if (record == null || (!record.manualCycleTimes && record.cycleEndMs > 0)
+                || (record.manualCycleTimes && record.cycleClosed)) return;
+        if (!record.manualCycleTimes) {
+            record.cycleEndMs = cohortStartMs + (long) (dayIndex + 1) * DAY_MS;
+        }
+        record.cycleClosed = true;
         minionsCountedByDaySlot.remove(daySlot);
         FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto);
     }

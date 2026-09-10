@@ -52,6 +52,9 @@ public class MinionFuelTracker {
     private static ItemStack pendingStableItem = ItemStack.EMPTY;
     private static int stableTickCount = 0;
     private static final int STABILIZATION_TICKS = 3;
+    private static ItemStack pendingChangedItem = ItemStack.EMPTY;
+    private static int pendingChangedTickCount = 0;
+    private static final int CHANGE_SETTLING_TICKS = 3;
 
     // Keep the last confirmed slot contents for every physical minion. A single global
     // baseline loses an insertion when the player closes one GUI and later reopens it
@@ -163,6 +166,8 @@ public class MinionFuelTracker {
                 canTrackChanges = false;
                 pendingStableItem = ItemStack.EMPTY;
                 stableTickCount = 0;
+                pendingChangedItem = ItemStack.EMPTY;
+                pendingChangedTickCount = 0;
                 wasInMinionGui = false;
             }
             return;
@@ -178,6 +183,8 @@ public class MinionFuelTracker {
                 canTrackChanges = false;
                 pendingStableItem = ItemStack.EMPTY;
                 stableTickCount = 0;
+                pendingChangedItem = ItemStack.EMPTY;
+                pendingChangedTickCount = 0;
                 wasInMinionGui = false;
             }
             return;
@@ -202,6 +209,8 @@ public class MinionFuelTracker {
                 canTrackChanges = false;
                 pendingStableItem = ItemStack.EMPTY;
                 stableTickCount = 0;
+                pendingChangedItem = ItemStack.EMPTY;
+                pendingChangedTickCount = 0;
                 wasInMinionGui = false;
             }
             return;
@@ -236,6 +245,8 @@ public class MinionFuelTracker {
             initialFuelSlotItem = ItemStack.EMPTY; // Clear the old state
             pendingStableItem = ItemStack.EMPTY;
             stableTickCount = 0;
+            pendingChangedItem = ItemStack.EMPTY;
+            pendingChangedTickCount = 0;
 
             // DON'T store initial state yet - wait for next tick
             return;
@@ -275,6 +286,8 @@ public class MinionFuelTracker {
                 canTrackChanges = true; // Enable tracking for next tick
                 pendingStableItem = ItemStack.EMPTY;
                 stableTickCount = 0;
+                pendingChangedItem = ItemStack.EMPTY;
+                pendingChangedTickCount = 0;
             }
             return;
         }
@@ -287,6 +300,20 @@ public class MinionFuelTracker {
 
         // Check if the slot changed
         if (!ItemStack.matches(currentItem, initialFuelSlotItem)) {
+            // Container synchronization can expose an intermediate stack count while a
+            // player is inserting a larger stack (for example 2 -> 10 -> 12). Wait for
+            // the visible result to settle before comparing it with the last confirmed
+            // state, otherwise one insertion is incorrectly reported as two additions.
+            if (!ItemStack.matches(currentItem, pendingChangedItem)) {
+                pendingChangedItem = currentItem.copy();
+                pendingChangedTickCount = 1;
+                return;
+            }
+            pendingChangedTickCount++;
+            if (pendingChangedTickCount < CHANGE_SETTLING_TICKS) return;
+            pendingChangedItem = ItemStack.EMPTY;
+            pendingChangedTickCount = 0;
+
             // Determine what the initial item was
             boolean initialWasGlassPane = !initialFuelSlotItem.isEmpty() &&
                     initialFuelSlotItem.getItem() == Items.ORANGE_STAINED_GLASS_PANE &&
@@ -391,6 +418,9 @@ public class MinionFuelTracker {
             initialFuelSlotItem = currentItem.copy();
             lastObservedFuelSlots.put(currentMinionKey, currentItem.copy());
             lastObservedFuelSlotTimes.put(currentMinionKey, System.currentTimeMillis());
+        } else {
+            pendingChangedItem = ItemStack.EMPTY;
+            pendingChangedTickCount = 0;
         }
     }
 

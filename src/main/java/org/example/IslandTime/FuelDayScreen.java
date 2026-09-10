@@ -49,6 +49,8 @@ public class FuelDayScreen extends Screen {
     private EditBox editGabagoolAmountField;
     private EditBox editFuelCostField;
     private EditBox editNotesField;
+    private EditBox editStartField;
+    private EditBox editEndField;
 
     // Scrollbar
     private boolean draggingScrollbar = false;
@@ -103,7 +105,7 @@ public class FuelDayScreen extends Screen {
         clearWidgets();
 
         int dialogX = width / 2 - 130;
-        int dialogY = height / 2 - 127;
+        int dialogY = height / 2 - 170;
 
         editMinionField = new EditBox(font, dialogX, dialogY + 20, 240, 20, Component.literal("Minions"));
         editMinionField.setMaxLength(8);
@@ -144,6 +146,18 @@ public class FuelDayScreen extends Screen {
         editNotesField.setValue(record.notes != null ? record.notes : "");
         addRenderableWidget(editNotesField);
 
+        long startMs = record.cycleStartMs > 0 ? record.cycleStartMs : System.currentTimeMillis();
+        long endMs = record.cycleEndMs > startMs ? record.cycleEndMs : startMs + FuelCycleTracker.DAY_MS;
+        editStartField = new EditBox(font, dialogX, dialogY + 190, 240, 20, Component.literal("Start"));
+        editStartField.setMaxLength(20);
+        editStartField.setValue(FuelCycleTracker.formatEditableTimestamp(startMs));
+        addRenderableWidget(editStartField);
+
+        editEndField = new EditBox(font, dialogX, dialogY + 224, 240, 20, Component.literal("End"));
+        editEndField.setMaxLength(20);
+        editEndField.setValue(FuelCycleTracker.formatEditableTimestamp(endMs));
+        addRenderableWidget(editEndField);
+
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
             String minionText = editMinionField.getValue().trim();
             if (minionText.isEmpty()) {
@@ -179,11 +193,16 @@ public class FuelDayScreen extends Screen {
                 } catch (NumberFormatException ignored) {}
             }
             FuelCycleTracker.setNotes(editDate, editNotesField.getValue());
+            try {
+                long start = FuelCycleTracker.parseEditableTimestamp(editStartField.getValue());
+                long end = FuelCycleTracker.parseEditableTimestamp(editEndField.getValue());
+                FuelCycleTracker.setCycleTimes(editDate, start, end);
+            } catch (RuntimeException ignored) {}
             closeDialog();
-        }).bounds(dialogX, dialogY + 190, 115, 20).build());
+        }).bounds(dialogX, dialogY + 258, 115, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 125, dialogY + 190, 115, 20).build());
+                .bounds(dialogX + 125, dialogY + 258, 115, 20).build());
 
         setFocused(editMinionField);
     }
@@ -236,8 +255,8 @@ public class FuelDayScreen extends Screen {
 
         if (editDialogOpen) {
             int dialogX = width / 2 - 130;
-            int dialogY = height / 2 - 127;
-            context.fill(dialogX, dialogY, dialogX + 260, dialogY + 234, 0xEE000000);
+            int dialogY = height / 2 - 170;
+            context.fill(dialogX, dialogY, dialogX + 260, dialogY + 302, 0xEE000000);
             FuelCycleTracker.DayRecord editRecord = editDate != null ? FuelCycleTracker.getDayRecord(editDate) : null;
             Component title = Component.literal("Edit " + (editRecord != null ? FuelCycleTracker.formatCycleRange(editRecord) : editDate));
             int tw = font.width(title);
@@ -255,6 +274,10 @@ public class FuelDayScreen extends Screen {
                     dialogX + 10, dialogY + 112, 0xFFAAAAAA, true);
             context.text(font, Component.literal("Notes:").withStyle(ChatFormatting.GRAY),
                     dialogX + 10, dialogY + 146, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Start (dd/MM/yy HH:mm):").withStyle(ChatFormatting.GRAY),
+                    dialogX + 10, dialogY + 180, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("End (dd/MM/yy HH:mm):").withStyle(ChatFormatting.GRAY),
+                    dialogX + 10, dialogY + 214, 0xFFAAAAAA, true);
         }
 
         super.extractRenderState(context, mouseX, mouseY, delta);
