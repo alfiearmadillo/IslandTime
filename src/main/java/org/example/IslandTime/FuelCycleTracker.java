@@ -348,24 +348,23 @@ public class FuelCycleTracker {
          * that wants to throttle live updates) freeze "now" for a batch of calculations
          * instead of it silently drifting between calls within the same render pass.
          *
-         * While this fuel-day is still actively ticking (started, not yet closed), the
-         * percentage is of time elapsed so far today — not the full cycle — so it reflects
-         * real progress instead of instantly looking tiny right after the day starts and
-         * only reaching a meaningful number near the end of the day. Once the day is
-         * closed (or for legacy records with no start timestamp), it's simply activeMs
-         * out of the full 24h day, same as before.
+         * While an automatically tracked fuel-day is still actively ticking (started, not
+         * yet closed), the percentage is of time elapsed so far. Manually corrected
+         * records always use their complete edited duration, even while active, so moving
+         * a timestamp cannot make the percentage represent only the portion elapsed so far.
          */
         public double getAfkPercent(long now) {
             if (activeMs <= 0) return 0.0;
-            long duration = manualCycleTimes && cycleEndMs > cycleStartMs
-                    ? cycleEndMs - cycleStartMs : DAY_MS;
+            boolean manuallyTimed = manualCycleTimes && cycleEndMs > cycleStartMs;
+            long duration = manuallyTimed ? cycleEndMs - cycleStartMs : DAY_MS;
             long elapsed = duration;
-            if ((cycleEndMs <= 0 || (manualCycleTimes && !cycleClosed)) && cycleStartMs > 0) {
+            if (!manuallyTimed && cycleEndMs <= 0 && cycleStartMs > 0) {
                 long sinceStart = now - cycleStartMs;
                 if (sinceStart <= 0) return 0.0; // future/queued day — hasn't started yet
                 elapsed = Math.min(sinceStart, duration);
             }
-            return Math.min(100.0, (activeMs * 100.0) / elapsed);
+            double percent = (activeMs * 100.0) / elapsed;
+            return manuallyTimed ? percent : Math.min(100.0, percent);
         }
 
         /**
@@ -376,9 +375,10 @@ public class FuelCycleTracker {
          */
         private double getFullDayAfkPercent() {
             if (activeMs <= 0) return 0.0;
-            long duration = manualCycleTimes && cycleEndMs > cycleStartMs
-                    ? cycleEndMs - cycleStartMs : DAY_MS;
-            return Math.min(100.0, (activeMs * 100.0) / duration);
+            boolean manuallyTimed = manualCycleTimes && cycleEndMs > cycleStartMs;
+            long duration = manuallyTimed ? cycleEndMs - cycleStartMs : DAY_MS;
+            double percent = (activeMs * 100.0) / duration;
+            return manuallyTimed ? percent : Math.min(100.0, percent);
         }
 
         public double getMobKillCoins() {
