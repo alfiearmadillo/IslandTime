@@ -138,7 +138,7 @@ public class FuelDayScreen extends Screen {
         editFuelCostField.setValue(record.manualFuelCost != null
                 ? String.valueOf(record.manualFuelCost)
                 : "");
-        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.getEffectiveFuelCost()) + " (or +/-N)").withStyle(ChatFormatting.GRAY));
+        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.getEffectiveFuelCost()) + " (or +/-N, 108k/15.2m)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editFuelCostField);
 
         editNotesField = new EditBox(font, dialogX, dialogY + 156, 240, 20, Component.literal("Notes"));
@@ -217,11 +217,37 @@ public class FuelDayScreen extends Screen {
      * "set to this negative number". The result is clamped to zero.
      */
     private static double resolveDeltaOrAbsolute(String text, double autoValue) throws NumberFormatException {
-        double parsed = Double.parseDouble(text);
+        double parsed = parseFlexibleNumber(text);
         if (text.startsWith("+") || text.startsWith("-")) {
             return Math.max(0.0, autoValue + parsed);
         }
         return Math.max(0.0, parsed);
+    }
+
+    /**
+     * Parses ordinary decimal values plus compact coin-style suffixes used by the GUI,
+     * such as {@code 108k}, {@code 15.2m}, or {@code 1.5b}.
+     */
+    private static double parseFlexibleNumber(String text) throws NumberFormatException {
+        String normalized = text.trim().replace(",", "").toLowerCase(java.util.Locale.ROOT);
+        if (normalized.isEmpty()) throw new NumberFormatException("empty number");
+
+        double multiplier = 1.0;
+        char suffix = normalized.charAt(normalized.length() - 1);
+        if (suffix == 'k' || suffix == 'm' || suffix == 'b' || suffix == 't') {
+            multiplier = switch (suffix) {
+                case 'k' -> 1_000.0;
+                case 'm' -> 1_000_000.0;
+                case 'b' -> 1_000_000_000.0;
+                default -> 1_000_000_000_000.0;
+            };
+            normalized = normalized.substring(0, normalized.length() - 1).trim();
+        }
+
+        if (normalized.isEmpty() || normalized.equals("+") || normalized.equals("-")) {
+            throw new NumberFormatException("missing number");
+        }
+        return Double.parseDouble(normalized) * multiplier;
     }
 
     private void closeDialog() {
