@@ -348,15 +348,23 @@ public class FuelCycleTracker {
          * that wants to throttle live updates) freeze "now" for a batch of calculations
          * instead of it silently drifting between calls within the same render pass.
          *
-         * While an automatically tracked fuel-day is still actively ticking (started, not
-         * yet closed), the percentage is of time elapsed so far. Manually corrected
-         * records always use their complete edited duration, even while active, so moving
-         * a timestamp cannot make the percentage represent only the portion elapsed so far.
+         * While a fuel-day is still actively ticking (including a manually corrected
+         * record whose edited end is still in the future), the percentage is of time
+         * elapsed since its start. Once it has ended, active time is measured against
+         * the complete cycle duration.
          */
         public double getAfkPercent(long now) {
             if (activeMs <= 0) return 0.0;
             boolean manuallyTimed = manualCycleTimes && cycleEndMs > cycleStartMs;
             long duration = manuallyTimed ? cycleEndMs - cycleStartMs : DAY_MS;
+            if (manuallyTimed && now < cycleEndMs) {
+                long sinceStart = now - cycleStartMs;
+                if (sinceStart <= 0) return 0.0;
+                // Do not cap this branch: shifting a start time forward can legitimately
+                // make already-recorded active time exceed the newly elapsed wall-clock time.
+                return (activeMs * 100.0) / sinceStart;
+            }
+
             long elapsed = duration;
             if (!manuallyTimed && cycleEndMs <= 0 && cycleStartMs > 0) {
                 long sinceStart = now - cycleStartMs;
@@ -364,7 +372,7 @@ public class FuelCycleTracker {
                 elapsed = Math.min(sinceStart, duration);
             }
             double percent = (activeMs * 100.0) / elapsed;
-            return manuallyTimed ? percent : Math.min(100.0, percent);
+            return Math.min(100.0, percent);
         }
 
         /**

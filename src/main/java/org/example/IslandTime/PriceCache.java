@@ -159,6 +159,19 @@ public class PriceCache {
         return cachedBazaar;
     }
 
+    /**
+     * Fetches a fresh Bazaar snapshot immediately. Normal callers use the five-minute cache,
+     * while the explicit fuel-cost command uses this to avoid displaying an old order price.
+     */
+    public static JsonObject refreshBazaar() {
+        JsonObject fresh = fetchBazaar();
+        if (fresh != null) {
+            cachedBazaar = fresh;
+            bazaarCacheTime = System.currentTimeMillis();
+        }
+        return fresh;
+    }
+
     // ── Price extraction helpers ────────────────────────────────────────────
 
     /** Insta-buy price (lowest sell order — what you'd pay to buy instantly). */

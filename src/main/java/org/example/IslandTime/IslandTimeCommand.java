@@ -985,7 +985,7 @@ public class IslandTimeCommand {
         new Thread(() -> {
             try {
                 PriceCache.FuelCostBreakdown breakdown =
-                        PriceCache.getInfernoFuelCostBreakdown(PriceCache.getBazaar(), fuelCount);
+                        PriceCache.getInfernoFuelCostBreakdown(PriceCache.refreshBazaar(), fuelCount);
                 if (breakdown == null) {
                     sendFuelCostError(client, "Could not fetch all required Bazaar buy-order prices.");
                     return;
