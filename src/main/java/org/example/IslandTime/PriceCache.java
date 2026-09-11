@@ -186,9 +186,27 @@ public class PriceCache {
 
     /** Insta-sell price (highest buy order — what you'd get selling instantly). */
     public static double getInstaSellPrice(JsonObject products, String productId) {
+        return getBuyOrderPrice(products, productId);
+    }
+
+    /**
+     * Highest currently listed buy order. The Bazaar quick-status sellPrice is an
+     * aggregated/averaged value, not necessarily the top order, so fuel costing uses
+     * buy_summary[0] when available.
+     */
+    public static double getBuyOrderPrice(JsonObject products, String productId) {
         if (products == null) return -1;
         JsonObject product = products.getAsJsonObject(productId);
         if (product == null) return -1;
+        JsonArray buySummary = product.getAsJsonArray("buy_summary");
+        if (buySummary != null && !buySummary.isEmpty()) {
+            JsonObject topOrder = buySummary.get(0).getAsJsonObject();
+            JsonElement topPrice = topOrder.get("pricePerUnit");
+            if (topPrice == null) topPrice = topOrder.get("price");
+            if (topPrice != null && !topPrice.isJsonNull() && topPrice.getAsDouble() > 0) {
+                return topPrice.getAsDouble();
+            }
+        }
         JsonObject qs = product.getAsJsonObject("quick_status");
         if (qs == null) return -1;
         JsonElement el = qs.get("sellPrice");
@@ -198,11 +216,6 @@ public class PriceCache {
     /** Sell offer price (lowest sell order = what you'd list at). Same as BZ buyPrice. */
     public static double getSellOfferPrice(JsonObject products, String productId) {
         return getInstaBuyPrice(products, productId);
-    }
-
-    /** Buy order price (highest buy order = what you'd place a buy order at). Same as insta-sell price. */
-    public static double getBuyOrderPrice(JsonObject products, String productId) {
-        return getInstaSellPrice(products, productId);
     }
 
     /** AH lowest BIN price via Coflnet per-item API (cached 5 min). */
