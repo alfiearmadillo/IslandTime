@@ -93,7 +93,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing per-fuel-day fuel and profit stats. Each entry is one real 24h fuel-day — placing a stack of, say, 4 fuel creates 4 entries immediately (one currently active, three future/queued), and each day gets its own alert the moment its own fuel runs out. Titled with its actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm), and a Total Profit widget in the top-right corner sums every tracked day. You can also use /it fueldays or /it fueltime")
+        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing per-fuel-day fuel and profit stats. Fuel cost per minion uses Bazaar buy-order prices for 25x Sulphuric Coal, 3x Very Crude Gabagool, 6x the cheapest of all five distillates, and 2x Inferno Fuel Block. Use /it fuelcost [NUMBER] for a full live breakdown, including all five distillate prices and the selected cheapest option. The recipe price is locked when a fuel cohort starts, and existing records keep their saved automatic price; historical costs only change when you manually change the minion count or fuel cost. Each day's total automatically scales with its effective minion count, including manual count overrides. Fuel cycles are assigned per physical minion's queued fuel units, so refueling a full set in sequence still records one shared next cycle. Refueling while fuel is active continues directly into the next 24h period; refueling after it runs out starts a new period at the actual fueling time. Each entry is one real 24h fuel-day — placing a stack of, say, 4 fuel creates 4 entries immediately (one currently active, three future/queued), and each day gets its own alert the moment its own fuel runs out. Titled with its actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm), and a Total Profit widget in the top-right corner sums every tracked day. You can also use /it fueldays or /it fueltime")
         @ConfigEditorButton(buttonText = " Open Fuel Day Tracker ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
@@ -131,10 +131,10 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(
-                name = "Current Day's Gabagool Price",
-                desc = "Manually entered sell price for a single Crude Gabagool during the currently active fuel day " +
-                        "(sacks can't be read automatically). Applies to whichever fuel-day is currently in progress — " +
-                        "not necessarily today's calendar date, if that day's fuel is still running past midnight. Edit past days individually in the Fuel Day Tracker GUI."
+                name = "Default Gabagool Price",
+                desc = "Default sell price for a single Crude Gabagool (sacks can't be read automatically). " +
+                        "Applied to the currently active fuel-day without changing past days. Explicitly editing a " +
+                        "day's price in the Fuel Day Tracker GUI overrides this default for that day."
         )
         @ConfigEditorText
         public String todayGabagoolPriceString = "0";
@@ -698,7 +698,7 @@ public class IslandTimeConfig extends Config {
 
         @ConfigAccordionId(id = 2)
         @Expose
-        @ConfigOption(name = "Announce Completion", desc = "Send a message as soon as every critter of a biome has been caught (e.g. 'Forest done'). The biome that finishes the run sends 'All done' instead of its own name")
+        @ConfigOption(name = "Announce Completion", desc = "Send a message as soon as every critter of a biome has been caught (e.g. 'Forest done (1m 12.7s)'). The timer starts when the Safari ticket is handed in. The biome that finishes the run sends 'All done' instead of its own name")
         @ConfigEditorBoolean
         public boolean announceCompletion = false;
 
@@ -710,7 +710,7 @@ public class IslandTimeConfig extends Config {
 
         @ConfigAccordionId(id = 2)
         @Expose
-        @ConfigOption(name = "Forest Minus Macaw", desc = "Treat the Forest as done without the Macaw, which often does not spawn. Announcements say 'minus Macaw' while it is still missing")
+        @ConfigOption(name = "Forest Minus Macaw", desc = "Treat the Forest as done without the Macaw, which often does not spawn. Announcements say 'minus Macaw' while it is still missing, then correct themselves to 'Forest done' and 'All done' if Macaw is caught later")
         @ConfigEditorBoolean
         public boolean announceMinusMacaw = false;
 

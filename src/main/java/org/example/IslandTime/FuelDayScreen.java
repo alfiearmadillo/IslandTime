@@ -49,6 +49,8 @@ public class FuelDayScreen extends Screen {
     private EditBox editGabagoolAmountField;
     private EditBox editFuelCostField;
     private EditBox editNotesField;
+    private EditBox editStartField;
+    private EditBox editEndField;
 
     // Scrollbar
     private boolean draggingScrollbar = false;
@@ -103,7 +105,7 @@ public class FuelDayScreen extends Screen {
         clearWidgets();
 
         int dialogX = width / 2 - 130;
-        int dialogY = height / 2 - 127;
+        int dialogY = height / 2 - 170;
 
         editMinionField = new EditBox(font, dialogX, dialogY + 20, 240, 20, Component.literal("Minions"));
         editMinionField.setMaxLength(8);
@@ -136,13 +138,25 @@ public class FuelDayScreen extends Screen {
         editFuelCostField.setValue(record.manualFuelCost != null
                 ? String.valueOf(record.manualFuelCost)
                 : "");
-        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.fuelCost) + " (or +/-N)").withStyle(ChatFormatting.GRAY));
+        editFuelCostField.setHint(Component.literal("auto: " + String.format("%.1f", record.getEffectiveFuelCost()) + " (or +/-N, 108k/15.2m)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editFuelCostField);
 
         editNotesField = new EditBox(font, dialogX, dialogY + 156, 240, 20, Component.literal("Notes"));
         editNotesField.setMaxLength(128);
         editNotesField.setValue(record.notes != null ? record.notes : "");
         addRenderableWidget(editNotesField);
+
+        long startMs = record.cycleStartMs > 0 ? record.cycleStartMs : System.currentTimeMillis();
+        long endMs = record.cycleEndMs > startMs ? record.cycleEndMs : startMs + FuelCycleTracker.DAY_MS;
+        editStartField = new EditBox(font, dialogX, dialogY + 190, 240, 20, Component.literal("Start"));
+        editStartField.setMaxLength(20);
+        editStartField.setValue(FuelCycleTracker.formatEditableTimestamp(startMs));
+        addRenderableWidget(editStartField);
+
+        editEndField = new EditBox(font, dialogX, dialogY + 224, 240, 20, Component.literal("End"));
+        editEndField.setMaxLength(20);
+        editEndField.setValue(FuelCycleTracker.formatEditableTimestamp(endMs));
+        addRenderableWidget(editEndField);
 
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
             String minionText = editMinionField.getValue().trim();
@@ -174,16 +188,21 @@ public class FuelDayScreen extends Screen {
                 FuelCycleTracker.clearManualFuelCost(editDate);
             } else {
                 try {
-                    double fuelCostValue = resolveDeltaOrAbsolute(fuelCostText, record.fuelCost);
+                    double fuelCostValue = resolveDeltaOrAbsolute(fuelCostText, record.getEffectiveFuelCost());
                     FuelCycleTracker.setFuelCost(editDate, fuelCostValue);
                 } catch (NumberFormatException ignored) {}
             }
             FuelCycleTracker.setNotes(editDate, editNotesField.getValue());
+            try {
+                long start = FuelCycleTracker.parseEditableTimestamp(editStartField.getValue());
+                long end = FuelCycleTracker.parseEditableTimestamp(editEndField.getValue());
+                FuelCycleTracker.setCycleTimes(editDate, start, end);
+            } catch (RuntimeException ignored) {}
             closeDialog();
-        }).bounds(dialogX, dialogY + 190, 115, 20).build());
+        }).bounds(dialogX, dialogY + 258, 115, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 125, dialogY + 190, 115, 20).build());
+                .bounds(dialogX + 125, dialogY + 258, 115, 20).build());
 
         setFocused(editMinionField);
     }
@@ -198,11 +217,37 @@ public class FuelDayScreen extends Screen {
      * "set to this negative number". The result is clamped to zero.
      */
     private static double resolveDeltaOrAbsolute(String text, double autoValue) throws NumberFormatException {
-        double parsed = Double.parseDouble(text);
+        double parsed = parseFlexibleNumber(text);
         if (text.startsWith("+") || text.startsWith("-")) {
             return Math.max(0.0, autoValue + parsed);
         }
         return Math.max(0.0, parsed);
+    }
+
+    /**
+     * Parses ordinary decimal values plus compact coin-style suffixes used by the GUI,
+     * such as {@code 108k}, {@code 15.2m}, or {@code 1.5b}.
+     */
+    private static double parseFlexibleNumber(String text) throws NumberFormatException {
+        String normalized = text.trim().replace(",", "").toLowerCase(java.util.Locale.ROOT);
+        if (normalized.isEmpty()) throw new NumberFormatException("empty number");
+
+        double multiplier = 1.0;
+        char suffix = normalized.charAt(normalized.length() - 1);
+        if (suffix == 'k' || suffix == 'm' || suffix == 'b' || suffix == 't') {
+            multiplier = switch (suffix) {
+                case 'k' -> 1_000.0;
+                case 'm' -> 1_000_000.0;
+                case 'b' -> 1_000_000_000.0;
+                default -> 1_000_000_000_000.0;
+            };
+            normalized = normalized.substring(0, normalized.length() - 1).trim();
+        }
+
+        if (normalized.isEmpty() || normalized.equals("+") || normalized.equals("-")) {
+            throw new NumberFormatException("missing number");
+        }
+        return Double.parseDouble(normalized) * multiplier;
     }
 
     private void closeDialog() {
@@ -236,8 +281,8 @@ public class FuelDayScreen extends Screen {
 
         if (editDialogOpen) {
             int dialogX = width / 2 - 130;
-            int dialogY = height / 2 - 127;
-            context.fill(dialogX, dialogY, dialogX + 260, dialogY + 234, 0xEE000000);
+            int dialogY = height / 2 - 170;
+            context.fill(dialogX, dialogY, dialogX + 260, dialogY + 302, 0xEE000000);
             FuelCycleTracker.DayRecord editRecord = editDate != null ? FuelCycleTracker.getDayRecord(editDate) : null;
             Component title = Component.literal("Edit " + (editRecord != null ? FuelCycleTracker.formatCycleRange(editRecord) : editDate));
             int tw = font.width(title);
@@ -255,6 +300,10 @@ public class FuelDayScreen extends Screen {
                     dialogX + 10, dialogY + 112, 0xFFAAAAAA, true);
             context.text(font, Component.literal("Notes:").withStyle(ChatFormatting.GRAY),
                     dialogX + 10, dialogY + 146, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Start (dd/MM/yy HH:mm):").withStyle(ChatFormatting.GRAY),
+                    dialogX + 10, dialogY + 180, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("End (dd/MM/yy HH:mm):").withStyle(ChatFormatting.GRAY),
+                    dialogX + 10, dialogY + 214, 0xFFAAAAAA, true);
         }
 
         super.extractRenderState(context, mouseX, mouseY, delta);

@@ -118,7 +118,8 @@ public class ConfigManager {
         config.fuelCycles.useTestDataFile = FuelCycleTracker.isTestModeEnabled();
         config.fuelCycles.mobKillCoinsAt100PercentString = String.valueOf(FuelCycleTracker.getMobKillCoinsAt100Baseline());
         FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(FuelCycleTracker.getCurrentCycleDateKey());
-        config.fuelCycles.todayGabagoolPriceString = today != null ? String.valueOf(today.gabagoolPrice) : "0";
+        // Keep this as the persistent default. It must not be replaced with the current
+        // record's value when a new fuel-day starts or when MoulConfig is reopened.
         // Blank = "use the auto-tracked value from sack chat messages" (see SackIncomeTracker).
         config.fuelCycles.todayGabagoolAmountString = (today != null && today.manualGabagoolAmount != null)
                 ? String.valueOf(today.manualGabagoolAmount)
@@ -191,10 +192,7 @@ public class ConfigManager {
         String todayDate = FuelCycleTracker.getCurrentCycleDateKey();
         try {
             double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
-            FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
-            if (today == null || today.gabagoolPrice != price) {
-                FuelCycleTracker.setGabagoolPrice(todayDate, price);
-            }
+            FuelCycleTracker.applyDefaultGabagoolPrice(todayDate, price);
         } catch (NumberFormatException ignored) {
             // Invalid number, keep existing value
         }

@@ -64,8 +64,16 @@ public class CritterSafariHud {
     public static void register() {
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             if (!overlay) {
-                CritterSafariTracker.onChatMessage(message.getString());
+                String rawMessage = message.getString();
+                CritterSafariTracker.onChatMessage(rawMessage);
                 CritterSafariAnnouncer.pollAndSend();
+                CritterSafariAnnouncer.respondToMissingRequest(rawMessage);
+            }
+        });
+
+        ClientReceiveMessageEvents.CHAT.register((message, playerChatMessage, sender, boundChatType, timeStamp) -> {
+            if (isDetectedSafariArea()) {
+                CritterSafariAnnouncer.respondToMissingRequest(message.getString());
             }
         });
 
@@ -85,7 +93,11 @@ public class CritterSafariHud {
     public static boolean isInSafariArea() {
         IslandTimeConfig config = ConfigManager.getConfig();
         if (config != null && !config.critterSafari.onlyInSafari) return true;
+        return isDetectedSafariArea();
+    }
 
+    /** Returns true only when the tab list currently identifies an actual Safari area. */
+    private static boolean isDetectedSafariArea() {
         String area = BlockHighlightRenderer.detectCurrentArea();
         if (area == null) return false;
         String normalized = area.trim().toLowerCase(Locale.ROOT);
