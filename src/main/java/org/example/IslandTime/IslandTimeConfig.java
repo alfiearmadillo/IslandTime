@@ -131,10 +131,10 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(
-                name = "Current Day's Gabagool Price",
-                desc = "Manually entered sell price for a single Crude Gabagool during the currently active fuel day " +
-                        "(sacks can't be read automatically). Applies to whichever fuel-day is currently in progress — " +
-                        "not necessarily today's calendar date, if that day's fuel is still running past midnight. Edit past days individually in the Fuel Day Tracker GUI."
+                name = "Default Gabagool Price",
+                desc = "Default sell price for a single Crude Gabagool (sacks can't be read automatically). " +
+                        "Applied to the currently active fuel-day without changing past days. Explicitly editing a " +
+                        "day's price in the Fuel Day Tracker GUI overrides this default for that day."
         )
         @ConfigEditorText
         public String todayGabagoolPriceString = "0";

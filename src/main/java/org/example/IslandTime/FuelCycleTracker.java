@@ -296,6 +296,8 @@ public class FuelCycleTracker {
 
         /** Manually entered sell price for a single Crude Gabagool (or whatever sack item is tracked). */
         public double gabagoolPrice = 0.0;
+        /** True when this record's price was explicitly overridden instead of inherited from MoulConfig. */
+        public boolean manualGabagoolPrice = false;
 
         /** Amount of Crude Gabagool auto-tracked today from Hypixel's periodic "[Sacks]" chat
          *  messages (see SackIncomeTracker) — sum of all positive sack-gain deltas seen today. */
@@ -347,7 +349,7 @@ public class FuelCycleTracker {
          * instead of it silently drifting between calls within the same render pass.
          *
          * While this fuel-day is still actively ticking (started, not yet closed), the
-         * percentage is of time elapsed so far today — not the full 24h — so it reflects
+         * percentage is of time elapsed so far today — not the full cycle — so it reflects
          * real progress instead of instantly looking tiny right after the day starts and
          * only reaching a meaningful number near the end of the day. Once the day is
          * closed (or for legacy records with no start timestamp), it's simply activeMs
@@ -355,26 +357,28 @@ public class FuelCycleTracker {
          */
         public double getAfkPercent(long now) {
             if (activeMs <= 0) return 0.0;
-            long elapsed = DAY_MS;
+            long duration = manualCycleTimes && cycleEndMs > cycleStartMs
+                    ? cycleEndMs - cycleStartMs : DAY_MS;
+            long elapsed = duration;
             if ((cycleEndMs <= 0 || (manualCycleTimes && !cycleClosed)) && cycleStartMs > 0) {
                 long sinceStart = now - cycleStartMs;
                 if (sinceStart <= 0) return 0.0; // future/queued day — hasn't started yet
-                elapsed = Math.min(sinceStart, DAY_MS);
+                elapsed = Math.min(sinceStart, duration);
             }
             return Math.min(100.0, (activeMs * 100.0) / elapsed);
         }
 
         /**
-         * AFK percentage of the full 24h day, regardless of whether the day is still in
-         * progress. Unlike {@link #getAfkPercent(long)} (which uses elapsed-time-so-far as
-         * the denominator for a live/in-progress day, purely for a more meaningful live
-         * display), mob-kill coins must always be computed against the full day so they
-         * accumulate smoothly as the day goes on instead of jumping around based on how much
-         * of the day has elapsed.
+         * AFK percentage of the full cycle duration, regardless of whether the day is still
+         * in progress. Manually corrected cycle durations are used here too, so mob-kill
+         * coins remain consistent with an edited timeframe instead of silently reverting to
+         * a 24h denominator.
          */
         private double getFullDayAfkPercent() {
             if (activeMs <= 0) return 0.0;
-            return Math.min(100.0, (activeMs * 100.0) / DAY_MS);
+            long duration = manualCycleTimes && cycleEndMs > cycleStartMs
+                    ? cycleEndMs - cycleStartMs : DAY_MS;
+            return Math.min(100.0, (activeMs * 100.0) / duration);
         }
 
         public double getMobKillCoins() {
@@ -581,6 +585,15 @@ public class FuelCycleTracker {
     public static void setGabagoolPrice(String date, double value) {
         DayRecord record = dayRecords.get(date);
         if (record == null) return;
+        record.gabagoolPrice = Math.max(0.0, value);
+        record.manualGabagoolPrice = true;
+        save();
+    }
+
+    /** Applies the configured default without turning it into a per-day manual override. */
+    public static void applyDefaultGabagoolPrice(String date, double value) {
+        DayRecord record = dayRecords.get(date);
+        if (record == null || record.manualGabagoolPrice) return;
         record.gabagoolPrice = Math.max(0.0, value);
         save();
     }
