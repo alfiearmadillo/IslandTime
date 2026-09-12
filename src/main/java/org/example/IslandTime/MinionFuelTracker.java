@@ -57,9 +57,18 @@ public class MinionFuelTracker {
     // currentMinionKey has been resolved to an upgrade-uuid key.
     private static String currentArmorStandKey = "";
 
-    // Wall-clock time the currently open minion GUI was detected, used as the reference
-    // point for the upgrade-item timestamp freshness check (see readPermanentUuid()).
-    private static long minionGuiOpenedAtMs = 0;
+    // The container menu we last saw and the wall-clock time it appeared. Every menu the
+    // server opens is a brand new object, so this is both the reference point for the
+    // upgrade-item timestamp freshness check (see readPermanentUuid()) and how we tell
+    // whether the menu currently open is still the previously selected minion's (see
+    // checkFuelSlot()). Held weakly so a closed menu is never kept alive by this tracker.
+    private static java.lang.ref.WeakReference<AbstractContainerMenu> lastSeenMenu =
+            new java.lang.ref.WeakReference<>(null);
+    private static long menuOpenedAtMs = 0;
+
+    // Wall-clock time of the armor-stand right-click that selected the minion we're
+    // currently tracking (0 when the GUI was opened without one being captured).
+    private static long currentMinionClickMs = 0;
 
     // Whether the identity of the currently open minion has been settled for this GUI.
     private static boolean identityResolved = false;
@@ -206,9 +215,11 @@ public class MinionFuelTracker {
      * minion with certainty — no coordinate guessing, and no dependence on the
      * right-click that opened the GUI having been captured.
      *
-     * @param force when true, settle on whatever is currently readable (used once the
-     *              container has fully synced); when false, only resolve if a trusted
-     *              upgrade uuid is already visible, and retry again next tick otherwise.
+     * @param force when true, settle the identity for good with whatever is currently
+     *              readable (used once the container has fully synced); when false, adopt
+     *              an identity as soon as a trusted upgrade uuid is visible but keep
+     *              re-checking on later ticks, so a second upgrade that syncs a tick later
+     *              is registered too.
      */
     private static void resolveMinionIdentity(ChestMenu menu, boolean force) {
         List<String> upgradeUuids = readUpgradeUuids(menu);
@@ -217,16 +228,13 @@ public class MinionFuelTracker {
         String resolvedKey = MinionIdentityRegistry.resolve(
                 upgradeUuids, currentArmorStandKey, currentMinionKey);
 
-        boolean resolvedSomething = !upgradeUuids.isEmpty();
         if (resolvedKey != null && !resolvedKey.isEmpty() && !resolvedKey.equals(currentMinionKey)) {
             adoptMinionKey(currentMinionKey, resolvedKey);
-            resolvedSomething = true;
         }
 
-        // Nothing identifiable yet (a minion with no upgrades at all, or upgrade data that
-        // hasn't synced): keep the legacy key for now and keep looking while this GUI is
-        // open, since a late-arriving upgrade can still be adopted safely.
-        if (resolvedSomething) identityResolved = true;
+        // Only the forced pass (after the container has settled) ends the search — until
+        // then a minion with no readable upgrade yet is simply re-checked next tick.
+        if (force) identityResolved = true;
     }
 
     /**
@@ -292,7 +300,7 @@ public class MinionFuelTracker {
         Long timestamp = readLongTag(nbt, "timestamp");
         if (timestamp == null) return null; // no way to prove the uuid isn't regenerated
 
-        long reference = minionGuiOpenedAtMs > 0 ? minionGuiOpenedAtMs : System.currentTimeMillis();
+        long reference = menuOpenedAtMs > 0 ? menuOpenedAtMs : System.currentTimeMillis();
         if (timestamp > reference - UPGRADE_TIMESTAMP_MIN_AGE_MS) return null;
 
         return uuid;
@@ -317,7 +325,7 @@ public class MinionFuelTracker {
         currentMinionName = "";
         currentMinionKey = "";
         currentArmorStandKey = "";
-        minionGuiOpenedAtMs = 0;
+        currentMinionClickMs = 0;
         identityResolved = false;
         canTrackChanges = false;
         pendingStableItem = ItemStack.EMPTY;
@@ -351,6 +359,14 @@ public class MinionFuelTracker {
 
         AbstractContainerMenu handler = client.player.containerMenu;
         if (!(handler instanceof ChestMenu containerHandler)) return;
+
+        // Note when this particular container appeared. Every menu the server opens is a
+        // new object, so a change here means a genuinely new GUI (and therefore newly
+        // generated GUI items, see readPermanentUuid()).
+        if (lastSeenMenu.get() != handler) {
+            lastSeenMenu = new java.lang.ref.WeakReference<>(handler);
+            menuOpenedAtMs = System.currentTimeMillis();
+        }
 
         // Get the title from the screen
         String title = containerScreen.getTitle().getString();
@@ -392,10 +408,11 @@ public class MinionFuelTracker {
             // via a favourite/macro instead of a fresh right-click). Once the GUI's
             // contents have synced, this is upgraded to a permanent upgrade-uuid key
             // wherever one is available (see resolveMinionIdentity()).
+            long armorStandClickMs = lastArmorStandInteractMs;
             String armorStandKey = consumeLastArmorStandKey();
             currentArmorStandKey = armorStandKey != null ? armorStandKey : "";
             currentMinionKey = armorStandKey != null ? armorStandKey : title;
-            minionGuiOpenedAtMs = System.currentTimeMillis();
+            currentMinionClickMs = armorStandKey != null ? armorStandClickMs : 0;
             identityResolved = false;
             canTrackChanges = false; // Disable tracking until we stabilize
             initialFuelSlotItem = ItemStack.EMPTY; // Clear the old state
@@ -408,9 +425,21 @@ public class MinionFuelTracker {
             return;
         }
 
-        // Upgrade slots sync alongside the rest of the container, so keep trying until a
-        // permanent upgrade uuid shows up. Done before any use of currentMinionKey below
-        // so the fuel-slot baseline is looked up under the final key.
+        // The right-click that selected this minion can land a tick or two before the
+        // server actually swaps in its GUI, leaving the PREVIOUS minion's menu on screen.
+        // Reading that menu would attribute another minion's fuel slot and — far worse —
+        // another minion's upgrade uuids to this one, so wait for the new menu to arrive.
+        // The wait is bounded by the same freshness window used for the click itself, so a
+        // click that never resulted in a new menu can't stall tracking indefinitely.
+        if (currentMinionClickMs > 0 && menuOpenedAtMs < currentMinionClickMs
+                && System.currentTimeMillis() - currentMinionClickMs <= ARMOR_STAND_INTERACT_MAX_AGE_MS) {
+            return;
+        }
+
+        // Upgrade slots sync alongside the rest of the container, so keep looking until a
+        // permanent upgrade uuid shows up (and to pick up a second upgrade that syncs a
+        // tick later than the first). Done before any use of currentMinionKey below so the
+        // fuel-slot baseline is looked up under the final key.
         if (!identityResolved) resolveMinionIdentity(containerHandler, false);
 
         // If we can't track changes yet, we're in the stabilization phase. The slot's

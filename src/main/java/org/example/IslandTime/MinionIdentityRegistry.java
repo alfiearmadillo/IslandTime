@@ -43,6 +43,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *       the identity its data is stored under, instead of silently starting over.</li>
  * </ul>
  *
+ * <p>The file is only a memory aid, not the source of truth: because a canonical key is
+ * derived deterministically from the upgrade uuid itself, losing it simply means each
+ * minion re-registers the same identity the next time its GUI is opened.
+ *
  * <p>The canonical key itself is {@code uuid:<first trusted upgrade uuid ever seen>} for
  * minions that have a usable upgrade, and stays that exact string forever afterwards even
  * if that particular upgrade is later removed — renaming it again would orphan the saved
@@ -60,6 +64,10 @@ public class MinionIdentityRegistry {
     private static final Map<String, String> aliases = new ConcurrentHashMap<>();
 
     private static volatile boolean loaded = false;
+
+    // Set when a save fails, so the next resolve() retries it instead of leaving the
+    // in-memory aliases unwritten until something else happens to change them.
+    private static volatile boolean saveFailed = false;
 
     /** Prefix of every canonical key derived from a permanent minion-upgrade uuid. */
     public static final String UUID_KEY_PREFIX = "uuid:";
@@ -115,28 +123,43 @@ public class MinionIdentityRegistry {
         // Nothing usable at all — keep the legacy behaviour untouched.
         if (canonical == null) return fallbackKey;
 
+        final String resolved = canonical;
         boolean changed = false;
+
         if (upgradeUuids != null) {
             for (String uuid : upgradeUuids) {
-                changed |= put(uuidAlias(uuid), canonical);
+                String alias = uuidAlias(uuid);
+                String existing = aliases.get(alias);
+                if (existing != null && !existing.isEmpty() && !existing.equals(resolved)) {
+                    // This upgrade is already registered to a different minion — it must
+                    // have been physically moved between minions. Leave the older mapping
+                    // alone rather than quietly re-pointing it (and with it that minion's
+                    // saved fuel data) at this one.
+                    System.out.println("[MinionIdentityRegistry] Upgrade uuid " + uuid
+                            + " is registered to '" + existing + "'; not re-binding it to '" + resolved + "'.");
+                    continue;
+                }
+                changed |= put(alias, resolved);
             }
         }
+
         if (armorStandKey != null && !armorStandKey.isEmpty()) {
             // An identity can only live on one armor stand at a time. If it was previously
             // registered to a different stand (i.e. the upgrade was physically moved to
             // another minion), drop that older mapping — otherwise the old minion would
             // keep resolving to this same identity and the two minions' fuel tracking
             // would silently merge into one.
-            String standKey = standAlias(armorStandKey);
+            final String standKey = standAlias(armorStandKey);
             changed |= aliases.entrySet().removeIf(entry ->
                     entry.getKey().startsWith(STAND_PREFIX)
                             && !entry.getKey().equals(standKey)
-                            && canonical.equals(entry.getValue()));
-            changed |= put(standKey, canonical);
+                            && resolved.equals(entry.getValue()));
+            changed |= put(standKey, resolved);
         }
-        if (changed) save();
 
-        return canonical;
+        if (changed || saveFailed) save();
+
+        return resolved;
     }
 
     /** Stores an alias, returning true when that actually changed anything. */
@@ -187,7 +210,9 @@ public class MinionIdentityRegistry {
             Files.move(CONFIG_TMP, CONFIG_FILE,
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
+            saveFailed = false;
         } catch (IOException e) {
+            saveFailed = true;
             System.err.println("[MinionIdentityRegistry] Save failed: " + e.getMessage());
             try { Files.deleteIfExists(CONFIG_TMP); } catch (IOException ignored) {}
         }

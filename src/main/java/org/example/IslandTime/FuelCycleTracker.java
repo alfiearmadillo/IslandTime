@@ -559,6 +559,10 @@ public class FuelCycleTracker {
         Long expiry = minionExpiries.remove(oldKey);
         if (expiry != null) {
             Long existing = minionExpiries.get(newKey);
+            if (existing != null) {
+                System.out.println("[FuelCycleTracker] Minion key '" + newKey + "' already had fuel state "
+                        + "while migrating '" + oldKey + "' onto it; merging conservatively.");
+            }
             minionExpiries.put(newKey, existing == null ? expiry : Math.max(existing, expiry));
             changed = true;
         }
