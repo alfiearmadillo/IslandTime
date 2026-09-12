@@ -250,7 +250,7 @@ public class MinionFuelTracker {
         if (upgradeUuids.isEmpty() && !force) return;
 
         String resolvedKey = MinionIdentityRegistry.resolve(
-                upgradeUuids, currentArmorStandKey, currentMinionKey);
+                upgradeUuids, currentArmorStandKey, currentMinionKey, currentMinionName);
 
         if (resolvedKey != null && !resolvedKey.isEmpty() && !resolvedKey.equals(currentMinionKey)) {
             adoptMinionKey(currentMinionKey, resolvedKey);

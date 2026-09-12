@@ -2,6 +2,9 @@ package org.example.islandtime;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.IOException;
@@ -9,9 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -52,6 +58,35 @@ import java.util.concurrent.ConcurrentHashMap;
  * if that particular upgrade is later removed — renaming it again would orphan the saved
  * data. Minions with no trusted upgrade uuid keep using their legacy armor-stand key
  * exactly as before, so nothing regresses for them.
+ *
+ * <p><b>On disk</b> the aliases are grouped into one record per minion rather than written
+ * out as the flat alias map they are in memory, because the flat form scattered each
+ * minion's three entries across the file in hash order and repeated a ~230 character
+ * armor-stand key on every one. A record instead reads as a single glanceable block:
+ *
+ * <pre>
+ * {
+ *   "armorTypes": { "armor1": "|minecraft:leather_boots:Leather Boots|..." },
+ *   "minions": [
+ *     {
+ *       "id": "uuid:bc5ed5d0-2129-487f-8865-04a2bc6a2a1c",
+ *       "name": "Inferno Minion XI",
+ *       "position": "-41,216,10",
+ *       "armor": "armor1",
+ *       "upgrades": [ "bc5ed5d0-...", "b6ec6d5f-..." ]
+ *     }
+ *   ]
+ * }
+ * </pre>
+ *
+ * <p>The equipment half of every armor-stand key is identical across minions of the same
+ * build, so it is deduplicated into the shared {@code armorTypes} table and referenced by
+ * name. The stored form is still lossless — {@code position + armorTypes[armor]} rebuilds
+ * the original key character for character, which matters because that exact string is
+ * what {@code MinionFuelTracker.buildArmorStandKey()} will look up.
+ *
+ * <p>Files written by older versions used the flat alias map; those are detected and
+ * converted on load, so upgrading needs no action and loses nothing.
  */
 public class MinionIdentityRegistry {
 
@@ -62,6 +97,15 @@ public class MinionIdentityRegistry {
 
     /** Alias ("uuid:..." / "stand:...") -> canonical minion key. */
     private static final Map<String, String> aliases = new ConcurrentHashMap<>();
+
+    /**
+     * Canonical minion key -> the minion's GUI title, e.g. "Inferno Minion XI".
+     *
+     * <p>Purely cosmetic: it exists so the saved file can be read at a glance and is never
+     * consulted when resolving an identity. Hypixel reuses the same title for every minion
+     * of a kind, so it is not remotely unique and must not be treated as an alias.
+     */
+    private static final Map<String, String> displayNames = new ConcurrentHashMap<>();
 
     private static volatile boolean loaded = false;
 
@@ -91,10 +135,13 @@ public class MinionIdentityRegistry {
      *                      when no armor-stand right-click was captured.
      * @param fallbackKey   the key to keep using when nothing better can be determined
      *                      (normally the armor-stand key, or the GUI title).
+     * @param displayName   the minion's GUI title, recorded alongside the identity purely
+     *                      so the saved file is readable. May be null or empty.
      * @return the canonical key, or {@code fallbackKey} when this minion has no usable
      *         upgrade uuid and has never been registered before.
      */
-    public static String resolve(List<String> upgradeUuids, String armorStandKey, String fallbackKey) {
+    public static String resolve(List<String> upgradeUuids, String armorStandKey,
+                                 String fallbackKey, String displayName) {
         load();
 
         String canonical = null;
@@ -157,6 +204,11 @@ public class MinionIdentityRegistry {
             changed |= put(standKey, resolved);
         }
 
+        if (displayName != null && !displayName.isEmpty()
+                && !displayName.equals(displayNames.put(resolved, displayName))) {
+            changed = true;
+        }
+
         if (changed || saveFailed) save();
 
         return resolved;
@@ -166,6 +218,137 @@ public class MinionIdentityRegistry {
     private static boolean put(String alias, String canonical) {
         String previous = aliases.put(alias, canonical);
         return !canonical.equals(previous);
+    }
+
+    // -------------------------------------------------------------------------
+    // On-disk model — one record per minion
+    // -------------------------------------------------------------------------
+
+    /** Root object of the saved file. */
+    private static final class IdentityDocument {
+        /** Shared armor-stand equipment signatures, referenced by {@link MinionRecord#armor}. */
+        Map<String, String> armorTypes;
+        List<MinionRecord> minions;
+    }
+
+    /** One physical minion: its canonical key and everything that resolves to it. */
+    private static final class MinionRecord {
+        /** The canonical minion key every tracker stores this minion's state under. */
+        String id;
+        /** GUI title, for readability only — never used to resolve an identity. */
+        String name;
+        /** Block position half of the armor-stand key, e.g. {@code -41,216,10}. */
+        String position;
+        /** Key into {@link IdentityDocument#armorTypes} for the equipment half. */
+        String armor;
+        /** Permanent upgrade-item uuids, stored without the {@code uuid:} prefix. */
+        List<String> upgrades;
+        /**
+         * Any alias that doesn't fit the fields above, stored verbatim with its prefix.
+         * Normally absent; it exists so a hand-edited or future-format file survives a
+         * load/save round trip instead of having entries silently dropped.
+         */
+        List<String> extraAliases;
+    }
+
+    /** Splits an armor-stand key into its position and equipment halves. */
+    private static String[] splitStandKey(String standKey) {
+        int pipe = standKey.indexOf('|');
+        return pipe < 0 ? new String[] { standKey, "" }
+                        : new String[] { standKey.substring(0, pipe), standKey.substring(pipe) };
+    }
+
+    /** Projects the flat alias map into per-minion records for saving. */
+    private static IdentityDocument toDocument() {
+        // Canonical key -> its aliases, sorted so the output is byte-for-byte stable
+        // between saves (a HashMap's iteration order is not, which made the old file
+        // reshuffle itself every time it was written).
+        Map<String, List<String>> byCanonical = new TreeMap<>();
+        for (Map.Entry<String, String> entry : new TreeMap<>(aliases).entrySet()) {
+            byCanonical.computeIfAbsent(entry.getValue(), k -> new ArrayList<>()).add(entry.getKey());
+        }
+        // A minion whose name we know but whose aliases have all been evicted would
+        // otherwise vanish; keep the record so the name isn't lost.
+        for (String canonical : displayNames.keySet()) {
+            byCanonical.computeIfAbsent(canonical, k -> new ArrayList<>());
+        }
+
+        Map<String, String> armorNames = new LinkedHashMap<>(); // signature -> "armorN"
+        List<MinionRecord> records = new ArrayList<>();
+
+        for (Map.Entry<String, List<String>> entry : byCanonical.entrySet()) {
+            MinionRecord record = new MinionRecord();
+            record.id = entry.getKey();
+            record.name = displayNames.get(entry.getKey());
+
+            for (String alias : entry.getValue()) {
+                if (alias.startsWith(UUID_KEY_PREFIX)) {
+                    if (record.upgrades == null) record.upgrades = new ArrayList<>();
+                    record.upgrades.add(alias.substring(UUID_KEY_PREFIX.length()));
+                } else if (alias.startsWith(STAND_PREFIX) && record.position == null
+                        && !splitStandKey(alias.substring(STAND_PREFIX.length()))[0].isEmpty()) {
+                    String[] halves = splitStandKey(alias.substring(STAND_PREFIX.length()));
+                    record.position = halves[0];
+                    if (!halves[1].isEmpty()) {
+                        String name = armorNames.get(halves[1]);
+                        if (name == null) {
+                            name = "armor" + (armorNames.size() + 1);
+                            armorNames.put(halves[1], name);
+                        }
+                        record.armor = name;
+                    }
+                } else {
+                    // A second armor stand for one identity shouldn't happen (resolve()
+                    // evicts the old one), so anything landing here is preserved as-is
+                    // rather than being squeezed into the fields above.
+                    if (record.extraAliases == null) record.extraAliases = new ArrayList<>();
+                    record.extraAliases.add(alias);
+                }
+            }
+            records.add(record);
+        }
+
+        records.sort(Comparator
+                .comparing((MinionRecord r) -> r.name == null ? "" : r.name)
+                .thenComparing(r -> r.position == null ? "" : r.position)
+                .thenComparing(r -> r.id));
+
+        IdentityDocument document = new IdentityDocument();
+        document.minions = records;
+        document.armorTypes = new LinkedHashMap<>();
+        for (Map.Entry<String, String> armor : armorNames.entrySet()) {
+            document.armorTypes.put(armor.getValue(), armor.getKey());
+        }
+        return document;
+    }
+
+    /** Rebuilds the flat alias map from per-minion records. */
+    private static void fromDocument(IdentityDocument document) {
+        if (document == null || document.minions == null) return;
+        Map<String, String> armorTypes = document.armorTypes == null
+                ? Map.<String, String>of() : document.armorTypes;
+
+        for (MinionRecord record : document.minions) {
+            if (record == null || record.id == null || record.id.isEmpty()) continue;
+
+            if (record.name != null && !record.name.isEmpty()) {
+                displayNames.put(record.id, record.name);
+            }
+            if (record.upgrades != null) {
+                for (String uuid : record.upgrades) {
+                    if (uuid != null && !uuid.isEmpty()) aliases.put(uuidAlias(uuid), record.id);
+                }
+            }
+            if (record.position != null && !record.position.isEmpty()) {
+                String armor = record.armor == null ? "" : armorTypes.getOrDefault(record.armor, "");
+                aliases.put(standAlias(record.position + armor), record.id);
+            }
+            if (record.extraAliases != null) {
+                for (String alias : record.extraAliases) {
+                    if (alias != null && !alias.isEmpty()) aliases.put(alias, record.id);
+                }
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -187,26 +370,49 @@ public class MinionIdentityRegistry {
 
         if (!Files.exists(CONFIG_FILE)) return;
 
+        boolean converted = false;
         try {
             String json = Files.readString(CONFIG_FILE);
-            Map<String, String> stored = GSON.fromJson(json,
-                    new TypeToken<LinkedHashMap<String, String>>() {}.getType());
-            if (stored != null) {
-                for (Map.Entry<String, String> entry : stored.entrySet()) {
-                    if (entry.getKey() == null || entry.getValue() == null) continue;
-                    if (entry.getKey().isEmpty() || entry.getValue().isEmpty()) continue;
-                    aliases.put(entry.getKey(), entry.getValue());
-                }
+            JsonElement root = JsonParser.parseString(json);
+            if (root == null || !root.isJsonObject()) return;
+            JsonObject object = root.getAsJsonObject();
+
+            if (object.has("minions")) {
+                fromDocument(GSON.fromJson(object, IdentityDocument.class));
+            } else {
+                // Pre-record format: a flat alias -> canonical map. Read it as-is and
+                // rewrite it in the new shape, so upgrading needs no action.
+                loadLegacyAliasMap(json);
+                converted = !aliases.isEmpty();
             }
         } catch (Exception e) {
             System.err.println("[MinionIdentityRegistry] Load failed: " + e.getMessage());
+            return;
+        }
+
+        if (converted) {
+            System.out.println("[MinionIdentityRegistry] Converted " + aliases.size()
+                    + " saved aliases to the per-minion format.");
+            save();
+        }
+    }
+
+    /** Reads a file written before identities were grouped into per-minion records. */
+    private static void loadLegacyAliasMap(String json) {
+        Map<String, String> stored = GSON.fromJson(json,
+                new TypeToken<LinkedHashMap<String, String>>() {}.getType());
+        if (stored == null) return;
+        for (Map.Entry<String, String> entry : stored.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) continue;
+            if (entry.getKey().isEmpty() || entry.getValue().isEmpty()) continue;
+            aliases.put(entry.getKey(), entry.getValue());
         }
     }
 
     public static void save() {
         try {
             Files.createDirectories(CONFIG_FILE.getParent());
-            Files.writeString(CONFIG_TMP, GSON.toJson(new LinkedHashMap<>(aliases)));
+            Files.writeString(CONFIG_TMP, GSON.toJson(toDocument()));
             Files.move(CONFIG_TMP, CONFIG_FILE,
                     StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
