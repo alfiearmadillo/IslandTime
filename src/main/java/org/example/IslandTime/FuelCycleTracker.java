@@ -623,9 +623,9 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Removes any {@code minionExpiries} entry whose key identifies no specific physical
+     * Removes any saved per-minion entry whose key identifies no specific physical
      * minion — i.e. a bare GUI-title fallback key like {@code "Inferno Minion XI"}, rather
-     * than a permanent upgrade-uuid key or a position+equipment armor-stand key (see
+     * than a permanent upgrade-uuid key or a position+armor armor-stand key (see
      * {@link #isPerMinionKey(String)}) — but only when at least one per-minion key also
      * exists at the same time.
      *
@@ -641,6 +641,12 @@ public class FuelCycleTracker {
      * count onto every future day-slot up to its expiry. Purging it also decrements
      * {@code minionsRefueledAuto} on every not-yet-closed day-slot it had been counted toward,
      * so the bogus count doesn't linger in already-queued day records either.
+     *
+     * <p>{@code minionFuelUnitsQueued} is swept as well, and separately, because a stale
+     * title-only key does not always appear in both maps — a fallback key that picked up
+     * the name of the fuel item rather than a minion (e.g. {@code "Inferno Minion Fuel"})
+     * can be left behind in the queued map alone, where it would otherwise never be
+     * reachable by any real minion and never be cleaned up.
      */
     private static void purgeStaleLegacyMinionKeys() {
         if (minionExpiries.isEmpty()) return;
@@ -648,13 +654,16 @@ public class FuelCycleTracker {
                 .anyMatch(FuelCycleTracker::isPerMinionKey);
         if (!hasModernKey) return;
 
+        boolean changed = false;
+
         List<String> legacyKeys = minionExpiries.keySet().stream()
                 .filter(k -> !isPerMinionKey(k))
                 .collect(java.util.stream.Collectors.toList());
-        if (legacyKeys.isEmpty()) return;
 
         for (String legacyKey : legacyKeys) {
             minionExpiries.remove(legacyKey);
+            minionFuelUnitsQueued.remove(legacyKey);
+            changed = true;
             for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
                 if (entry.getValue().remove(legacyKey)) {
                     DayRecord record = dayRecords.get(entry.getKey());
@@ -666,7 +675,30 @@ public class FuelCycleTracker {
             System.out.println("[FuelCycleTracker] Purged stale legacy (pre-armor-stand-tracking) "
                     + "minion key '" + legacyKey + "' from saved data.");
         }
-        save();
+
+        // Sweep queued-only leftovers: a stale fallback key with no expiry of its own is
+        // invisible to the loop above, but still inflates this minion's queued fuel count
+        // if it is ever matched again.
+        List<String> queuedOnlyKeys = minionFuelUnitsQueued.keySet().stream()
+                .filter(k -> !isPerMinionKey(k))
+                .collect(java.util.stream.Collectors.toList());
+
+        for (String queuedKey : queuedOnlyKeys) {
+            minionFuelUnitsQueued.remove(queuedKey);
+            changed = true;
+            for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+                if (entry.getValue().remove(queuedKey)) {
+                    DayRecord record = dayRecords.get(entry.getKey());
+                    if (record != null && record.minionsRefueledAuto > 0) {
+                        record.minionsRefueledAuto -= 1;
+                    }
+                }
+            }
+            System.out.println("[FuelCycleTracker] Purged stale queued-fuel entry for non-minion key '"
+                    + queuedKey + "' from saved data.");
+        }
+
+        if (changed) save();
     }
 
     /**
