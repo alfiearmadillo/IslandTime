@@ -539,14 +539,13 @@ public class FuelCycleTracker {
      * Returns every stored armor-stand key recorded at the given block position, other than
      * {@code exceptKey}.
      *
-     * <p>An armor-stand key is "{@code x,y,z}" followed by the stand's full equipment, and
-     * in practice the equipment half drifts: the same physical minion has been observed
-     * saved under one held item and later reported by the server with another (equipment
-     * arrives in separate packets and is not always fully synced when the key is built).
-     * When that happens the minion's saved fuel-days are stranded under a key that will
-     * never be matched again. The block position, by contrast, is stable and holds exactly
-     * one minion, so it is the reliable half of the key and the right thing to re-attach
-     * stranded state by.
+     * <p>An armor-stand key is "{@code x,y,z}" followed by the stand's equipment, and keys
+     * saved before the hand slots were excluded also contain whatever the minion was
+     * holding — an item Hypixel re-randomizes every time the minion loads in. Those keys
+     * therefore changed on almost every rejoin, stranding the minion's saved fuel-days
+     * under keys that will never be matched again. The block position, by contrast, is
+     * stable and holds exactly one minion, so it is the reliable half of the key and the
+     * right thing to re-attach stranded state by.
      *
      * @param position the "{@code x,y,z}" prefix of an armor-stand key.
      */

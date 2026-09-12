@@ -36,19 +36,20 @@ public class MinionFuelTracker {
     // physical minion with certainty rather than by inference.
     //
     // When a minion has no usable upgrade uuid we fall back to the older key: the block
-    // position and full equipment (see buildArmorStandKey()) of the armor stand entity
-    // that was right-clicked to open the GUI (see registerArmorStandInteractionListener()
+    // position and worn armor (see buildArmorStandKey()) of the armor stand entity that
+    // was right-clicked to open the GUI (see registerArmorStandInteractionListener()
     // below), and failing even that, the GUI title itself (safety net). Unlike the title
     // (which is identical for every minion of the same type/tier, e.g. 32 "Wheat Minion
     // XI" armor stands on one island), a given physical minion's armor stand normally
-    // never moves and never changes its equipped skin/items, so that key distinguishes 32
-    // separate minions of the same tier instead of merging them into one. Position+
-    // equipment is used instead of the armor stand's entity UUID because entity UUIDs are
-    // re-assigned whenever the server unloads and reloads the island.
+    // never moves and never changes its worn skin, so that key distinguishes 32 separate
+    // minions of the same tier instead of merging them into one. Position+armor is used
+    // instead of the armor stand's entity UUID because entity UUIDs are re-assigned
+    // whenever the server unloads and reloads the island. What the stand is *holding* is
+    // excluded, because Hypixel re-randomizes it on every load — see buildArmorStandKey().
     //
-    // Existing data saved under a position+equipment key is migrated onto the upgrade-uuid
-    // key the first time that minion's GUI is opened (see adoptMinionKey()), so the switch
-    // is seamless and no in-progress or queued fuel-day is lost.
+    // Existing data saved under an armor-stand key is migrated onto the upgrade-uuid key
+    // the first time that minion's GUI is opened (see adoptMinionKey()), so the switch is
+    // seamless and no in-progress or queued fuel-day is lost.
     private static String currentMinionKey = "";
 
     // The position+equipment key of the armor stand this GUI was opened from (empty when
@@ -162,18 +163,27 @@ public class MinionFuelTracker {
 
     /**
      * Builds a key identifying a specific physical minion armor stand from its block
-     * position and everything it has equipped (helmet/chestplate/leggings/boots/hands) —
-     * stable across server restarts/rejoins (unlike the entity's UUID, which gets
-     * reassigned whenever the server unloads and reloads the island), as long as the
-     * minion itself isn't physically moved or its skin changed. Two minions of the exact
-     * same type/tier standing at different spots still get different keys since their
-     * positions differ.
+     * position and its worn armor — stable across server restarts/rejoins (unlike the
+     * entity's UUID, which gets reassigned whenever the server unloads and reloads the
+     * island), as long as the minion isn't physically moved or its skin changed. Two
+     * minions of the exact same type/tier standing at different spots still get different
+     * keys since their positions differ.
+     *
+     * <p>The hand slots are deliberately excluded. Hypixel hands a minion a <em>randomly
+     * chosen</em> weapon (stone/iron/gold/diamond sword) every time it loads in, so
+     * anything held is re-rolled on each rejoin and cannot form part of an identity — a
+     * key including it silently becomes a different key after a reload, which is the
+     * root cause of the long-standing "which minion is which" mis-tracking. Worn armor
+     * and the head skin are not randomized, so they are kept: they encode the minion's
+     * type/tier, which lets a minion replaced by a different one at the same position be
+     * told apart rather than inheriting its predecessor's fuel-days.
      */
     private static String buildArmorStandKey(ArmorStand armorStand) {
         BlockPos pos = armorStand.blockPosition();
         StringBuilder key = new StringBuilder();
         key.append(pos.getX()).append(',').append(pos.getY()).append(',').append(pos.getZ());
         for (EquipmentSlot slot : EquipmentSlot.values()) {
+            if (slot == EquipmentSlot.MAINHAND || slot == EquipmentSlot.OFFHAND) continue;
             ItemStack item = armorStand.getItemBySlot(slot);
             key.append('|');
             if (!item.isEmpty()) {
@@ -250,6 +260,16 @@ public class MinionFuelTracker {
         // then a minion with no readable upgrade yet is simply re-checked next tick.
         if (force) {
             identityResolved = true;
+
+            // A minion with no usable upgrade uuid stays on its armor-stand key. Because
+            // that key used to include the randomly re-rolled held weapon, this same
+            // minion may have saved fuel state under several different old keys — one per
+            // sword it happened to be holding. Consolidate them onto the current key so
+            // those minions recover too, not just the ones with an upgrade uuid.
+            if (FuelCycleTracker.isArmorStandFormatKey(currentMinionKey)) {
+                migrateStrandedKeysAtSamePosition(currentMinionKey);
+            }
+
             // Always report the outcome: when a minion can't be identified by an upgrade
             // uuid, the per-slot reasons are the only way to tell why.
             logIdentityOutcome(menu);
@@ -288,20 +308,21 @@ public class MinionFuelTracker {
      * Re-attaches fuel state that was saved under a <em>stale</em> armor-stand key for this
      * same minion.
      *
-     * <p>An armor-stand key is the stand's block position plus its full equipment, and the
-     * equipment half is not dependable — the same physical minion is regularly saved under
-     * one set of equipment and later reported by the server with another, because
-     * equipment arrives in its own packets and isn't always fully synced at the moment the
-     * key is built. (This is the inconsistency that motivated identifying minions by a
-     * permanent upgrade uuid in the first place.) When it happens, the plain rename above
-     * can't find the saved data: today's key no longer equals the one on disk, so a live
-     * fuel-day is left stranded under a key nothing will ever match again — and the next
-     * refuel would then count this minion a second time under its uuid key.
+     * <p>Armor-stand keys used to include the stand's hand slots, and Hypixel gives every
+     * minion a randomly chosen sword each time it loads in. The same physical minion
+     * therefore saved its fuel state under a different key after almost every rejoin, so
+     * the plain rename above can't find that data: today's key no longer equals the one on
+     * disk, and a live fuel-day is left stranded under a key nothing will ever match again
+     * — while the next refuel counts the minion again under its new key. (This re-rolled
+     * sword is the original cause of the "which minion is which" mis-tracking that
+     * motivated identifying minions by a permanent upgrade uuid.) Newly built keys no
+     * longer include the hands, but keys saved before that change still have to be found.
      *
      * <p>The block position is the stable half of the key and holds exactly one minion, so
      * any stored key at this minion's position belongs to this minion and is migrated onto
-     * its uuid key. {@code renameMinionKey} merges rather than overwrites, so recovering
-     * several stale keys at once can't lose or double-count anything.
+     * {@code newKey}. {@code renameMinionKey} merges rather than overwrites, so recovering
+     * several stale keys at once — one per sword this minion has been seen holding — can't
+     * lose or double-count anything.
      */
     private static void migrateStrandedKeysAtSamePosition(String newKey) {
         if (currentArmorStandKey.isEmpty()) return;
@@ -312,7 +333,7 @@ public class MinionFuelTracker {
 
         for (String strandedKey : FuelCycleTracker.findMinionKeysAtPosition(position, currentArmorStandKey)) {
             System.out.println("[MinionFuelTracker] Recovering fuel state saved under a stale armor-stand key "
-                    + "at " + position + " (its recorded equipment no longer matches): \""
+                    + "at " + position + " (recorded while holding a different randomly assigned item): \""
                     + strandedKey + "\" -> \"" + newKey + "\"");
             FuelCycleTracker.renameMinionKey(strandedKey, newKey);
         }
