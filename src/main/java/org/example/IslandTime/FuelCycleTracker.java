@@ -155,8 +155,10 @@ public class FuelCycleTracker {
     private static final int MAX_BACKUPS = 7;
     private static long lastBackupTime = 0;
 
-    // Active per-minion fuel state: minion key (armor stand position+equipment, or GUI
-    // title as a fallback — the same key MinionFuelTracker uses to distinguish minions)
+    // Active per-minion fuel state: minion key (a permanent minion-upgrade uuid where the
+    // minion has one — see MinionIdentityRegistry — otherwise the older armor stand
+    // position+equipment key, or the GUI title as a last-resort fallback; the same key
+    // MinionFuelTracker uses to distinguish minions)
     // -> that minion's own fuel expiry time. Each minion tracks its own remaining fuel
     // independently, so fueling 32 minions doesn't serialize their fuel-days onto one
     // shared timeline. An empty map means no minion currently has active fuel (no
@@ -518,18 +520,87 @@ public class FuelCycleTracker {
     private static final java.util.regex.Pattern ARMOR_STAND_KEY_PATTERN =
             java.util.regex.Pattern.compile("^-?\\d+,-?\\d+,-?\\d+\\|.*");
 
+    /** True when {@code key} is a position+equipment armor-stand key (see the pattern above). */
+    static boolean isArmorStandFormatKey(String key) {
+        return key != null && ARMOR_STAND_KEY_PATTERN.matcher(key).matches();
+    }
+
     /**
-     * Removes any {@code minionExpiries} entry whose key is <b>not</b> a modern
-     * position+equipment armor-stand key (see {@code MinionFuelTracker.buildArmorStandKey()}) —
-     * i.e. a bare GUI-title fallback key like {@code "Inferno Minion XI"} — but only when at
-     * least one modern position-format key also exists at the same time.
+     * True for any key that identifies one specific physical minion: either a permanent
+     * upgrade-uuid key (the preferred modern form, see {@link MinionIdentityRegistry}) or
+     * the older position+equipment armor-stand key. A bare GUI title is neither.
+     */
+    private static boolean isPerMinionKey(String key) {
+        return MinionIdentityRegistry.isUuidKey(key) || isArmorStandFormatKey(key);
+    }
+
+    /**
+     * Moves all saved per-minion fuel state from {@code oldKey} onto {@code newKey}, used
+     * when a minion previously tracked by its armor stand's position+equipment is
+     * re-identified by a permanent minion-upgrade uuid (see {@link MinionIdentityRegistry}).
+     * Purely a rename: expiries, queued fuel-unit counts and per-day-slot attribution all
+     * carry over untouched, so an in-progress or queued fuel-day keeps running exactly as
+     * it was.
+     *
+     * <p>If {@code newKey} somehow already has state of its own (e.g. two upgrades that
+     * were previously registered separately ending up in the same minion), the two are
+     * merged conservatively — the longer expiry and larger queued count win, and any
+     * day-slot that had counted both keys as separate minions is decremented back to one
+     * so the day's minion count stays accurate.
+     *
+     * @return true when anything was actually migrated.
+     */
+    public static boolean renameMinionKey(String oldKey, String newKey) {
+        if (oldKey == null || newKey == null) return false;
+        if (oldKey.isEmpty() || newKey.isEmpty() || oldKey.equals(newKey)) return false;
+
+        boolean changed = false;
+
+        Long expiry = minionExpiries.remove(oldKey);
+        if (expiry != null) {
+            Long existing = minionExpiries.get(newKey);
+            minionExpiries.put(newKey, existing == null ? expiry : Math.max(existing, expiry));
+            changed = true;
+        }
+
+        Integer queued = minionFuelUnitsQueued.remove(oldKey);
+        if (queued != null) {
+            Integer existing = minionFuelUnitsQueued.get(newKey);
+            minionFuelUnitsQueued.put(newKey, existing == null ? queued : Math.max(existing, queued));
+            changed = true;
+        }
+
+        for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+            if (!entry.getValue().remove(oldKey)) continue;
+            changed = true;
+            if (!entry.getValue().add(newKey)) {
+                // Both keys were counted toward this day slot, but they are the same
+                // physical minion — drop the now-duplicated count.
+                DayRecord record = dayRecords.get(entry.getKey());
+                if (record != null && record.minionsRefueledAuto > 0) record.minionsRefueledAuto--;
+            }
+        }
+
+        if (changed) {
+            System.out.println("[FuelCycleTracker] Migrated minion key '" + oldKey + "' -> '" + newKey + "'.");
+            save();
+        }
+        return changed;
+    }
+
+    /**
+     * Removes any {@code minionExpiries} entry whose key identifies no specific physical
+     * minion — i.e. a bare GUI-title fallback key like {@code "Inferno Minion XI"}, rather
+     * than a permanent upgrade-uuid key or a position+equipment armor-stand key (see
+     * {@link #isPerMinionKey(String)}) — but only when at least one per-minion key also
+     * exists at the same time.
      *
      * <p>A title-only key can't reliably represent one specific physical minion (every minion
      * of the same type/tier shares the same GUI title), so it's only ever meant to be a
      * last-resort fallback for the rare case a minion GUI opens without a captured armor-stand
      * right-click (e.g. via the favourite-GUI shortcut). If a title-only key is found alongside
-     * real position-format keys, it's almost certainly stale data left over from before
-     * position-based tracking existed, not a currently legitimate parallel mechanism — left
+     * real per-minion keys, it's almost certainly stale data left over from before
+     * per-minion tracking existed, not a currently legitimate parallel mechanism — left
      * alone, such an entry can sit with an expiry far in the future indefinitely, which both
      * permanently blocks the cohort from ever being treated as "fully run dry" (since
      * {@code minionExpiries} never becomes empty) and keeps re-queuing a phantom single-minion
@@ -540,11 +611,11 @@ public class FuelCycleTracker {
     private static void purgeStaleLegacyMinionKeys() {
         if (minionExpiries.isEmpty()) return;
         boolean hasModernKey = minionExpiries.keySet().stream()
-                .anyMatch(k -> ARMOR_STAND_KEY_PATTERN.matcher(k).matches());
+                .anyMatch(FuelCycleTracker::isPerMinionKey);
         if (!hasModernKey) return;
 
         List<String> legacyKeys = minionExpiries.keySet().stream()
-                .filter(k -> !ARMOR_STAND_KEY_PATTERN.matcher(k).matches())
+                .filter(k -> !isPerMinionKey(k))
                 .collect(java.util.stream.Collectors.toList());
         if (legacyKeys.isEmpty()) return;
 
@@ -930,9 +1001,10 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Called when the minion identified by {@code minionKey} (the block position +
-     * equipment of the armor stand entity right-clicked to open its GUI, or its GUI
-     * title as a fallback — the same string {@link MinionFuelTracker} uses to tell
+     * Called when the minion identified by {@code minionKey} (its permanent
+     * minion-upgrade uuid where it has one, else the block position + equipment of the
+     * armor stand entity right-clicked to open its GUI, or its GUI title as a final
+     * fallback — the same string {@link MinionFuelTracker} uses to tell
      * minions apart) is fueled with
      * {@code fuelCount} units of fuel (e.g. placing a stack of 10 at once). While fuel is
      * still active, each unit extends that specific minion's own fuel expiry by 24h,
