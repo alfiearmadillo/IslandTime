@@ -133,6 +133,7 @@ public class IslandTimeCommand {
                         }))
                 .then(buildFueltimeCommand())
                 .then(buildFuelcostCommand())
+                .then(buildMinionIdCommand())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -342,6 +343,7 @@ public class IslandTimeCommand {
                         }))
                 .then(buildFueltimeCommand())
                 .then(buildFuelcostCommand())
+                .then(buildMinionIdCommand())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -959,6 +961,37 @@ public class IslandTimeCommand {
                             FuelCycleTracker.displayStats(ctx.getSource().getClient(), date);
                             return 1;
                         }));
+    }
+
+    /**
+     * {@code /it minionid} — reports how the currently open minion GUI is being identified
+     * and exactly what each upgrade slot contains. Minions are tracked by the permanent
+     * uuid on an upgrade item (a Flycatcher, for instance); when no upgrade qualifies, this
+     * shows the per-slot reason so it's clear whether the slot is empty, the item carries
+     * no uuid, or its uuid is regenerated each time the menu opens.
+     */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildMinionIdCommand() {
+        return literal("minionid")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    if (client.player == null) return 1;
+
+                    java.util.List<String> report = MinionFuelTracker.describeOpenMinionGui();
+                    if (report == null) {
+                        client.player.sendSystemMessage(
+                                Component.literal("[IslandTime] Open a minion's GUI first, then run /it minionid.")
+                                        .withStyle(ChatFormatting.RED));
+                        return 1;
+                    }
+
+                    client.player.sendSystemMessage(
+                            Component.literal("[IslandTime] Minion identity:").withStyle(ChatFormatting.GOLD));
+                    for (String line : report) {
+                        client.player.sendSystemMessage(
+                                Component.literal("  " + line).withStyle(ChatFormatting.GRAY));
+                    }
+                    return 1;
+                });
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildFuelcostCommand() {

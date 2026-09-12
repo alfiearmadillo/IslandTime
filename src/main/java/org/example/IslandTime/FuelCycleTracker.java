@@ -19,10 +19,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -155,8 +158,10 @@ public class FuelCycleTracker {
     private static final int MAX_BACKUPS = 7;
     private static long lastBackupTime = 0;
 
-    // Active per-minion fuel state: minion key (armor stand position+equipment, or GUI
-    // title as a fallback — the same key MinionFuelTracker uses to distinguish minions)
+    // Active per-minion fuel state: minion key (a permanent minion-upgrade uuid where the
+    // minion has one — see MinionIdentityRegistry — otherwise the older armor stand
+    // position+equipment key, or the GUI title as a last-resort fallback; the same key
+    // MinionFuelTracker uses to distinguish minions)
     // -> that minion's own fuel expiry time. Each minion tracks its own remaining fuel
     // independently, so fueling 32 minions doesn't serialize their fuel-days onto one
     // shared timeline. An empty map means no minion currently has active fuel (no
@@ -518,38 +523,149 @@ public class FuelCycleTracker {
     private static final java.util.regex.Pattern ARMOR_STAND_KEY_PATTERN =
             java.util.regex.Pattern.compile("^-?\\d+,-?\\d+,-?\\d+\\|.*");
 
+    /** True when {@code key} is a position+equipment armor-stand key (see the pattern above). */
+    static boolean isArmorStandFormatKey(String key) {
+        return key != null && ARMOR_STAND_KEY_PATTERN.matcher(key).matches();
+    }
+
     /**
-     * Removes any {@code minionExpiries} entry whose key is <b>not</b> a modern
-     * position+equipment armor-stand key (see {@code MinionFuelTracker.buildArmorStandKey()}) —
-     * i.e. a bare GUI-title fallback key like {@code "Inferno Minion XI"} — but only when at
-     * least one modern position-format key also exists at the same time.
+     * True for any key that identifies one specific physical minion: either a permanent
+     * upgrade-uuid key (the preferred modern form, see {@link MinionIdentityRegistry}) or
+     * the older position+equipment armor-stand key. A bare GUI title is neither.
+     */
+    private static boolean isPerMinionKey(String key) {
+        return MinionIdentityRegistry.isUuidKey(key) || isArmorStandFormatKey(key);
+    }
+
+    /**
+     * Returns every stored armor-stand key recorded at the given block position, other than
+     * {@code exceptKey}.
+     *
+     * <p>An armor-stand key is "{@code x,y,z}" followed by the stand's equipment, and keys
+     * saved before the hand slots were excluded also contain whatever the minion was
+     * holding — an item Hypixel re-randomizes every time the minion loads in. Those keys
+     * therefore changed on almost every rejoin, stranding the minion's saved fuel-days
+     * under keys that will never be matched again. The block position, by contrast, is
+     * stable and holds exactly one minion, so it is the reliable half of the key and the
+     * right thing to re-attach stranded state by.
+     *
+     * @param position the "{@code x,y,z}" prefix of an armor-stand key.
+     */
+    public static List<String> findMinionKeysAtPosition(String position, String exceptKey) {
+        if (position == null || position.isEmpty()) return List.of();
+        String prefix = position + "|";
+
+        Set<String> candidates = new HashSet<>(minionExpiries.keySet());
+        candidates.addAll(minionFuelUnitsQueued.keySet());
+        for (Set<String> counted : minionsCountedByDaySlot.values()) candidates.addAll(counted);
+
+        return candidates.stream()
+                .filter(key -> key.startsWith(prefix))
+                .filter(key -> !key.equals(exceptKey))
+                .sorted()
+                .toList();
+    }
+
+    /**
+     * Moves all saved per-minion fuel state from {@code oldKey} onto {@code newKey}, used
+     * when a minion previously tracked by its armor stand's position+equipment is
+     * re-identified by a permanent minion-upgrade uuid (see {@link MinionIdentityRegistry}).
+     * Purely a rename: expiries, queued fuel-unit counts and per-day-slot attribution all
+     * carry over untouched, so an in-progress or queued fuel-day keeps running exactly as
+     * it was.
+     *
+     * <p>If {@code newKey} somehow already has state of its own (e.g. two upgrades that
+     * were previously registered separately ending up in the same minion), the two are
+     * merged conservatively — the longer expiry and larger queued count win, and any
+     * day-slot that had counted both keys as separate minions is decremented back to one
+     * so the day's minion count stays accurate.
+     *
+     * @return true when anything was actually migrated.
+     */
+    public static boolean renameMinionKey(String oldKey, String newKey) {
+        if (oldKey == null || newKey == null) return false;
+        if (oldKey.isEmpty() || newKey.isEmpty() || oldKey.equals(newKey)) return false;
+
+        boolean changed = false;
+
+        Long expiry = minionExpiries.remove(oldKey);
+        if (expiry != null) {
+            Long existing = minionExpiries.get(newKey);
+            if (existing != null) {
+                System.out.println("[FuelCycleTracker] Minion key '" + newKey + "' already had fuel state "
+                        + "while migrating '" + oldKey + "' onto it; merging conservatively.");
+            }
+            minionExpiries.put(newKey, existing == null ? expiry : Math.max(existing, expiry));
+            changed = true;
+        }
+
+        Integer queued = minionFuelUnitsQueued.remove(oldKey);
+        if (queued != null) {
+            Integer existing = minionFuelUnitsQueued.get(newKey);
+            minionFuelUnitsQueued.put(newKey, existing == null ? queued : Math.max(existing, queued));
+            changed = true;
+        }
+
+        for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+            if (!entry.getValue().remove(oldKey)) continue;
+            changed = true;
+            if (!entry.getValue().add(newKey)) {
+                // Both keys were counted toward this day slot, but they are the same
+                // physical minion — drop the now-duplicated count.
+                DayRecord record = dayRecords.get(entry.getKey());
+                if (record != null && record.minionsRefueledAuto > 0) record.minionsRefueledAuto--;
+            }
+        }
+
+        if (changed) {
+            System.out.println("[FuelCycleTracker] Migrated minion key '" + oldKey + "' -> '" + newKey + "'.");
+            save();
+        }
+        return changed;
+    }
+
+    /**
+     * Removes any saved per-minion entry whose key identifies no specific physical
+     * minion — i.e. a bare GUI-title fallback key like {@code "Inferno Minion XI"}, rather
+     * than a permanent upgrade-uuid key or a position+armor armor-stand key (see
+     * {@link #isPerMinionKey(String)}) — but only when at least one per-minion key also
+     * exists at the same time.
      *
      * <p>A title-only key can't reliably represent one specific physical minion (every minion
      * of the same type/tier shares the same GUI title), so it's only ever meant to be a
      * last-resort fallback for the rare case a minion GUI opens without a captured armor-stand
      * right-click (e.g. via the favourite-GUI shortcut). If a title-only key is found alongside
-     * real position-format keys, it's almost certainly stale data left over from before
-     * position-based tracking existed, not a currently legitimate parallel mechanism — left
+     * real per-minion keys, it's almost certainly stale data left over from before
+     * per-minion tracking existed, not a currently legitimate parallel mechanism — left
      * alone, such an entry can sit with an expiry far in the future indefinitely, which both
      * permanently blocks the cohort from ever being treated as "fully run dry" (since
      * {@code minionExpiries} never becomes empty) and keeps re-queuing a phantom single-minion
      * count onto every future day-slot up to its expiry. Purging it also decrements
      * {@code minionsRefueledAuto} on every not-yet-closed day-slot it had been counted toward,
      * so the bogus count doesn't linger in already-queued day records either.
+     *
+     * <p>{@code minionFuelUnitsQueued} is swept as well, and separately, because a stale
+     * title-only key does not always appear in both maps — a fallback key that picked up
+     * the name of the fuel item rather than a minion (e.g. {@code "Inferno Minion Fuel"})
+     * can be left behind in the queued map alone, where it would otherwise never be
+     * reachable by any real minion and never be cleaned up.
      */
     private static void purgeStaleLegacyMinionKeys() {
         if (minionExpiries.isEmpty()) return;
         boolean hasModernKey = minionExpiries.keySet().stream()
-                .anyMatch(k -> ARMOR_STAND_KEY_PATTERN.matcher(k).matches());
+                .anyMatch(FuelCycleTracker::isPerMinionKey);
         if (!hasModernKey) return;
 
+        boolean changed = false;
+
         List<String> legacyKeys = minionExpiries.keySet().stream()
-                .filter(k -> !ARMOR_STAND_KEY_PATTERN.matcher(k).matches())
+                .filter(k -> !isPerMinionKey(k))
                 .collect(java.util.stream.Collectors.toList());
-        if (legacyKeys.isEmpty()) return;
 
         for (String legacyKey : legacyKeys) {
             minionExpiries.remove(legacyKey);
+            minionFuelUnitsQueued.remove(legacyKey);
+            changed = true;
             for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
                 if (entry.getValue().remove(legacyKey)) {
                     DayRecord record = dayRecords.get(entry.getKey());
@@ -561,7 +677,30 @@ public class FuelCycleTracker {
             System.out.println("[FuelCycleTracker] Purged stale legacy (pre-armor-stand-tracking) "
                     + "minion key '" + legacyKey + "' from saved data.");
         }
-        save();
+
+        // Sweep queued-only leftovers: a stale fallback key with no expiry of its own is
+        // invisible to the loop above, but still inflates this minion's queued fuel count
+        // if it is ever matched again.
+        List<String> queuedOnlyKeys = minionFuelUnitsQueued.keySet().stream()
+                .filter(k -> !isPerMinionKey(k))
+                .collect(java.util.stream.Collectors.toList());
+
+        for (String queuedKey : queuedOnlyKeys) {
+            minionFuelUnitsQueued.remove(queuedKey);
+            changed = true;
+            for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+                if (entry.getValue().remove(queuedKey)) {
+                    DayRecord record = dayRecords.get(entry.getKey());
+                    if (record != null && record.minionsRefueledAuto > 0) {
+                        record.minionsRefueledAuto -= 1;
+                    }
+                }
+            }
+            System.out.println("[FuelCycleTracker] Purged stale queued-fuel entry for non-minion key '"
+                    + queuedKey + "' from saved data.");
+        }
+
+        if (changed) save();
     }
 
     /**
@@ -930,9 +1069,10 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Called when the minion identified by {@code minionKey} (the block position +
-     * equipment of the armor stand entity right-clicked to open its GUI, or its GUI
-     * title as a fallback — the same string {@link MinionFuelTracker} uses to tell
+     * Called when the minion identified by {@code minionKey} (its permanent
+     * minion-upgrade uuid where it has one, else the block position + equipment of the
+     * armor stand entity right-clicked to open its GUI, or its GUI title as a final
+     * fallback — the same string {@link MinionFuelTracker} uses to tell
      * minions apart) is fueled with
      * {@code fuelCount} units of fuel (e.g. placing a stack of 10 at once). While fuel is
      * still active, each unit extends that specific minion's own fuel expiry by 24h,
@@ -1244,31 +1384,133 @@ public class FuelCycleTracker {
     // Persistence — atomic write via tmp → rename
     // -------------------------------------------------------------------------
 
+    /**
+     * The saved shape of {@code fuel_days.json}.
+     *
+     * <p>Field order here is the order Gson writes them, so the small scalars come first
+     * and the two bulk sections ({@link #minions}, {@link #days}) last.
+     *
+     * <p>Per-minion state used to be three separate maps keyed by the full minion key
+     * ({@code minionExpiries}, {@code minionFuelUnitsQueued} and {@code minionsCountedByDaySlot}),
+     * which meant every minion's key — up to ~210 characters for a legacy armor-stand key —
+     * was repeated once per map and again for every day slot it appeared in. On a real save
+     * that was ~390 repetitions of those keys opening the file. They are now gathered into
+     * one {@link MinionState} record per minion, each given a short {@code ref} that the
+     * day slots cite instead of restating the key.
+     *
+     * <p>The three legacy fields are still declared so files written by older versions (and
+     * older backups, which are restored by hand) load unchanged. Gson omits null fields, so
+     * leaving them unset means they simply stop being written once a save is rewritten.
+     */
     private static class SaveData {
-        Map<String, Long> minionExpiries;
-        Map<String, Integer> minionFuelUnitsQueued;
         long cohortStartMs;
         int activeDaySlotIndex;
-        Map<String, Set<String>> minionsCountedByDaySlot;
         double mobKillCoinsAt100Baseline;
-        Map<String, DayRecord> days;
         long lastBackupTime;
+
+        /** One record per minion: its key, its fuel state, and a short ref for day slots. */
+        List<MinionState> minions;
+        /** Day slot -> the refs of the minions counted toward it. */
+        Map<String, List<String>> daySlotMinions;
+
+        Map<String, DayRecord> days;
+
+        // --- pre-record format, read on load and never written again ---
+        Map<String, Long> minionExpiries;
+        Map<String, Integer> minionFuelUnitsQueued;
+        Map<String, Set<String>> minionsCountedByDaySlot;
+    }
+
+    /** One physical minion's saved fuel state. */
+    private static class MinionState {
+        /** Short handle ({@code m1}, {@code m2}, ...) used by {@link SaveData#daySlotMinions}. */
+        String ref;
+        /** Display name, purely so the file can be read at a glance. Never loaded. */
+        String name;
+        /** Block position, purely for readability. Never loaded. */
+        String at;
+        /** The real minion key this state is stored under — the only identifying field. */
+        String key;
+        /** When this minion's fuel runs out, or null if it has none queued. */
+        Long fuelExpiresAt;
+        /** Fuel units still queued for this minion, or null if none. */
+        Integer queuedUnits;
     }
 
     private static SaveData buildSaveData() {
         SaveData data = new SaveData();
-        data.minionExpiries             = new java.util.HashMap<>(minionExpiries);
-        data.minionFuelUnitsQueued     = new java.util.HashMap<>(minionFuelUnitsQueued);
         data.cohortStartMs              = cohortStartMs;
         data.activeDaySlotIndex         = activeDaySlotIndex;
-        data.minionsCountedByDaySlot    = new java.util.HashMap<>();
-        for (Map.Entry<String, Set<String>> e : minionsCountedByDaySlot.entrySet()) {
-            data.minionsCountedByDaySlot.put(e.getKey(), new java.util.HashSet<>(e.getValue()));
-        }
         data.mobKillCoinsAt100Baseline  = mobKillCoinsAt100Baseline;
-        data.days                       = new TreeMap<>(dayRecords);
         data.lastBackupTime             = lastBackupTime;
+
+        // Every minion mentioned anywhere, including ones that only survive in a historical
+        // day slot after their fuel state was cleared.
+        Set<String> allKeys = new TreeSet<>(minionExpiries.keySet());
+        allKeys.addAll(minionFuelUnitsQueued.keySet());
+        for (Set<String> counted : minionsCountedByDaySlot.values()) allKeys.addAll(counted);
+
+        Map<String, String> refsByKey = new HashMap<>();
+        data.minions = new ArrayList<>();
+        for (String key : allKeys) {
+            MinionState state = new MinionState();
+            state.ref = "m" + (data.minions.size() + 1);
+            state.name = MinionIdentityRegistry.displayNameFor(key);
+            state.at = MinionIdentityRegistry.positionFor(key);
+            state.key = key;
+            state.fuelExpiresAt = minionExpiries.get(key);
+            state.queuedUnits = minionFuelUnitsQueued.get(key);
+            refsByKey.put(key, state.ref);
+            data.minions.add(state);
+        }
+
+        data.daySlotMinions = new TreeMap<>();
+        for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+            List<String> refs = new ArrayList<>();
+            for (String key : new TreeSet<>(entry.getValue())) {
+                String ref = refsByKey.get(key);
+                if (ref != null) refs.add(ref);
+            }
+            data.daySlotMinions.put(entry.getKey(), refs);
+        }
+
+        data.days                       = new TreeMap<>(dayRecords);
         return data;
+    }
+
+    /** The counted-minion set for a day slot, creating it if absent. */
+    private static Set<String> countedSetFor(String daySlot) {
+        return minionsCountedByDaySlot.computeIfAbsent(daySlot, k -> ConcurrentHashMap.newKeySet());
+    }
+
+    /**
+     * Restores the per-minion fuel state from the record format written by
+     * {@link #buildSaveData()}, resolving each day slot's short refs back to minion keys.
+     * Does nothing for a pre-record file, which has no {@code minions} list.
+     */
+    private static void readMinionRecords(SaveData data) {
+        if (data.minions == null) return;
+
+        Map<String, String> keysByRef = new HashMap<>();
+        for (MinionState state : data.minions) {
+            if (state == null || state.key == null || state.key.isEmpty()) continue;
+            if (state.ref != null && !state.ref.isEmpty()) keysByRef.put(state.ref, state.key);
+            if (state.fuelExpiresAt != null) minionExpiries.put(state.key, state.fuelExpiresAt);
+            if (state.queuedUnits != null) minionFuelUnitsQueued.put(state.key, state.queuedUnits);
+        }
+
+        if (data.daySlotMinions == null) return;
+        for (Map.Entry<String, List<String>> entry : data.daySlotMinions.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) continue;
+            Set<String> counted = countedSetFor(entry.getKey());
+            for (String ref : entry.getValue()) {
+                // An unknown ref means the record it pointed at is gone (hand-edited file).
+                // Skipping it just loses that one minion's place in the slot, which is the
+                // same outcome as it never having been counted.
+                String key = keysByRef.get(ref);
+                if (key != null) counted.add(key);
+            }
+        }
     }
 
     public static void save() {
@@ -1367,20 +1609,26 @@ public class FuelCycleTracker {
                 if (data != null) {
                     mobKillCoinsAt100Baseline = data.mobKillCoinsAt100Baseline;
                     minionExpiries.clear();
-                    if (data.minionExpiries != null) minionExpiries.putAll(data.minionExpiries);
                     minionFuelUnitsQueued.clear();
+                    minionsCountedByDaySlot.clear();
+
+                    // Pre-record format (or a backup taken before this change): three
+                    // separate maps keyed by the full minion key. Read first so a file
+                    // containing both shapes still ends up with everything.
+                    if (data.minionExpiries != null) minionExpiries.putAll(data.minionExpiries);
                     if (data.minionFuelUnitsQueued != null) {
                         minionFuelUnitsQueued.putAll(data.minionFuelUnitsQueued);
                     }
-                    cohortStartMs = data.cohortStartMs;
-                    activeDaySlotIndex = data.activeDaySlotIndex;
-                    minionsCountedByDaySlot.clear();
                     if (data.minionsCountedByDaySlot != null) {
                         for (Map.Entry<String, Set<String>> e : data.minionsCountedByDaySlot.entrySet()) {
-                            minionsCountedByDaySlot.put(e.getKey(), ConcurrentHashMap.newKeySet());
-                            minionsCountedByDaySlot.get(e.getKey()).addAll(e.getValue());
+                            countedSetFor(e.getKey()).addAll(e.getValue());
                         }
                     }
+
+                    readMinionRecords(data);
+
+                    cohortStartMs = data.cohortStartMs;
+                    activeDaySlotIndex = data.activeDaySlotIndex;
                     if (data.days != null) {
                         dayRecords.clear();
                         dayRecords.putAll(data.days);

@@ -93,7 +93,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class FuelCycles {
-        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Click to open the fuel day tracker GUI for viewing/editing per-fuel-day fuel and profit stats. Fuel cost per minion uses Bazaar buy-order prices for 25x Sulphuric Coal, 3x Very Crude Gabagool, 6x the cheapest of all five distillates, and 2x Inferno Fuel Block. Use /it fuelcost [NUMBER] for a full live breakdown, including all five distillate prices and the selected cheapest option. The recipe price is locked when a fuel cohort starts, and existing records keep their saved automatic price; historical costs only change when you manually change the minion count or fuel cost. Each day's total automatically scales with its effective minion count, including manual count overrides. Fuel cycles are assigned per physical minion's queued fuel units, so refueling a full set in sequence still records one shared next cycle. Refueling while fuel is active continues directly into the next 24h period; refueling after it runs out starts a new period at the actual fueling time. Each entry is one real 24h fuel-day — placing a stack of, say, 4 fuel creates 4 entries immediately (one currently active, three future/queued), and each day gets its own alert the moment its own fuel runs out. Titled with its actual start-end time (DD/MM/YY HH:mm - DD/MM/YY HH:mm), and a Total Profit widget in the top-right corner sums every tracked day. You can also use /it fueldays or /it fueltime")
+        @ConfigOption(name = "Open Fuel Day Tracker", desc = "Open the fuel day tracker GUI to view and edit per-fuel-day fuel and profit stats. Each entry is one real 24h fuel-day, so a stack of 4 fuel creates 4 entries at once and each alerts when its own fuel runs out. Also /it fueldays")
         @ConfigEditorButton(buttonText = " Open Fuel Day Tracker ")
         public Runnable viewFuelTimeButton = new Runnable() {
             @Override
@@ -111,10 +111,8 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
                 name = "Use Test Data File",
-                desc = "When enabled, fuel/profit tracking reads and writes to a separate test data file " +
-                        "(fuel_days_test.json) instead of your real tracked data (fuel_days.json), so you can " +
-                        "safely try things out without risking your actual minion history. Toggling this reloads " +
-                        "the Fuel Day Tracker GUI's data from whichever file is now active."
+                desc = "Read and write a separate test file (fuel_days_test.json) instead of your real " +
+                        "tracked data, so you can try things out safely. Toggling reloads the GUI."
         )
         @ConfigEditorBoolean
         public boolean useTestDataFile = false;
@@ -122,9 +120,8 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
                 name = "Coins/Day @ 100% AFK",
-                desc = "Baseline coins/day from mob kills at 100% AFK time, used to estimate each fuel-day's mob-kill " +
-                        "profit based on that day's actual AFK%. Snapshotted per-day when recorded, so changing this " +
-                        "later (e.g. after a game update) doesn't affect past days. Edit past days individually in the Fuel Day Tracker GUI."
+                desc = "Baseline coins/day from mob kills at 100% AFK, scaled by each day's actual AFK%. " +
+                        "Snapshotted per day, so changing it never affects past days."
         )
         @ConfigEditorText
         public String mobKillCoinsAt100PercentString = "0";
@@ -132,9 +129,8 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
                 name = "Default Gabagool Price",
-                desc = "Default sell price for a single Crude Gabagool (sacks can't be read automatically). " +
-                        "Applied to the currently active fuel-day without changing past days. Explicitly editing a " +
-                        "day's price in the Fuel Day Tracker GUI overrides this default for that day."
+                desc = "Sell price for one Crude Gabagool. Applies to the active day only; past days keep " +
+                        "their own price."
         )
         @ConfigEditorText
         public String todayGabagoolPriceString = "0";
@@ -142,11 +138,8 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
                 name = "Current Day's Gabagool Amount Override",
-                desc = "Manual override for the amount of Crude Gabagool collected during the currently active fuel " +
-                        "day. Leave blank to use the amount auto-tracked from Hypixel's '[Sacks]' chat messages " +
-                        "(requires sack messages enabled in-game). Enter an absolute total, or prefix with + or - " +
-                        "(e.g. +100000 or -20000) to adjust the auto-tracked amount by that much instead of " +
-                        "replacing it. Edit past days individually in the Fuel Day Tracker GUI."
+                desc = "Override the Crude Gabagool counted for the active day. Blank uses the amount " +
+                        "auto-tracked from '[Sacks]' messages. Accepts a total, or +/- to adjust it (e.g. +100000)."
         )
         @ConfigEditorText
         public String todayGabagoolAmountString = "";
@@ -267,7 +260,7 @@ public class IslandTimeConfig extends Config {
         public int disconnectSpeed = 2; // NORMAL
 
         @Expose
-        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's queued fuel-days run out, until you empty your sacks (removing gabagool stops the pings)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until you empty your sacks\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int fuelExpiredSpeed = 2; // NORMAL
     }

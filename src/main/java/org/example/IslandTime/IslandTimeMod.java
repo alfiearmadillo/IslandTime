@@ -12,6 +12,7 @@ public class IslandTimeMod implements ClientModInitializer {
         // apply the persisted flags to already-loaded tracker state.
         IslandTimeTracker.load();
         FuelCycleTracker.load();
+        MinionIdentityRegistry.load();
         DiscordWebhookManager.load();
         ItemTracker.load();
         IslandAlertTracker.load();
