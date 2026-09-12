@@ -277,9 +277,45 @@ public class MinionFuelTracker {
             FuelCycleTracker.renameMinionKey(oldKey, newKey);
         }
 
+        migrateStrandedKeysAtSamePosition(newKey);
+
         System.out.println("[MinionFuelTracker] Minion \"" + currentMinionName + "\" identified by upgrade uuid: "
                 + "\"" + oldKey + "\" -> \"" + newKey + "\"");
         currentMinionKey = newKey;
+    }
+
+    /**
+     * Re-attaches fuel state that was saved under a <em>stale</em> armor-stand key for this
+     * same minion.
+     *
+     * <p>An armor-stand key is the stand's block position plus its full equipment, and the
+     * equipment half is not dependable — the same physical minion is regularly saved under
+     * one set of equipment and later reported by the server with another, because
+     * equipment arrives in its own packets and isn't always fully synced at the moment the
+     * key is built. (This is the inconsistency that motivated identifying minions by a
+     * permanent upgrade uuid in the first place.) When it happens, the plain rename above
+     * can't find the saved data: today's key no longer equals the one on disk, so a live
+     * fuel-day is left stranded under a key nothing will ever match again — and the next
+     * refuel would then count this minion a second time under its uuid key.
+     *
+     * <p>The block position is the stable half of the key and holds exactly one minion, so
+     * any stored key at this minion's position belongs to this minion and is migrated onto
+     * its uuid key. {@code renameMinionKey} merges rather than overwrites, so recovering
+     * several stale keys at once can't lose or double-count anything.
+     */
+    private static void migrateStrandedKeysAtSamePosition(String newKey) {
+        if (currentArmorStandKey.isEmpty()) return;
+
+        int positionEnd = currentArmorStandKey.indexOf('|');
+        if (positionEnd <= 0) return;
+        String position = currentArmorStandKey.substring(0, positionEnd);
+
+        for (String strandedKey : FuelCycleTracker.findMinionKeysAtPosition(position, currentArmorStandKey)) {
+            System.out.println("[MinionFuelTracker] Recovering fuel state saved under a stale armor-stand key "
+                    + "at " + position + " (its recorded equipment no longer matches): \""
+                    + strandedKey + "\" -> \"" + newKey + "\"");
+            FuelCycleTracker.renameMinionKey(strandedKey, newKey);
+        }
     }
 
     /**

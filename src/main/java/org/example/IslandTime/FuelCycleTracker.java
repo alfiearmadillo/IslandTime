@@ -19,6 +19,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -532,6 +533,36 @@ public class FuelCycleTracker {
      */
     private static boolean isPerMinionKey(String key) {
         return MinionIdentityRegistry.isUuidKey(key) || isArmorStandFormatKey(key);
+    }
+
+    /**
+     * Returns every stored armor-stand key recorded at the given block position, other than
+     * {@code exceptKey}.
+     *
+     * <p>An armor-stand key is "{@code x,y,z}" followed by the stand's full equipment, and
+     * in practice the equipment half drifts: the same physical minion has been observed
+     * saved under one held item and later reported by the server with another (equipment
+     * arrives in separate packets and is not always fully synced when the key is built).
+     * When that happens the minion's saved fuel-days are stranded under a key that will
+     * never be matched again. The block position, by contrast, is stable and holds exactly
+     * one minion, so it is the reliable half of the key and the right thing to re-attach
+     * stranded state by.
+     *
+     * @param position the "{@code x,y,z}" prefix of an armor-stand key.
+     */
+    public static List<String> findMinionKeysAtPosition(String position, String exceptKey) {
+        if (position == null || position.isEmpty()) return List.of();
+        String prefix = position + "|";
+
+        Set<String> candidates = new HashSet<>(minionExpiries.keySet());
+        candidates.addAll(minionFuelUnitsQueued.keySet());
+        for (Set<String> counted : minionsCountedByDaySlot.values()) candidates.addAll(counted);
+
+        return candidates.stream()
+                .filter(key -> key.startsWith(prefix))
+                .filter(key -> !key.equals(exceptKey))
+                .sorted()
+                .toList();
     }
 
     /**
