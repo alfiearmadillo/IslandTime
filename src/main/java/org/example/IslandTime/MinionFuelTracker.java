@@ -59,7 +59,7 @@ public class MinionFuelTracker {
 
     // The container menu we last saw and the wall-clock time it appeared. Every menu the
     // server opens is a brand new object, so this is both the reference point for the
-    // upgrade-item timestamp freshness check (see readPermanentUuid()) and how we tell
+    // upgrade-item timestamp freshness check (see inspectUpgradeSlot()) and how we tell
     // whether the menu currently open is still the previously selected minion's (see
     // checkFuelSlot()). Held weakly so a closed menu is never kept alive by this tracker.
     private static java.lang.ref.WeakReference<AbstractContainerMenu> lastSeenMenu =
@@ -75,9 +75,23 @@ public class MinionFuelTracker {
 
     private static final int FUEL_SLOT_INDEX = 19; // The fuel slot (row 3, column 2)
 
-    // The minion upgrade slots (row 5 and row 6, column 2). Upgrades placed here — e.g. a
-    // Flycatcher — carry a permanent custom_data uuid we can identify the minion by.
-    private static final int[] UPGRADE_SLOT_INDEXES = { 37, 46 };
+    // The minion upgrade slots — row 5 and row 6, column 2 of the 6x9 minion GUI, i.e.
+    // slots 38 and 47 counting the container's slots from 1. Minecraft's own slot indexes
+    // count from 0, so these are 37 and 46; they're derived here rather than hard-coded so
+    // the 1-based/0-based distinction can't drift. (Cross-check: FUEL_SLOT_INDEX above is
+    // row 3 column 2 == 20 counting from 1 == 19 counting from 0, the same arithmetic.)
+    // Upgrades placed here — e.g. a Flycatcher — carry a permanent custom_data uuid we can
+    // identify the minion by.
+    private static final int GUI_COLUMNS = 9;
+    private static final int[] UPGRADE_SLOT_INDEXES = {
+            slotIndex(5, 2),
+            slotIndex(6, 2),
+    };
+
+    /** Converts a 1-based (row, column) GUI position into Minecraft's 0-based slot index. */
+    private static int slotIndex(int rowFromOne, int columnFromOne) {
+        return (rowFromOne - 1) * GUI_COLUMNS + (columnFromOne - 1);
+    }
 
     // Most items in a minion GUI (the minion head, the Enchanted Hopper, decorative
     // panes...) are re-generated with a brand new uuid every single time the menu is
@@ -234,7 +248,12 @@ public class MinionFuelTracker {
 
         // Only the forced pass (after the container has settled) ends the search — until
         // then a minion with no readable upgrade yet is simply re-checked next tick.
-        if (force) identityResolved = true;
+        if (force) {
+            identityResolved = true;
+            // Always report the outcome: when a minion can't be identified by an upgrade
+            // uuid, the per-slot reasons are the only way to tell why.
+            logIdentityOutcome(menu);
+        }
     }
 
     /**
@@ -264,59 +283,181 @@ public class MinionFuelTracker {
     }
 
     /**
+     * The outcome of inspecting one upgrade slot — the accepted uuid when there is one,
+     * plus a human-readable reason either way so the whole decision can be logged and
+     * shown by {@code /it minionid}. Without this, a minion that fails to be identified
+     * gives no clue whether the slot was empty, the item had no uuid, or its uuid was
+     * rejected as self-resetting.
+     */
+    private record UpgradeSlotRead(int slotFromOne, String itemName, String uuid, String reason) {
+        boolean accepted() { return uuid != null; }
+    }
+
+    /**
      * Reads the permanent uuids of whatever sits in this minion's upgrade slots, in slot
-     * order, skipping anything that can't be trusted (see {@link #readPermanentUuid}).
+     * order, skipping anything that can't be trusted (see {@link #inspectUpgradeSlot}).
      * Flycatchers are the common case, but any upgrade that keeps its uuid works — hence
      * the slots being scanned for any qualifying item rather than a specific item id.
      */
     private static List<String> readUpgradeUuids(ChestMenu menu) {
         List<String> uuids = new ArrayList<>(UPGRADE_SLOT_INDEXES.length);
-        for (int slotIndex : UPGRADE_SLOT_INDEXES) {
-            if (slotIndex >= menu.slots.size()) continue;
-            String uuid = readPermanentUuid(menu.getSlot(slotIndex).getItem());
-            if (uuid != null && !uuids.contains(uuid)) uuids.add(uuid);
+        for (UpgradeSlotRead read : inspectUpgradeSlots(menu)) {
+            if (read.accepted() && !uuids.contains(read.uuid())) uuids.add(read.uuid());
         }
         return uuids;
     }
 
+    /** Inspects every upgrade slot, returning one diagnostic result per slot. */
+    private static List<UpgradeSlotRead> inspectUpgradeSlots(ChestMenu menu) {
+        List<UpgradeSlotRead> reads = new ArrayList<>(UPGRADE_SLOT_INDEXES.length);
+        for (int slotIndex : UPGRADE_SLOT_INDEXES) {
+            reads.add(inspectUpgradeSlot(menu, slotIndex));
+        }
+        return reads;
+    }
+
     /**
-     * Returns an item's {@code custom_data.uuid} only when that uuid is genuinely
-     * permanent, i.e. the item wasn't freshly generated along with the menu we're looking
-     * at. Self-resetting GUI items (the minion head, Enchanted Hoppers, ...) get a new
-     * uuid <em>and</em> a new timestamp every time the menu opens, so a timestamp that
-     * isn't comfortably older than this GUI's opening disqualifies the item. Returns null
-     * when the item has no uuid, no timestamp to verify it with, or fails that check.
+     * Decides whether the item in {@code slotIndex} carries a genuinely permanent
+     * {@code custom_data.uuid}, i.e. whether it was freshly generated along with the menu
+     * we're looking at. Self-resetting GUI items (the minion head, Enchanted Hoppers, ...)
+     * get a new uuid <em>and</em> a new timestamp every time the menu opens, so a
+     * timestamp that isn't comfortably older than this GUI's opening disqualifies the
+     * item. Every rejection path records why, for the diagnostics.
      */
-    private static String readPermanentUuid(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return null;
+    private static UpgradeSlotRead inspectUpgradeSlot(ChestMenu menu, int slotIndex) {
+        int slotFromOne = slotIndex + 1;
+
+        if (slotIndex >= menu.slots.size()) {
+            return new UpgradeSlotRead(slotFromOne, "-", null,
+                    "slot does not exist (menu only has " + menu.slots.size() + " slots)");
+        }
+
+        ItemStack stack = menu.getSlot(slotIndex).getItem();
+        if (stack == null || stack.isEmpty()) {
+            return new UpgradeSlotRead(slotFromOne, "empty", null, "slot is empty");
+        }
+
+        String itemName = stack.getHoverName().getString();
 
         CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
-        if (customData == null || customData.isEmpty()) return null;
+        if (customData == null || customData.isEmpty()) {
+            return new UpgradeSlotRead(slotFromOne, itemName, null, "item has no custom_data");
+        }
 
         CompoundTag nbt = customData.copyTag();
         String uuid = nbt.getStringOr("uuid", "");
-        if (uuid.isEmpty()) return null;
+        if (uuid.isEmpty()) {
+            return new UpgradeSlotRead(slotFromOne, itemName, null,
+                    "item has no custom_data.uuid (keys: " + nbt.keySet() + ")");
+        }
 
-        Long timestamp = readLongTag(nbt, "timestamp");
-        if (timestamp == null) return null; // no way to prove the uuid isn't regenerated
+        Tag timestampTag = nbt.get("timestamp");
+        if (timestampTag == null) {
+            // Without a timestamp there is no way to prove the uuid isn't regenerated
+            // every time the menu opens, so the item can't be trusted as an identity.
+            return new UpgradeSlotRead(slotFromOne, itemName, null,
+                    "item has a uuid but no custom_data.timestamp to verify it is permanent");
+        }
+
+        Long timestamp = parseTimestamp(timestampTag);
+        if (timestamp == null) {
+            return new UpgradeSlotRead(slotFromOne, itemName, null,
+                    "could not parse custom_data.timestamp (raw: " + timestampTag + ")");
+        }
 
         long reference = menuOpenedAtMs > 0 ? menuOpenedAtMs : System.currentTimeMillis();
-        if (timestamp > reference - UPGRADE_TIMESTAMP_MIN_AGE_MS) return null;
+        long ageMs = reference - timestamp;
+        if (ageMs < UPGRADE_TIMESTAMP_MIN_AGE_MS) {
+            return new UpgradeSlotRead(slotFromOne, itemName, null,
+                    "timestamp is only " + ageMs + "ms old, so this item is regenerated "
+                            + "with the menu and its uuid is not permanent");
+        }
 
-        return uuid;
+        return new UpgradeSlotRead(slotFromOne, itemName, uuid,
+                "uuid " + uuid + " accepted (item is " + (ageMs / 86_400_000L) + " days old)");
     }
 
-    /** Reads a numeric NBT value as a long (tolerating the trailing type suffix), or null. */
-    private static Long readLongTag(CompoundTag nbt, String key) {
-        Tag tag = nbt.get(key);
-        if (tag == null) return null;
+    /**
+     * Reads a SkyBlock {@code timestamp} tag as epoch milliseconds. Hypixel has used
+     * several encodings over the years and an item's age is the only thing separating a
+     * permanent uuid from a regenerated one, so all of them are accepted: a numeric tag
+     * (epoch millis, the modern form), a numeric string, and the legacy display-date
+     * strings such as {@code "4/22/22 4:31 PM"} that older items still carry. Returns null
+     * if the value is in none of those forms.
+     */
+    private static Long parseTimestamp(Tag tag) {
         String raw = tag.toString().trim();
-        if (raw.endsWith("L") || raw.endsWith("l")) raw = raw.substring(0, raw.length() - 1);
+
+        // Strip the SNBT type suffix (1650642660000L) and/or surrounding quotes.
+        if (raw.length() > 1 && (raw.endsWith("L") || raw.endsWith("l"))) {
+            raw = raw.substring(0, raw.length() - 1);
+        }
+        if (raw.length() > 1 && raw.startsWith("\"") && raw.endsWith("\"")) {
+            raw = raw.substring(1, raw.length() - 1);
+        }
+        raw = raw.trim();
+        if (raw.isEmpty()) return null;
+
         try {
             return Long.parseLong(raw);
-        } catch (NumberFormatException e) {
-            return null;
+        } catch (NumberFormatException ignored) {
+            // Not numeric — fall through to the legacy date formats below.
         }
+
+        for (java.time.format.DateTimeFormatter formatter : LEGACY_TIMESTAMP_FORMATS) {
+            try {
+                return java.time.LocalDateTime.parse(raw, formatter)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli();
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // Try the next known format.
+            }
+        }
+        return null;
+    }
+
+    /** Legacy Hypixel {@code timestamp} display formats, e.g. {@code "4/22/22 4:31 PM"}. */
+    private static final java.time.format.DateTimeFormatter[] LEGACY_TIMESTAMP_FORMATS = {
+            java.time.format.DateTimeFormatter.ofPattern("M/d/yy h:mm a", java.util.Locale.US),
+            java.time.format.DateTimeFormatter.ofPattern("d/M/yy h:mm a", java.util.Locale.US),
+            java.time.format.DateTimeFormatter.ofPattern("M/d/yyyy h:mm a", java.util.Locale.US),
+    };
+
+    /**
+     * Builds a human-readable report of what the currently open minion GUI's upgrade slots
+     * contain and how each was judged — the diagnostic behind {@code /it minionid}.
+     * Returns null when no minion GUI is currently open.
+     */
+    public static List<String> describeOpenMinionGui() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || currentMinionName.isEmpty()) return null;
+        if (!(client.player.containerMenu instanceof ChestMenu menu)) return null;
+
+        List<String> lines = new ArrayList<>();
+        lines.add("Minion: " + currentMinionName);
+        lines.add("Tracking key: " + currentMinionKey);
+        lines.add("Key type: " + (MinionIdentityRegistry.isUuidKey(currentMinionKey)
+                ? "permanent upgrade uuid"
+                : FuelCycleTracker.isArmorStandFormatKey(currentMinionKey)
+                        ? "legacy position+equipment"
+                        : "GUI title fallback"));
+        lines.add("Identity settled: " + identityResolved);
+        for (UpgradeSlotRead read : inspectUpgradeSlots(menu)) {
+            lines.add("Upgrade slot " + read.slotFromOne() + " [" + read.itemName() + "]: " + read.reason());
+        }
+        return lines;
+    }
+
+    /** Logs the final identity decision for a minion GUI, including every rejection reason. */
+    private static void logIdentityOutcome(ChestMenu menu) {
+        StringBuilder message = new StringBuilder("[MinionFuelTracker] Identity for \"")
+                .append(currentMinionName).append("\" -> \"").append(currentMinionKey).append("\"");
+        for (UpgradeSlotRead read : inspectUpgradeSlots(menu)) {
+            message.append("\n    upgrade slot ").append(read.slotFromOne())
+                    .append(" [").append(read.itemName()).append("]: ").append(read.reason());
+        }
+        System.out.println(message);
     }
 
     /** Clears all per-GUI state once we're no longer looking at a minion GUI. */
@@ -362,7 +503,7 @@ public class MinionFuelTracker {
 
         // Note when this particular container appeared. Every menu the server opens is a
         // new object, so a change here means a genuinely new GUI (and therefore newly
-        // generated GUI items, see readPermanentUuid()).
+        // generated GUI items, see inspectUpgradeSlot()).
         if (lastSeenMenu.get() != handler) {
             lastSeenMenu = new java.lang.ref.WeakReference<>(handler);
             menuOpenedAtMs = System.currentTimeMillis();

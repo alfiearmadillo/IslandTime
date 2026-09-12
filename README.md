@@ -47,6 +47,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it fueltime <YYYY-MM-DD>` | Show a quick chat summary for a specific day |
 | `/it fuelcost [NUMBER]` | Show the Bazaar buy-order cost breakdown for one fuel or NUMBER fuels, including all five distillate prices and the cheapest selection |
 | `/it fueltime debug` | Inject a fake day record and attempt a save (diagnostics) |
+| `/it minionid` | With a minion's GUI open, show how that minion is being identified and what each upgrade slot contains, including why an upgrade's uuid was rejected (diagnostics) |
 | `/it trackitem set\|clear` | Track/untrack the held item |
 | `/it webhook <url\|clear>` | Set or clear the Discord webhook |
 | `/it discordping <userid\|clear>` | Set or clear Discord ping user ID |
