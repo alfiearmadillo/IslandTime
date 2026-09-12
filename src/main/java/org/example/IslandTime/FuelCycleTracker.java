@@ -19,11 +19,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -1382,31 +1384,133 @@ public class FuelCycleTracker {
     // Persistence — atomic write via tmp → rename
     // -------------------------------------------------------------------------
 
+    /**
+     * The saved shape of {@code fuel_days.json}.
+     *
+     * <p>Field order here is the order Gson writes them, so the small scalars come first
+     * and the two bulk sections ({@link #minions}, {@link #days}) last.
+     *
+     * <p>Per-minion state used to be three separate maps keyed by the full minion key
+     * ({@code minionExpiries}, {@code minionFuelUnitsQueued} and {@code minionsCountedByDaySlot}),
+     * which meant every minion's key — up to ~210 characters for a legacy armor-stand key —
+     * was repeated once per map and again for every day slot it appeared in. On a real save
+     * that was ~390 repetitions of those keys opening the file. They are now gathered into
+     * one {@link MinionState} record per minion, each given a short {@code ref} that the
+     * day slots cite instead of restating the key.
+     *
+     * <p>The three legacy fields are still declared so files written by older versions (and
+     * older backups, which are restored by hand) load unchanged. Gson omits null fields, so
+     * leaving them unset means they simply stop being written once a save is rewritten.
+     */
     private static class SaveData {
-        Map<String, Long> minionExpiries;
-        Map<String, Integer> minionFuelUnitsQueued;
         long cohortStartMs;
         int activeDaySlotIndex;
-        Map<String, Set<String>> minionsCountedByDaySlot;
         double mobKillCoinsAt100Baseline;
-        Map<String, DayRecord> days;
         long lastBackupTime;
+
+        /** One record per minion: its key, its fuel state, and a short ref for day slots. */
+        List<MinionState> minions;
+        /** Day slot -> the refs of the minions counted toward it. */
+        Map<String, List<String>> daySlotMinions;
+
+        Map<String, DayRecord> days;
+
+        // --- pre-record format, read on load and never written again ---
+        Map<String, Long> minionExpiries;
+        Map<String, Integer> minionFuelUnitsQueued;
+        Map<String, Set<String>> minionsCountedByDaySlot;
+    }
+
+    /** One physical minion's saved fuel state. */
+    private static class MinionState {
+        /** Short handle ({@code m1}, {@code m2}, ...) used by {@link SaveData#daySlotMinions}. */
+        String ref;
+        /** Display name, purely so the file can be read at a glance. Never loaded. */
+        String name;
+        /** Block position, purely for readability. Never loaded. */
+        String at;
+        /** The real minion key this state is stored under — the only identifying field. */
+        String key;
+        /** When this minion's fuel runs out, or null if it has none queued. */
+        Long fuelExpiresAt;
+        /** Fuel units still queued for this minion, or null if none. */
+        Integer queuedUnits;
     }
 
     private static SaveData buildSaveData() {
         SaveData data = new SaveData();
-        data.minionExpiries             = new java.util.HashMap<>(minionExpiries);
-        data.minionFuelUnitsQueued     = new java.util.HashMap<>(minionFuelUnitsQueued);
         data.cohortStartMs              = cohortStartMs;
         data.activeDaySlotIndex         = activeDaySlotIndex;
-        data.minionsCountedByDaySlot    = new java.util.HashMap<>();
-        for (Map.Entry<String, Set<String>> e : minionsCountedByDaySlot.entrySet()) {
-            data.minionsCountedByDaySlot.put(e.getKey(), new java.util.HashSet<>(e.getValue()));
-        }
         data.mobKillCoinsAt100Baseline  = mobKillCoinsAt100Baseline;
-        data.days                       = new TreeMap<>(dayRecords);
         data.lastBackupTime             = lastBackupTime;
+
+        // Every minion mentioned anywhere, including ones that only survive in a historical
+        // day slot after their fuel state was cleared.
+        Set<String> allKeys = new TreeSet<>(minionExpiries.keySet());
+        allKeys.addAll(minionFuelUnitsQueued.keySet());
+        for (Set<String> counted : minionsCountedByDaySlot.values()) allKeys.addAll(counted);
+
+        Map<String, String> refsByKey = new HashMap<>();
+        data.minions = new ArrayList<>();
+        for (String key : allKeys) {
+            MinionState state = new MinionState();
+            state.ref = "m" + (data.minions.size() + 1);
+            state.name = MinionIdentityRegistry.displayNameFor(key);
+            state.at = MinionIdentityRegistry.positionFor(key);
+            state.key = key;
+            state.fuelExpiresAt = minionExpiries.get(key);
+            state.queuedUnits = minionFuelUnitsQueued.get(key);
+            refsByKey.put(key, state.ref);
+            data.minions.add(state);
+        }
+
+        data.daySlotMinions = new TreeMap<>();
+        for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
+            List<String> refs = new ArrayList<>();
+            for (String key : new TreeSet<>(entry.getValue())) {
+                String ref = refsByKey.get(key);
+                if (ref != null) refs.add(ref);
+            }
+            data.daySlotMinions.put(entry.getKey(), refs);
+        }
+
+        data.days                       = new TreeMap<>(dayRecords);
         return data;
+    }
+
+    /** The counted-minion set for a day slot, creating it if absent. */
+    private static Set<String> countedSetFor(String daySlot) {
+        return minionsCountedByDaySlot.computeIfAbsent(daySlot, k -> ConcurrentHashMap.newKeySet());
+    }
+
+    /**
+     * Restores the per-minion fuel state from the record format written by
+     * {@link #buildSaveData()}, resolving each day slot's short refs back to minion keys.
+     * Does nothing for a pre-record file, which has no {@code minions} list.
+     */
+    private static void readMinionRecords(SaveData data) {
+        if (data.minions == null) return;
+
+        Map<String, String> keysByRef = new HashMap<>();
+        for (MinionState state : data.minions) {
+            if (state == null || state.key == null || state.key.isEmpty()) continue;
+            if (state.ref != null && !state.ref.isEmpty()) keysByRef.put(state.ref, state.key);
+            if (state.fuelExpiresAt != null) minionExpiries.put(state.key, state.fuelExpiresAt);
+            if (state.queuedUnits != null) minionFuelUnitsQueued.put(state.key, state.queuedUnits);
+        }
+
+        if (data.daySlotMinions == null) return;
+        for (Map.Entry<String, List<String>> entry : data.daySlotMinions.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) continue;
+            Set<String> counted = countedSetFor(entry.getKey());
+            for (String ref : entry.getValue()) {
+                // An unknown ref means the record it pointed at is gone (hand-edited file).
+                // Skipping it just loses that one minion's place in the slot, which is the
+                // same outcome as it never having been counted.
+                String key = keysByRef.get(ref);
+                if (key != null) counted.add(key);
+            }
+        }
     }
 
     public static void save() {
@@ -1505,20 +1609,26 @@ public class FuelCycleTracker {
                 if (data != null) {
                     mobKillCoinsAt100Baseline = data.mobKillCoinsAt100Baseline;
                     minionExpiries.clear();
-                    if (data.minionExpiries != null) minionExpiries.putAll(data.minionExpiries);
                     minionFuelUnitsQueued.clear();
+                    minionsCountedByDaySlot.clear();
+
+                    // Pre-record format (or a backup taken before this change): three
+                    // separate maps keyed by the full minion key. Read first so a file
+                    // containing both shapes still ends up with everything.
+                    if (data.minionExpiries != null) minionExpiries.putAll(data.minionExpiries);
                     if (data.minionFuelUnitsQueued != null) {
                         minionFuelUnitsQueued.putAll(data.minionFuelUnitsQueued);
                     }
-                    cohortStartMs = data.cohortStartMs;
-                    activeDaySlotIndex = data.activeDaySlotIndex;
-                    minionsCountedByDaySlot.clear();
                     if (data.minionsCountedByDaySlot != null) {
                         for (Map.Entry<String, Set<String>> e : data.minionsCountedByDaySlot.entrySet()) {
-                            minionsCountedByDaySlot.put(e.getKey(), ConcurrentHashMap.newKeySet());
-                            minionsCountedByDaySlot.get(e.getKey()).addAll(e.getValue());
+                            countedSetFor(e.getKey()).addAll(e.getValue());
                         }
                     }
+
+                    readMinionRecords(data);
+
+                    cohortStartMs = data.cohortStartMs;
+                    activeDaySlotIndex = data.activeDaySlotIndex;
                     if (data.days != null) {
                         dayRecords.clear();
                         dayRecords.putAll(data.days);

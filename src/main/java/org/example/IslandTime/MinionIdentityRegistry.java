@@ -220,6 +220,36 @@ public class MinionIdentityRegistry {
         return !canonical.equals(previous);
     }
 
+    /**
+     * The GUI title last seen for a canonical minion key, or null if unknown.
+     *
+     * <p>For display only — minion titles are shared by every minion of a kind, so this
+     * must never be used to identify anything.
+     */
+    public static String displayNameFor(String canonicalKey) {
+        load();
+        return canonicalKey == null ? null : displayNames.get(canonicalKey);
+    }
+
+    /**
+     * The block position of the armor stand registered to a canonical minion key
+     * (e.g. {@code -41,216,10}), or null if none is known.
+     *
+     * <p>For display only. Note a minion identified purely by an upgrade uuid carries no
+     * position in its key, so this is the only way to say where it physically is.
+     */
+    public static String positionFor(String canonicalKey) {
+        load();
+        if (canonicalKey == null) return null;
+        for (Map.Entry<String, String> entry : aliases.entrySet()) {
+            if (entry.getKey().startsWith(STAND_PREFIX) && canonicalKey.equals(entry.getValue())) {
+                String position = splitStandKey(entry.getKey().substring(STAND_PREFIX.length()))[0];
+                if (!position.isEmpty()) return position;
+            }
+        }
+        return null;
+    }
+
     // -------------------------------------------------------------------------
     // On-disk model — one record per minion
     // -------------------------------------------------------------------------
