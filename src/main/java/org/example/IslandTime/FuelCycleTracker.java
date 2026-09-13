@@ -195,6 +195,15 @@ public class FuelCycleTracker {
     private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick  = false;
 
+    // Throttles the wall-clock day-boundary sweep (checkDueDayRecords()) below to at
+    // most once per second when driven from the regular per-tick call — it only cares
+    // about second-level precision (matching what /it fueltime displays), so there's
+    // no need to re-scan the whole dayRecords map on every single client tick (~20/sec).
+    // Does NOT gate the direct call from IslandTimeMod's login handler, which always
+    // wants an immediate catch-up check.
+    private static volatile long lastDueRecordsCheckMs = 0;
+    private static final long DUE_RECORDS_CHECK_INTERVAL_MS = 1_000L;
+
     // The buy-order unit price snapshotted the FIRST time it was needed for the currently
     // active cohort (whichever cohortStartMs it was captured for), so every fuel unit
     // placed anywhere within the same cohort — even in separate onMinionFueled() calls
@@ -1215,12 +1224,23 @@ public class FuelCycleTracker {
      * @param isStatsIncreasing whether the tracked item's stats are currently increasing
      */
     public static void tick(boolean isStatsIncreasing) {
+        long now = System.currentTimeMillis();
+
+        // Fire the "fuel day up" alert purely off wall-clock time, independent of the
+        // minion-fuel cohort tracking below — this is what keeps the alert in lockstep
+        // with whatever /it fueltime displays as a day's end (see formatCycleRange()),
+        // instead of only firing while a minion cohort happens to still be tracked.
+        // Throttled to once per second (see lastDueRecordsCheckMs) since day boundaries
+        // only need second-level precision, unlike the sub-second cohort logic below.
+        if (now - lastDueRecordsCheckMs >= DUE_RECORDS_CHECK_INTERVAL_MS) {
+            lastDueRecordsCheckMs = now;
+            checkDueDayRecords(now);
+        }
+
         if (minionExpiries.isEmpty()) {
             wasOnIslandLastTick = false;
             return;
         }
-
-        long now = System.currentTimeMillis();
 
         // The whole cohort (every currently-tracked minion) is only truly over once the
         // LAST (latest-expiring) minion's own fuel runs out.
@@ -1303,6 +1323,56 @@ public class FuelCycleTracker {
         record.cycleClosed = true;
         minionsCountedByDaySlot.remove(daySlot);
         FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto);
+    }
+
+    /**
+     * Fires the "fuel day up" alert for — and closes out — every day-record whose own
+     * 24h fuel-day span has elapsed, purely from wall-clock time. This is exactly the
+     * same end point {@link #formatCycleRange(DayRecord)} shows for that row in
+     * {@code /it fueltime}: a manually-corrected record's explicit end time, or
+     * {@code cycleStartMs + 24h} otherwise.
+     *
+     * Unlike {@link #closeDaySlot(int)} (which is only reached via the live
+     * minion-fuel cohort loop in {@link #tick(boolean)}), this runs every tick
+     * regardless of whether any minion currently has active fuel — so it also covers
+     * manually queued/edited days (see {@link #appendQueuedDay()},
+     * {@link #setCycleTimes(String, long, long)}) that the cohort loop never revisits,
+     * and any day left dangling once its cohort finishes and {@link #minionExpiries}
+     * is cleared. Records already closed (by this or by {@link #closeDaySlot(int)})
+     * are skipped, so nothing is ever double-alerted.
+     *
+     * Also called directly on server login (see IslandTimeMod's
+     * {@code ClientPlayConnectionEvents.JOIN} handler) so a day that finished while the
+     * client was disconnected or entirely closed (kicked, crashed, game closed
+     * overnight, etc.) is alerted on straight away rather than waiting for the regular
+     * tick loop to notice — which it otherwise would too, just not until the next
+     * client tick after the game/mod is running again.
+     */
+    public static void checkDueDayRecords(long now) {
+        boolean anyClosed = false;
+        for (DayRecord record : dayRecords.values()) {
+            if (record.cycleStartMs <= 0) continue; // hasn't started / unknown legacy record
+
+            boolean alreadyClosed = record.manualCycleTimes ? record.cycleClosed : record.cycleEndMs > 0;
+            if (alreadyClosed) continue;
+
+            boolean manuallyTimed = record.manualCycleTimes && record.cycleEndMs > record.cycleStartMs;
+            long effectiveEnd = manuallyTimed ? record.cycleEndMs : record.cycleStartMs + DAY_MS;
+            if (now < effectiveEnd) continue;
+
+            if (!record.manualCycleTimes) {
+                record.cycleEndMs = effectiveEnd;
+            }
+            record.cycleClosed = true;
+            minionsCountedByDaySlot.remove(record.date);
+            FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto);
+            anyClosed = true;
+        }
+
+        // Persist immediately (rather than waiting for the periodic tick-based save)
+        // so the closed/alerted state survives a crash or shutdown moments later —
+        // otherwise re-launching before the next autosave would replay the same alert.
+        if (anyClosed) save();
     }
 
     // -------------------------------------------------------------------------
