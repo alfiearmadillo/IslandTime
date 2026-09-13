@@ -195,6 +195,15 @@ public class FuelCycleTracker {
     private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick  = false;
 
+    // Throttles the wall-clock day-boundary sweep (checkDueDayRecords()) below to at
+    // most once per second when driven from the regular per-tick call — it only cares
+    // about second-level precision (matching what /it fueltime displays), so there's
+    // no need to re-scan the whole dayRecords map on every single client tick (~20/sec).
+    // Does NOT gate the direct call from IslandTimeMod's login handler, which always
+    // wants an immediate catch-up check.
+    private static volatile long lastDueRecordsCheckMs = 0;
+    private static final long DUE_RECORDS_CHECK_INTERVAL_MS = 1_000L;
+
     // The buy-order unit price snapshotted the FIRST time it was needed for the currently
     // active cohort (whichever cohortStartMs it was captured for), so every fuel unit
     // placed anywhere within the same cohort — even in separate onMinionFueled() calls
@@ -1215,18 +1224,23 @@ public class FuelCycleTracker {
      * @param isStatsIncreasing whether the tracked item's stats are currently increasing
      */
     public static void tick(boolean isStatsIncreasing) {
+        long now = System.currentTimeMillis();
+
         // Fire the "fuel day up" alert purely off wall-clock time, independent of the
         // minion-fuel cohort tracking below — this is what keeps the alert in lockstep
         // with whatever /it fueltime displays as a day's end (see formatCycleRange()),
         // instead of only firing while a minion cohort happens to still be tracked.
-        checkDueDayRecords(System.currentTimeMillis());
+        // Throttled to once per second (see lastDueRecordsCheckMs) since day boundaries
+        // only need second-level precision, unlike the sub-second cohort logic below.
+        if (now - lastDueRecordsCheckMs >= DUE_RECORDS_CHECK_INTERVAL_MS) {
+            lastDueRecordsCheckMs = now;
+            checkDueDayRecords(now);
+        }
 
         if (minionExpiries.isEmpty()) {
             wasOnIslandLastTick = false;
             return;
         }
-
-        long now = System.currentTimeMillis();
 
         // The whole cohort (every currently-tracked minion) is only truly over once the
         // LAST (latest-expiring) minion's own fuel runs out.
