@@ -60,6 +60,11 @@ public class IslandTimeMod implements ClientModInitializer {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
                 IslandChatRelay.startPolling();
                 ResourcePackManager.applyCachedPack();
+
+                // Catch up on any fuel-day(s) that finished while disconnected or with
+                // the game closed entirely (kicked, crashed, closed overnight, etc.) —
+                // alert on login instead of waiting for a fresh tick to notice.
+                FuelCycleTracker.checkDueDayRecords(System.currentTimeMillis());
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {

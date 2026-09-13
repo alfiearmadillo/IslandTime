@@ -1326,8 +1326,16 @@ public class FuelCycleTracker {
      * and any day left dangling once its cohort finishes and {@link #minionExpiries}
      * is cleared. Records already closed (by this or by {@link #closeDaySlot(int)})
      * are skipped, so nothing is ever double-alerted.
+     *
+     * Also called directly on server login (see IslandTimeMod's
+     * {@code ClientPlayConnectionEvents.JOIN} handler) so a day that finished while the
+     * client was disconnected or entirely closed (kicked, crashed, game closed
+     * overnight, etc.) is alerted on straight away rather than waiting for the regular
+     * tick loop to notice — which it otherwise would too, just not until the next
+     * client tick after the game/mod is running again.
      */
-    private static void checkDueDayRecords(long now) {
+    public static void checkDueDayRecords(long now) {
+        boolean anyClosed = false;
         for (DayRecord record : dayRecords.values()) {
             if (record.cycleStartMs <= 0) continue; // hasn't started / unknown legacy record
 
@@ -1344,7 +1352,13 @@ public class FuelCycleTracker {
             record.cycleClosed = true;
             minionsCountedByDaySlot.remove(record.date);
             FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto);
+            anyClosed = true;
         }
+
+        // Persist immediately (rather than waiting for the periodic tick-based save)
+        // so the closed/alerted state survives a crash or shutdown moments later —
+        // otherwise re-launching before the next autosave would replay the same alert.
+        if (anyClosed) save();
     }
 
     // -------------------------------------------------------------------------
