@@ -36,6 +36,10 @@ public class IslandTimeConfig extends Config {
     public Discord discord = new Discord();
 
     @Expose
+    @Category(name = "New Year Cakes", desc = "Discord reminders for the New Year's Celebration cake")
+    public NewYearCakes newYearCakes = new NewYearCakes();
+
+    @Expose
     @Category(name = "Alert Speeds", desc = "Configure alert timing for different events")
     public AlertSpeeds alertSpeeds = new AlertSpeeds();
 
@@ -241,6 +245,25 @@ public class IslandTimeConfig extends Config {
                 }
             }
         };
+    }
+
+    public static class NewYearCakes {
+        @Expose
+        @ConfigOption(
+                name = "Enable Discord Reminders",
+                desc = "Notify Discord when the New Year's Celebration starts and remind you before the cake expires"
+        )
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Reminder Speed",
+                desc = "How often to remind during the 1-hour event\n" +
+                        "OFF: No reminders | FAST: Every 5 min | MEDIUM: Every 15 min | SLOW: Every 30 min"
+        )
+        @ConfigEditorDropdown(values = {"OFF", "FAST (5 min)", "MEDIUM (15 min)", "SLOW (30 min)"})
+        public int reminderSpeed = 2; // MEDIUM
     }
 
     public static class AlertSpeeds {

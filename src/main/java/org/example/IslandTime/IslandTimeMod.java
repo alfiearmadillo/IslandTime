@@ -30,6 +30,7 @@ public class IslandTimeMod implements ClientModInitializer {
         AgingItemsConfig.load();
         IslandChatRelay.register();
         ChatMessageStore.register();
+        NewYearCakeTracker.register();
         MinionFuelTracker.registerArmorStandInteractionListener();
 
         // Initialize MoulConfig
@@ -51,6 +52,7 @@ public class IslandTimeMod implements ClientModInitializer {
             IslandAlertTracker.tick(isOnIsland);
             DisconnectAlertTracker.tick(client);
             FuelExpiredAlertTracker.tick();
+            NewYearCakeTracker.tick();
             BackpackHoverHandler.tick(client);
             SparklingAlert.tick(client);
         });
