@@ -18,7 +18,7 @@ public class NewYearCakeTracker {
 
     private static long eventStartTime = -1L;
     private static long lastRegularReminderElapsed = 0L;
-    private static boolean lastChanceSent = false;
+    private static boolean finalReminderSent = false;
 
     private NewYearCakeTracker() {}
 
@@ -42,7 +42,7 @@ public class NewYearCakeTracker {
 
         eventStartTime = now;
         lastRegularReminderElapsed = 0L;
-        lastChanceSent = false;
+        finalReminderSent = false;
         if (getReminderSpeed() != ReminderSpeed.OFF) {
             sendNotification(
                     "🍰 **New Year Cake Available!**",
@@ -67,14 +67,18 @@ public class NewYearCakeTracker {
         // Never send a late reminder if the client was paused or the game was suspended.
         if (remaining < MIN_REMAINING_MS) return;
 
-        if (!lastChanceSent && remaining <= LAST_CHANCE_LEAD_MS) {
+        // Check the final reminder before regular reminders. In FAST mode, both are due on
+        // the same five-minute cadence, but only the final reminder may be sent in this window.
+        if (!finalReminderSent && remaining <= LAST_CHANCE_LEAD_MS) {
             sendNotification(
                     "⚠️ **New Year Cake Last Chance!**",
                     "The New Year Cake expires in about 5 minutes and has not been claimed yet.");
-            lastChanceSent = true;
+            finalReminderSent = true;
             return;
         }
 
+        // The extra second keeps a regular five-minute reminder from being queued immediately
+        // before the final reminder when a client tick lands on the boundary.
         if (remaining <= REGULAR_REMINDER_CUTOFF_MS) return;
         if (elapsed - lastRegularReminderElapsed < speed.intervalMs) return;
 
