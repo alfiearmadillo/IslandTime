@@ -106,9 +106,17 @@ public class NewYearCakeTracker {
     }
 
     private static void sendNotification(String title, String body) {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (config == null) return;
+
+        String webhookUrl = config.newYearCakes.webhookUrl == null
+                ? ""
+                : config.newYearCakes.webhookUrl.trim();
+        if (webhookUrl.isEmpty()) return;
+
         String userId = DiscordWebhookManager.getDiscordUserId();
         String ping = userId != null && !userId.isBlank() ? "<@" + userId + ">\n" : "";
-        DiscordWebhookManager.sendCustomMessage(title + "\n" + ping + body);
+        DiscordWebhookManager.sendCustomMessage(webhookUrl, title + "\n" + ping + body);
     }
 
     private enum ReminderSpeed {

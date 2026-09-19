@@ -250,6 +250,15 @@ public class IslandTimeConfig extends Config {
     public static class NewYearCakes {
         @Expose
         @ConfigOption(
+                name = "Webhook URL",
+                desc = "Discord webhook for New Year's Celebration reminders (leave empty to disable). " +
+                        "You may use the same URL as the main Discord webhook."
+        )
+        @ConfigEditorText
+        public String webhookUrl = "";
+
+        @Expose
+        @ConfigOption(
                 name = "Enable Discord Reminders",
                 desc = "Notify Discord when the New Year's Celebration starts and remind you before the cake expires"
         )
