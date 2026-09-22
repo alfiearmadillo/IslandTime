@@ -114,7 +114,9 @@ public class NewYearCakeTracker {
                 : config.newYearCakes.webhookUrl.trim();
         if (webhookUrl.isEmpty()) return;
 
-        String userId = DiscordWebhookManager.getDiscordUserId();
+        String userId = config.newYearCakes.discordUserId == null
+                ? ""
+                : config.newYearCakes.discordUserId.trim();
         String ping = userId != null && !userId.isBlank() ? "<@" + userId + ">\n" : "";
         DiscordWebhookManager.sendCustomMessage(webhookUrl, title + "\n" + ping + body);
     }
