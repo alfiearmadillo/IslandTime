@@ -32,8 +32,15 @@ public class IslandTimeConfig extends Config {
     public ItemTracking itemTracking = new ItemTracking();
 
     @Expose
-    @Category(name = "Discord", desc = "Discord webhook and alert settings")
+    @Category(
+            name = "Discord",
+            desc = "Discord webhook and ping settings for general IslandTime alerts such as island absence, item tracking, disconnects, and fuel expiry. New Year Cake notifications have separate webhook and ping settings in the New Year Cakes category."
+    )
     public Discord discord = new Discord();
+
+    @Expose
+    @Category(name = "New Year Cakes", desc = "Discord reminders for the New Year's Celebration cake")
+    public NewYearCakes newYearCakes = new NewYearCakes();
 
     @Expose
     @Category(name = "Alert Speeds", desc = "Configure alert timing for different events")
@@ -209,7 +216,7 @@ public class IslandTimeConfig extends Config {
 
     public static class Discord {
         @Expose
-        @ConfigOption(name = "Webhook URL", desc = "Discord webhook URL for alerts (leave empty to disable). Must start with: https://discord.com/api/webhooks/\nYou can also use /webhook <url> to set or /webhook clear to remove")
+        @ConfigOption(name = "Webhook URL", desc = "Discord webhook URL for general IslandTime alerts (leave empty to disable). Must start with: https://discord.com/api/webhooks/\nYou can also use /webhook <url> to set or /webhook clear to remove")
         @ConfigEditorText
         public String webhookUrl = "";
 
@@ -226,7 +233,7 @@ public class IslandTimeConfig extends Config {
         };
 
         @Expose
-        @ConfigOption(name = "User ID for Pings", desc = "Your Discord user ID for webhook pings (leave empty to disable pings). Must be numeric.\nYou can also use /discordping <userid> to set or /discordping clear to remove")
+        @ConfigOption(name = "User ID for Pings", desc = "Discord user ID to ping for general IslandTime alerts (leave empty to disable). Must be numeric. New Year Cake pings use the separate ID in the New Year Cakes category.\nYou can also use /discordping <userid> to set or /discordping clear to remove")
         @ConfigEditorText
         public String discordUserId = "";
 
@@ -241,6 +248,42 @@ public class IslandTimeConfig extends Config {
                 }
             }
         };
+    }
+
+    public static class NewYearCakes {
+        @Expose
+        @ConfigOption(
+                name = "Webhook URL",
+                desc = "Discord webhook for New Year's Celebration reminders (leave empty to disable). " +
+                        "You may use the same URL as the main Discord webhook."
+        )
+        @ConfigEditorText
+        public String webhookUrl = "";
+
+        @Expose
+        @ConfigOption(
+                name = "User ID for Pings",
+                desc = "Discord user ID to ping for New Year's Celebration reminders (leave empty to disable). Must be numeric."
+        )
+        @ConfigEditorText
+        public String discordUserId = "";
+
+        @Expose
+        @ConfigOption(
+                name = "Enable Discord Reminders",
+                desc = "Notify Discord when the New Year's Celebration starts and remind you before the cake expires"
+        )
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Reminder Speed",
+                desc = "How often to remind during the 1-hour event\n" +
+                        "OFF: No reminders | FAST: Every 5 min | MEDIUM: Every 15 min | SLOW: Every 30 min"
+        )
+        @ConfigEditorDropdown(values = {"OFF", "FAST (5 min)", "MEDIUM (15 min)", "SLOW (30 min)"})
+        public int reminderSpeed = 2; // MEDIUM
     }
 
     public static class AlertSpeeds {

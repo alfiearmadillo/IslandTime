@@ -108,6 +108,10 @@ public class DiscordWebhookManager {
 
     public static void sendCustomMessage(String message) {
         String url = webhookUrl;
+        sendCustomMessage(url, message);
+    }
+
+    public static void sendCustomMessage(String url, String message) {
         if (url == null || url.isEmpty()) return;
         sendWebhook(url, message);
     }
