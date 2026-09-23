@@ -446,45 +446,6 @@ public class FuelDayScreen extends Screen {
             totalProfit += record.getProfit(displayNowMs);
         }
 
-        private void renderCohortExpiryTooltip(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-            int controlsWidth = FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP + ADD_DAY_BUTTON_WIDTH;
-            int controlsX = width / 2 - controlsWidth / 2;
-            if (!isInBounds(mouseX, mouseY, controlsX, 10, FORCE_END_BUTTON_WIDTH, 20)) return;
-
-            List<Component> lines = new java.util.ArrayList<>();
-            List<FuelCycleTracker.MinionExpiry> expiries =
-                    FuelCycleTracker.getActiveMinionExpiries(System.currentTimeMillis());
-            if (expiries.isEmpty()) {
-                lines.add(Component.literal("No active cohort").withStyle(ChatFormatting.GRAY));
-            } else {
-                lines.add(Component.literal("Minion fuel expiry (soonest first)")
-                        .withStyle(ChatFormatting.GOLD));
-                long now = System.currentTimeMillis();
-                for (FuelCycleTracker.MinionExpiry expiry : expiries) {
-                    String label = expiry.name;
-                    if (expiry.position != null && !expiry.position.isBlank()) {
-                        label += " @ " + expiry.position;
-                    }
-                    lines.add(Component.literal(label + " — "
-                                    + formatRemaining(expiry.expiresAt - now)
-                                    + " (" + FuelCycleTracker.formatEditableTimestamp(expiry.expiresAt) + ")")
-                            .withStyle(ChatFormatting.GRAY));
-                }
-            }
-            context.setComponentTooltipForNextFrame(font, lines, mouseX, mouseY);
-        }
-
-        private static String formatRemaining(long remainingMs) {
-            long totalSeconds = Math.max(0, remainingMs) / 1000;
-            long days = totalSeconds / 86_400;
-            long hours = (totalSeconds % 86_400) / 3_600;
-            long minutes = (totalSeconds % 3_600) / 60;
-            long seconds = totalSeconds % 60;
-            return days > 0
-                    ? String.format("%dd %02dh %02dm", days, hours, minutes)
-                    : String.format("%02dh %02dm %02ds", hours, minutes, seconds);
-        }
-
         int widgetW = TOTAL_PROFIT_WIDGET_WIDTH;
         int widgetX = width - widgetW - TOTAL_PROFIT_WIDGET_GAP;
         int widgetY = HEADER_HEIGHT - 32;
@@ -499,6 +460,45 @@ public class FuelDayScreen extends Screen {
         Component totalComp = Component.literal(PriceCache.formatCoins(totalProfit)).withStyle(totalStyle);
         context.text(font, totalComp, widgetX + PADDING, widgetY + 18,
                 totalProfit >= 0 ? 0xFF55FF55 : 0xFFFF5555, true);
+    }
+
+    private void renderCohortExpiryTooltip(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        int controlsWidth = FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP + ADD_DAY_BUTTON_WIDTH;
+        int controlsX = width / 2 - controlsWidth / 2;
+        if (!isInBounds(mouseX, mouseY, controlsX, 10, FORCE_END_BUTTON_WIDTH, 20)) return;
+
+        List<Component> lines = new java.util.ArrayList<>();
+        List<FuelCycleTracker.MinionExpiry> expiries =
+                FuelCycleTracker.getActiveMinionExpiries(System.currentTimeMillis());
+        if (expiries.isEmpty()) {
+            lines.add(Component.literal("No active cohort").withStyle(ChatFormatting.GRAY));
+        } else {
+            lines.add(Component.literal("Minion fuel expiry (soonest first)")
+                    .withStyle(ChatFormatting.GOLD));
+            long now = System.currentTimeMillis();
+            for (FuelCycleTracker.MinionExpiry expiry : expiries) {
+                String label = expiry.name;
+                if (expiry.position != null && !expiry.position.isBlank()) {
+                    label += " @ " + expiry.position;
+                }
+                lines.add(Component.literal(label + " — "
+                                + formatRemaining(expiry.expiresAt - now)
+                                + " (" + FuelCycleTracker.formatEditableTimestamp(expiry.expiresAt) + ")")
+                        .withStyle(ChatFormatting.GRAY));
+            }
+        }
+        context.setComponentTooltipForNextFrame(font, lines, mouseX, mouseY);
+    }
+
+    private static String formatRemaining(long remainingMs) {
+        long totalSeconds = Math.max(0, remainingMs) / 1000;
+        long days = totalSeconds / 86_400;
+        long hours = (totalSeconds % 86_400) / 3_600;
+        long minutes = (totalSeconds % 3_600) / 60;
+        long seconds = totalSeconds % 60;
+        return days > 0
+                ? String.format("%dd %02dh %02dm", days, hours, minutes)
+                : String.format("%02dh %02dm %02ds", hours, minutes, seconds);
     }
 
     /**
