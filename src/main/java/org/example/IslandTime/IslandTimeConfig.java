@@ -140,7 +140,7 @@ public class IslandTimeConfig extends Config {
                         "their own price."
         )
         @ConfigEditorText
-        public String todayGabagoolPriceString = "0";
+        public String todayGabagoolPriceString = "";
 
         @Expose
         @ConfigOption(
