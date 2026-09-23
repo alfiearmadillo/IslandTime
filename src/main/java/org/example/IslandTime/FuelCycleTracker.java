@@ -731,6 +731,83 @@ public class FuelCycleTracker {
         return dayRecords.get(getCurrentCycleDateKey());
     }
 
+    /** A display-only snapshot of one minion's active fuel expiry. */
+    public static class MinionExpiry {
+        public final String name;
+        public final String position;
+        public final long expiresAt;
+
+        private MinionExpiry(String name, String position, long expiresAt) {
+            this.name = name;
+            this.position = position;
+            this.expiresAt = expiresAt;
+        }
+    }
+
+    /** Returns active minions ordered by the time remaining on their fuel. */
+    public static List<MinionExpiry> getActiveMinionExpiries(long now) {
+        List<MinionExpiry> result = new ArrayList<>();
+        for (Map.Entry<String, Long> entry : minionExpiries.entrySet()) {
+            long expiry = entry.getValue();
+            if (expiry <= now) continue;
+            String name = MinionIdentityRegistry.displayNameFor(entry.getKey());
+            String position = MinionIdentityRegistry.positionFor(entry.getKey());
+            result.add(new MinionExpiry(
+                    name != null && !name.isBlank() ? name : "Minion",
+                    position != null && !position.isBlank() ? position : entry.getKey(),
+                    expiry));
+        }
+        result.sort(Comparator.comparingLong(expiry -> expiry.expiresAt));
+        return result;
+    }
+
+    public static boolean hasActiveCohort() {
+        return cohortStartMs > 0 && !minionExpiries.isEmpty();
+    }
+
+    /**
+     * Ends the active cohort immediately, discarding all queued fuel-days after the
+     * currently active one. The current day is closed at the moment of the action.
+     */
+    public static void forceEndCohort() {
+        long now = System.currentTimeMillis();
+        if (!hasActiveCohort()) return;
+
+        String activeSlot = daySlotKey(cohortStartMs, activeDaySlotIndex);
+        DayRecord activeRecord = dayRecords.get(activeSlot);
+        if (activeRecord != null && !activeRecord.cycleClosed) {
+            activeRecord.cycleEndMs = Math.max(activeRecord.cycleStartMs + 1, now);
+            activeRecord.manualCycleTimes = true;
+            activeRecord.cycleClosed = true;
+            minionsCountedByDaySlot.remove(activeSlot);
+            FuelExpiredAlertTracker.onFuelDayUp(activeRecord.minionsRefueledAuto);
+        }
+
+        long firstFutureSlotStart = cohortStartMs + (long) (activeDaySlotIndex + 1) * DAY_MS;
+        dayRecords.entrySet().removeIf(entry -> {
+            DayRecord record = entry.getValue();
+            return record.cycleStartMs >= firstFutureSlotStart
+                    && record.cycleStartMs <= maxExpiryForCurrentCohort();
+        });
+
+        minionsCountedByDaySlot.clear();
+        minionExpiries.clear();
+        minionFuelUnitsQueued.clear();
+        cohortStartMs = 0;
+        activeDaySlotIndex = 0;
+        lastTickTime = now;
+        wasOnIslandLastTick = false;
+        save();
+    }
+
+    private static long maxExpiryForCurrentCohort() {
+        long maxExpiry = 0;
+        for (long expiry : minionExpiries.values()) {
+            maxExpiry = Math.max(maxExpiry, expiry);
+        }
+        return maxExpiry;
+    }
+
     public static void setManualMinionCount(String date, Integer value) {
         DayRecord record = dayRecords.get(date);
         if (record == null) return;
@@ -749,8 +826,9 @@ public class FuelCycleTracker {
     /** Applies the configured default without turning it into a per-day manual override. */
     public static void applyDefaultGabagoolPrice(String date, double value) {
         DayRecord record = dayRecords.get(date);
-        if (record == null || record.manualGabagoolPrice) return;
-        record.gabagoolPrice = Math.max(0.0, value);
+        double normalized = Math.max(0.0, value);
+        if (record == null || record.manualGabagoolPrice || record.gabagoolPrice == normalized) return;
+        record.gabagoolPrice = normalized;
         save();
     }
 
@@ -819,7 +897,13 @@ public class FuelCycleTracker {
     }
 
     public static long parseEditableTimestamp(String value) {
-        LocalDateTime parsed = LocalDateTime.parse(value.trim(), CYCLE_LABEL_FORMAT);
+        LocalDateTime parsed;
+        try {
+            parsed = LocalDateTime.parse(value.trim(), CYCLE_LABEL_FORMAT);
+        } catch (RuntimeException ignored) {
+            parsed = LocalDateTime.parse(value.trim(),
+                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        }
         return parsed.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
@@ -828,9 +912,9 @@ public class FuelCycleTracker {
      * are moved with it so the queue remains contiguous; completed historical records are
      * left untouched unless they are the record explicitly edited.
      */
-    public static void setCycleTimes(String date, long startMs, long endMs) {
+    public static boolean setCycleTimes(String date, long startMs, long endMs) {
         DayRecord selected = dayRecords.get(date);
-        if (selected == null || startMs <= 0 || endMs <= startMs) return;
+        if (selected == null || startMs <= 0 || endMs <= startMs) return false;
 
         long oldStart = selected.cycleStartMs;
         if (oldStart <= 0) oldStart = startMs;
@@ -905,6 +989,7 @@ public class FuelCycleTracker {
             }
         }
         save();
+        return true;
     }
 
     public static void removeDayRecord(String date) {
