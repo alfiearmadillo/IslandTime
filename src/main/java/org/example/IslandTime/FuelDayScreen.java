@@ -33,6 +33,9 @@ public class FuelDayScreen extends Screen {
     private static final int PADDING = 4;
     private static final int TOTAL_PROFIT_WIDGET_GAP = 12;
     private static final int TOTAL_PROFIT_WIDGET_WIDTH = 110;
+    private static final int TOP_BUTTON_GAP = 8;
+    private static final int FORCE_END_BUTTON_WIDTH = 150;
+    private static final int ADD_DAY_BUTTON_WIDTH = 110;
 
     private int scrollOffset = 0;
     private int listTop;
@@ -51,6 +54,7 @@ public class FuelDayScreen extends Screen {
     private EditBox editNotesField;
     private EditBox editStartField;
     private EditBox editEndField;
+    private String editValidationError;
 
     // Scrollbar
     private boolean draggingScrollbar = false;
@@ -77,8 +81,15 @@ public class FuelDayScreen extends Screen {
         listBottom = height - 10;
 
         if (!editDialogOpen) {
+            int controlsWidth = FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP + ADD_DAY_BUTTON_WIDTH;
+            int controlsX = width / 2 - controlsWidth / 2;
+            addRenderableWidget(Button.builder(Component.literal("Force End Cohort"), btn -> {
+                        FuelCycleTracker.forceEndCohort();
+                    })
+                    .bounds(controlsX, 10, FORCE_END_BUTTON_WIDTH, 20)
+                    .build());
             addRenderableWidget(Button.builder(Component.literal("+ Add Day"), btn -> addQueuedDay())
-                    .bounds(width / 2 - 55, 10, 110, 20)
+                    .bounds(controlsX + FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP, 10, ADD_DAY_BUTTON_WIDTH, 20)
                     .build());
         }
     }
@@ -102,6 +113,7 @@ public class FuelDayScreen extends Screen {
 
         editDialogOpen = true;
         editDate = date;
+        editValidationError = null;
         clearWidgets();
 
         int dialogX = width / 2 - 130;
@@ -159,6 +171,17 @@ public class FuelDayScreen extends Screen {
         addRenderableWidget(editEndField);
 
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
+            long start;
+            long end;
+            try {
+                start = FuelCycleTracker.parseEditableTimestamp(editStartField.getValue());
+                end = FuelCycleTracker.parseEditableTimestamp(editEndField.getValue());
+                if (end <= start) throw new IllegalArgumentException("end before start");
+            } catch (RuntimeException ignored) {
+                editValidationError = "Invalid timestamps (use dd/MM/yy HH:mm)";
+                return;
+            }
+
             String minionText = editMinionField.getValue().trim();
             if (minionText.isEmpty()) {
                 FuelCycleTracker.setManualMinionCount(editDate, null);
@@ -193,11 +216,10 @@ public class FuelDayScreen extends Screen {
                 } catch (NumberFormatException ignored) {}
             }
             FuelCycleTracker.setNotes(editDate, editNotesField.getValue());
-            try {
-                long start = FuelCycleTracker.parseEditableTimestamp(editStartField.getValue());
-                long end = FuelCycleTracker.parseEditableTimestamp(editEndField.getValue());
-                FuelCycleTracker.setCycleTimes(editDate, start, end);
-            } catch (RuntimeException ignored) {}
+            if (!FuelCycleTracker.setCycleTimes(editDate, start, end)) {
+                editValidationError = "Could not save cycle timestamps";
+                return;
+            }
             closeDialog();
         }).bounds(dialogX, dialogY + 258, 115, 20).build());
 
@@ -253,6 +275,7 @@ public class FuelDayScreen extends Screen {
     private void closeDialog() {
         editDialogOpen = false;
         editDate = null;
+        editValidationError = null;
         clearWidgets();
         init();
     }
@@ -277,6 +300,7 @@ public class FuelDayScreen extends Screen {
 
         if (!editDialogOpen) {
             renderEntryList(context, mouseX, mouseY);
+            renderCohortExpiryTooltip(context, mouseX, mouseY);
         }
 
         if (editDialogOpen) {
@@ -304,6 +328,10 @@ public class FuelDayScreen extends Screen {
                     dialogX + 10, dialogY + 180, 0xFFAAAAAA, true);
             context.text(font, Component.literal("End (dd/MM/yy HH:mm):").withStyle(ChatFormatting.GRAY),
                     dialogX + 10, dialogY + 214, 0xFFAAAAAA, true);
+            if (editValidationError != null) {
+                context.text(font, Component.literal(editValidationError).withStyle(ChatFormatting.RED),
+                        dialogX + 10, dialogY + 246, 0xFFFF5555, true);
+            }
         }
 
         super.extractRenderState(context, mouseX, mouseY, delta);
@@ -432,6 +460,45 @@ public class FuelDayScreen extends Screen {
         Component totalComp = Component.literal(PriceCache.formatCoins(totalProfit)).withStyle(totalStyle);
         context.text(font, totalComp, widgetX + PADDING, widgetY + 18,
                 totalProfit >= 0 ? 0xFF55FF55 : 0xFFFF5555, true);
+    }
+
+    private void renderCohortExpiryTooltip(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        int controlsWidth = FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP + ADD_DAY_BUTTON_WIDTH;
+        int controlsX = width / 2 - controlsWidth / 2;
+        if (!isInBounds(mouseX, mouseY, controlsX, 10, FORCE_END_BUTTON_WIDTH, 20)) return;
+
+        List<Component> lines = new java.util.ArrayList<>();
+        List<FuelCycleTracker.MinionExpiry> expiries =
+                FuelCycleTracker.getActiveMinionExpiries(System.currentTimeMillis());
+        if (expiries.isEmpty()) {
+            lines.add(Component.literal("No active cohort").withStyle(ChatFormatting.GRAY));
+        } else {
+            lines.add(Component.literal("Minion fuel expiry (soonest first)")
+                    .withStyle(ChatFormatting.GOLD));
+            long now = System.currentTimeMillis();
+            for (FuelCycleTracker.MinionExpiry expiry : expiries) {
+                String label = expiry.name;
+                if (expiry.position != null && !expiry.position.isBlank()) {
+                    label += " @ " + expiry.position;
+                }
+                lines.add(Component.literal(label + " — "
+                                + formatRemaining(expiry.expiresAt - now)
+                                + " (" + FuelCycleTracker.formatEditableTimestamp(expiry.expiresAt) + ")")
+                        .withStyle(ChatFormatting.GRAY));
+            }
+        }
+        context.setComponentTooltipForNextFrame(font, lines, mouseX, mouseY);
+    }
+
+    private static String formatRemaining(long remainingMs) {
+        long totalSeconds = Math.max(0, remainingMs) / 1000;
+        long days = totalSeconds / 86_400;
+        long hours = (totalSeconds % 86_400) / 3_600;
+        long minutes = (totalSeconds % 3_600) / 60;
+        long seconds = totalSeconds % 60;
+        return days > 0
+                ? String.format("%dd %02dh %02dm", days, hours, minutes)
+                : String.format("%02dh %02dm %02ds", hours, minutes, seconds);
     }
 
     /**

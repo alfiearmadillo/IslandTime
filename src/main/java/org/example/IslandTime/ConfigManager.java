@@ -86,6 +86,8 @@ public class ConfigManager {
     public static void tick(Minecraft client) {
         if (client == null) return;
 
+        applyConfiguredFuelDefaults();
+
         Screen currentScreen = client.screen;
 
         // Detect if config screen just closed
@@ -190,12 +192,7 @@ public class ConfigManager {
             // Invalid number, keep existing value
         }
         String todayDate = FuelCycleTracker.getCurrentCycleDateKey();
-        try {
-            double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
-            FuelCycleTracker.applyDefaultGabagoolPrice(todayDate, price);
-        } catch (NumberFormatException ignored) {
-            // Invalid number, keep existing value
-        }
+        applyConfiguredFuelDefaults();
         try {
             String amountText = config.fuelCycles.todayGabagoolAmountString.trim();
             FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(todayDate);
@@ -310,6 +307,18 @@ public class ConfigManager {
         }
 
         saveToFile();
+    }
+
+    /** Applies defaults to the current fuel day even when the config screen is not opened. */
+    private static void applyConfiguredFuelDefaults() {
+        if (config == null) return;
+        String todayDate = FuelCycleTracker.getCurrentCycleDateKey();
+        try {
+            double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
+            FuelCycleTracker.applyDefaultGabagoolPrice(todayDate, price);
+        } catch (NumberFormatException ignored) {
+            // Invalid number, keep existing value
+        }
     }
 
     /**
