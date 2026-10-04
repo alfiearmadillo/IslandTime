@@ -54,6 +54,10 @@ public class FuelDayScreen extends Screen {
     private EditBox editNotesField;
     private EditBox editStartField;
     private EditBox editEndField;
+    // Values the dialog was opened with, so saving only applies fields the user changed.
+    private String initialGabagoolPriceText;
+    private String initialStartText;
+    private String initialEndText;
     private String editValidationError;
 
     // Scrollbar
@@ -134,7 +138,9 @@ public class FuelDayScreen extends Screen {
 
         editGabagoolPriceField = new EditBox(font, dialogX, dialogY + 88, 115, 20, Component.literal("Gabagool Price"));
         editGabagoolPriceField.setMaxLength(16);
-        editGabagoolPriceField.setValue(String.valueOf(record.gabagoolPrice));
+        initialGabagoolPriceText = String.valueOf(record.gabagoolPrice);
+        editGabagoolPriceField.setValue(initialGabagoolPriceText);
+        editGabagoolPriceField.setHint(Component.literal("blank = default").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editGabagoolPriceField);
 
         editGabagoolAmountField = new EditBox(font, dialogX + 125, dialogY + 88, 115, 20, Component.literal("Gabagool Amount"));
@@ -156,30 +162,41 @@ public class FuelDayScreen extends Screen {
         editNotesField = new EditBox(font, dialogX, dialogY + 156, 240, 20, Component.literal("Notes"));
         editNotesField.setMaxLength(128);
         editNotesField.setValue(record.notes != null ? record.notes : "");
+        if (record.hasAutoGabagoolPrice()) {
+            editNotesField.setHint(Component.literal(FuelCycleTracker.AUTO_PRICE_NOTE).withStyle(ChatFormatting.GRAY));
+        }
         addRenderableWidget(editNotesField);
 
         long startMs = record.cycleStartMs > 0 ? record.cycleStartMs : System.currentTimeMillis();
         long endMs = record.cycleEndMs > startMs ? record.cycleEndMs : startMs + FuelCycleTracker.DAY_MS;
         editStartField = new EditBox(font, dialogX, dialogY + 190, 240, 20, Component.literal("Start"));
         editStartField.setMaxLength(20);
-        editStartField.setValue(FuelCycleTracker.formatEditableTimestamp(startMs));
+        initialStartText = FuelCycleTracker.formatEditableTimestamp(startMs);
+        editStartField.setValue(initialStartText);
         addRenderableWidget(editStartField);
 
         editEndField = new EditBox(font, dialogX, dialogY + 224, 240, 20, Component.literal("End"));
         editEndField.setMaxLength(20);
-        editEndField.setValue(FuelCycleTracker.formatEditableTimestamp(endMs));
+        initialEndText = FuelCycleTracker.formatEditableTimestamp(endMs);
+        editEndField.setValue(initialEndText);
         addRenderableWidget(editEndField);
 
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
-            long start;
-            long end;
-            try {
-                start = FuelCycleTracker.parseEditableTimestamp(editStartField.getValue());
-                end = FuelCycleTracker.parseEditableTimestamp(editEndField.getValue());
-                if (end <= start) throw new IllegalArgumentException("end before start");
-            } catch (RuntimeException ignored) {
-                editValidationError = "Invalid timestamps (use dd/MM/yy HH:mm)";
-                return;
+            // Re-saving untouched (minute-rounded) timestamps would needlessly turn this and
+            // every later day into manually-timed records, so only apply them when edited.
+            boolean timesChanged = !editStartField.getValue().trim().equals(initialStartText)
+                    || !editEndField.getValue().trim().equals(initialEndText);
+            long start = 0;
+            long end = 0;
+            if (timesChanged) {
+                try {
+                    start = FuelCycleTracker.parseEditableTimestamp(editStartField.getValue());
+                    end = FuelCycleTracker.parseEditableTimestamp(editEndField.getValue());
+                    if (end <= start) throw new IllegalArgumentException("end before start");
+                } catch (RuntimeException ignored) {
+                    editValidationError = "Invalid timestamps (use dd/MM/yy HH:mm)";
+                    return;
+                }
             }
 
             String minionText = editMinionField.getValue().trim();
@@ -194,9 +211,16 @@ public class FuelDayScreen extends Screen {
             try {
                 FuelCycleTracker.setMobKillCoinsAt100(editDate, Double.parseDouble(editMobKillField.getValue().trim()));
             } catch (NumberFormatException ignored) {}
-            try {
-                FuelCycleTracker.setGabagoolPrice(editDate, Double.parseDouble(editGabagoolPriceField.getValue().trim()));
-            } catch (NumberFormatException ignored) {}
+            // Only an actual edit counts as a manual price; leaving the field untouched keeps
+            // an auto-applied default (and its "temp auto price" comment) in place.
+            String gabagoolPriceText = editGabagoolPriceField.getValue().trim();
+            if (gabagoolPriceText.isEmpty()) {
+                FuelCycleTracker.clearManualGabagoolPrice(editDate);
+            } else if (!gabagoolPriceText.equals(initialGabagoolPriceText)) {
+                try {
+                    FuelCycleTracker.setGabagoolPrice(editDate, parseFlexibleNumber(gabagoolPriceText));
+                } catch (NumberFormatException ignored) {}
+            }
             String gabagoolAmountText = editGabagoolAmountField.getValue().trim();
             if (gabagoolAmountText.isEmpty()) {
                 FuelCycleTracker.clearManualGabagoolAmount(editDate);
@@ -216,7 +240,7 @@ public class FuelDayScreen extends Screen {
                 } catch (NumberFormatException ignored) {}
             }
             FuelCycleTracker.setNotes(editDate, editNotesField.getValue());
-            if (!FuelCycleTracker.setCycleTimes(editDate, start, end)) {
+            if (timesChanged && !FuelCycleTracker.setCycleTimes(editDate, start, end)) {
                 editValidationError = "Could not save cycle timestamps";
                 return;
             }
@@ -400,7 +424,7 @@ public class FuelDayScreen extends Screen {
                 String line3 = "Coins: " + PriceCache.formatCoins(record.getMobKillCoins(displayNowMs))
                         + "  Gabagool: " + PriceCache.formatCoins(record.getGabagoolRevenue())
                         + " (" + record.getEffectiveGabagoolAmount() + (record.manualGabagoolAmount != null ? " manual" : " auto") + ")"
-                        + (record.notes != null && !record.notes.isBlank() ? "  \"" + record.notes + "\"" : "");
+                        + (!record.getDisplayNotes().isBlank() ? "  \"" + record.getDisplayNotes() + "\"" : "");
                 int maxW = listWidth - (BUTTON_SIZE + 2) * 2 - PADDING * 2;
                 if (font.width(line3) > maxW) {
                     line3 = font.plainSubstrByWidth(line3, maxW - font.width("...")) + "...";

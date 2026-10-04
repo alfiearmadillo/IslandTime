@@ -309,16 +309,19 @@ public class ConfigManager {
         saveToFile();
     }
 
-    /** Applies defaults to the current fuel day even when the config screen is not opened. */
+    /** Applies defaults to active/queued fuel days even when the config screen is not opened. */
     private static void applyConfiguredFuelDefaults() {
         if (config == null) return;
-        String todayDate = FuelCycleTracker.getCurrentCycleDateKey();
-        try {
-            double price = Double.parseDouble(config.fuelCycles.todayGabagoolPriceString.trim());
-            FuelCycleTracker.applyDefaultGabagoolPrice(todayDate, price);
-        } catch (NumberFormatException ignored) {
-            // Invalid number, keep existing value
+        String priceText = config.fuelCycles.todayGabagoolPriceString;
+        double price = Double.NaN;
+        if (priceText != null && !priceText.isBlank()) {
+            try {
+                price = Double.parseDouble(priceText.trim());
+            } catch (NumberFormatException ignored) {
+                // Invalid number, treat as no default
+            }
         }
+        FuelCycleTracker.setDefaultGabagoolPrice(price);
     }
 
     /**
