@@ -155,7 +155,7 @@ public class BlockHighlightRenderer {
     private static List<TrackedEntity> trackedEntities = List.of();
     private static ClientLevel trackedLevel = null;
     private static long lastEntityMatchTick = -1;
-    private static final int ENTITY_MATCH_INTERVAL_TICKS = 5;
+    private static final int ENTITY_MATCH_INTERVAL_TICKS = 1;
     /** Most entities tracked at once, so a very broad name or type match can't slow every frame down. */
     private static final int MAX_TRACKED_ENTITIES = 2000;
 
@@ -875,8 +875,8 @@ public class BlockHighlightRenderer {
     }
 
     /**
-     * Keeps entity highlights up to date. Which entities match is worked out every few ticks (so new,
-     * renamed or out-of-range entities are picked up quickly), and the boxes are rebuilt every frame
+     * Keeps entity highlights up to date. Which entities match is worked out every game tick (so new,
+     * renamed or out-of-range entities are picked up straight away), and the boxes are rebuilt every frame
      * from the matched entities so they follow them smoothly instead of jumping at each rescan.
      * Runs while extracting the frame; the renderer only draws the finished boxes.
      */
