@@ -273,8 +273,8 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(
                 name = "Composter Status",
                 desc = "Show what the mod currently knows about your composter. It reads the Composter tab widget " +
-                        "(enable it in /widget, visit the Garden) and your upgrade levels (open the Composter " +
-                        "Upgrades menu once). Also /it composter"
+                        "(enable it in /widget, visit the Garden) or the Composter menu, and your upgrade levels " +
+                        "(open the Composter Upgrades menu once). Also /it composter"
         )
         @ConfigEditorButton(buttonText = " View Status ")
         public Runnable statusButton = new Runnable() {
@@ -283,6 +283,22 @@ public class IslandTimeConfig extends Config {
                 net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
                 if (client.player != null) {
                     client.player.connection.sendCommand("it composter");
+                }
+            }
+        };
+
+        @ConfigOption(
+                name = "Copy Debug Info",
+                desc = "Copies the tab list lines and the last Composter menu you opened to your clipboard. " +
+                        "Use it when the composter is not being found. Also /it composter debug"
+        )
+        @ConfigEditorButton(buttonText = " Copy Debug Info ")
+        public Runnable debugButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it composter debug");
                 }
             }
         };
