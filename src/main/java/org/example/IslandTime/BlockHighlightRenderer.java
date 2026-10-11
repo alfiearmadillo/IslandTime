@@ -45,6 +45,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionContext;
@@ -141,6 +142,22 @@ public class BlockHighlightRenderer {
 
     private static List<HighlightBox> highlightedBoxes = List.of();
     private static List<EntityHighlightBox> highlightedEntityBoxes = List.of();
+
+    /**
+     * An entity a highlight rule matched. Only the entity and its rule are kept; the box is rebuilt
+     * from the entity's position every frame so the highlight follows it smoothly.
+     */
+    record TrackedEntity(Entity entity, EntityRule rule) {}
+
+    // Entity tracking: rules come from the periodic rescan, matching runs on its own shorter cadence
+    // and the boxes are rebuilt every frame
+    private static List<EntityRule> entityRules = List.of();
+    private static List<TrackedEntity> trackedEntities = List.of();
+    private static ClientLevel trackedLevel = null;
+    private static long lastEntityMatchTick = -1;
+    private static final int ENTITY_MATCH_INTERVAL_TICKS = 5;
+    /** Most entities tracked at once, so a very broad name or type match can't slow every frame down. */
+    private static final int MAX_TRACKED_ENTITIES = 2000;
 
     // Caching
     private static BlockPos lastScanPos = null;
@@ -502,14 +519,14 @@ public class BlockHighlightRenderer {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || client.level == null) {
             highlightedBoxes = List.of();
-            highlightedEntityBoxes = List.of();
+            clearEntityHighlights();
             return;
         }
 
         IslandTimeConfig config = ConfigManager.getConfig();
         if (config == null) {
             highlightedBoxes = List.of();
-            highlightedEntityBoxes = List.of();
+            clearEntityHighlights();
             return;
         }
 
@@ -520,7 +537,7 @@ public class BlockHighlightRenderer {
 
         if (!hasManagerEntries) {
             highlightedBoxes = List.of();
-            highlightedEntityBoxes = List.of();
+            clearEntityHighlights();
             return;
         }
 
@@ -547,11 +564,15 @@ public class BlockHighlightRenderer {
 
             ScanTarget targets = buildScanTargets(config);
 
+            // Entities are matched against these rules separately and more often, see updateEntityHighlights
+            entityRules = List.copyOf(targets.entityRules);
+            lastEntityMatchTick = -1;
+
             if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty()
                     && targets.skyblockIdColors.isEmpty() && targets.skullPartialRules.isEmpty()
                     && targets.skyblockPartialRules.isEmpty() && targets.entityRules.isEmpty()) {
                 highlightedBoxes = List.of();
-                highlightedEntityBoxes = List.of();
+                clearEntityHighlights();
                 return;
             }
 
@@ -596,15 +617,12 @@ public class BlockHighlightRenderer {
             Map<String, Integer> sbIdRanges = new HashMap<>(targets.skyblockIdRange);
             List<IdRule> skullPartial = new ArrayList<>(targets.skullPartialRules);
             List<IdRule> sbIdPartial = new ArrayList<>(targets.skyblockPartialRules);
-            List<EntityRule> entityRules = new ArrayList<>(targets.entityRules);
             Map<Block, float[]> bColors = new HashMap<>(targets.blockColors);
             Map<Block, Float> bAlphas = new HashMap<>(targets.blockAlpha);
             Map<Block, Boolean> bWalls = new HashMap<>(targets.blockThroughWalls);
             Map<Block, Integer> bRanges = new HashMap<>(targets.blockRange);
 
             final boolean capturedHasSkyBlockTargets = hasSkyBlockTargets;
-
-            highlightedEntityBoxes = scanEntities(level, scanCenter, entityRules);
 
             scanFuture = CompletableFuture.runAsync(() -> {
                 List<HighlightBox> boxes = new ArrayList<>();
@@ -789,6 +807,8 @@ public class BlockHighlightRenderer {
                 pendingResult.set(boxes);
             });
         }
+
+        updateEntityHighlights(client, client.level, playerPos, currentTick, config);
     }
 
     /**
@@ -847,30 +867,95 @@ public class BlockHighlightRenderer {
         return new AABB(minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    private static List<EntityHighlightBox> scanEntities(ClientLevel level, BlockPos scanCenter,
-                                                          List<EntityRule> rules) {
-        if (rules.isEmpty()) return List.of();
+    private static void clearEntityHighlights() {
+        trackedEntities = List.of();
+        highlightedEntityBoxes = List.of();
+        trackedLevel = null;
+        lastEntityMatchTick = -1;
+    }
 
-        List<EntityHighlightBox> boxes = new ArrayList<>();
-        for (Entity entity : level.entitiesForRendering()) {
+    /**
+     * Keeps entity highlights up to date. Which entities match is worked out every few ticks (so new,
+     * renamed or out-of-range entities are picked up quickly), and the boxes are rebuilt every frame
+     * from the matched entities so they follow them smoothly instead of jumping at each rescan.
+     * Runs while extracting the frame; the renderer only draws the finished boxes.
+     */
+    private static void updateEntityHighlights(Minecraft client, ClientLevel level, BlockPos playerPos,
+                                               long currentTick, IslandTimeConfig config) {
+        if (entityRules.isEmpty()) {
+            if (!trackedEntities.isEmpty() || !highlightedEntityBoxes.isEmpty()) clearEntityHighlights();
+            return;
+        }
+
+        // A new world also means every tracked entity is gone; the game time can jump backwards there too
+        boolean rematch = trackedLevel != level
+                || lastEntityMatchTick < 0
+                || currentTick < lastEntityMatchTick
+                || currentTick - lastEntityMatchTick >= ENTITY_MATCH_INTERVAL_TICKS;
+        if (rematch) {
+            trackedEntities = matchEntities(level, playerPos, entityRules);
+            trackedLevel = level;
+            lastEntityMatchTick = currentTick;
+        }
+
+        if (trackedEntities.isEmpty()) {
+            if (!highlightedEntityBoxes.isEmpty()) highlightedEntityBoxes = List.of();
+            return;
+        }
+
+        boolean smooth = config.blockHighlight.smoothEntities;
+        float partialTick = smooth ? client.getDeltaTracker().getGameTimeDeltaPartialTick(false) : 1.0f;
+
+        List<EntityHighlightBox> boxes = new ArrayList<>(trackedEntities.size());
+        for (TrackedEntity tracked : trackedEntities) {
+            Entity entity = tracked.entity();
+            // Entities that died or left the loaded area lose their highlight straight away
+            if (entity.isRemoved()) continue;
             try {
-                String entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
-                EntityRule rule = findEntityRule(rules, entity, entityId, scanCenter);
-                if (rule == null) continue;
-
-                float[] color = rule.color();
-                AABB bounds = entity.getBoundingBox();
-                if (rule.minSize() && hasNoHitbox(bounds)) bounds = withMinSize(bounds);
-                bounds = bounds.inflate(0.01);
-                boxes.add(new EntityHighlightBox(bounds.minX, bounds.minY, bounds.minZ,
-                        bounds.maxX, bounds.maxY, bounds.maxZ,
-                        color[0], color[1], color[2],
-                        rule.alpha(),
-                        rule.throughWalls()));
+                // The bounding box sits at the entity's tick position; shift it to where the entity
+                // is drawn this frame, interpolated with the same partial tick the renderer uses
+                Vec3 tickPos = entity.position();
+                Vec3 drawPos = smooth ? entity.getPosition(partialTick) : tickPos;
+                boxes.add(buildEntityBox(entity.getBoundingBox(),
+                        drawPos.x - tickPos.x, drawPos.y - tickPos.y, drawPos.z - tickPos.z,
+                        tracked.rule()));
             } catch (Exception ignored) {
             }
         }
-        return boxes;
+        highlightedEntityBoxes = boxes;
+    }
+
+    /**
+     * Returns the entities that match a rule, each with its most specific matching rule.
+     */
+    private static List<TrackedEntity> matchEntities(ClientLevel level, BlockPos center, List<EntityRule> rules) {
+        List<TrackedEntity> matched = new ArrayList<>();
+        for (Entity entity : level.entitiesForRendering()) {
+            if (matched.size() >= MAX_TRACKED_ENTITIES) break;
+            try {
+                if (entity.isRemoved()) continue;
+                String entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+                EntityRule rule = findEntityRule(rules, entity, entityId, center);
+                if (rule != null) matched.add(new TrackedEntity(entity, rule));
+            } catch (Exception ignored) {
+            }
+        }
+        return matched;
+    }
+
+    /**
+     * Builds the highlight box for an entity from its bounding box, shifted by the given offset
+     * (the distance between its tick position and its interpolated draw position).
+     */
+    static EntityHighlightBox buildEntityBox(AABB bounds, double dx, double dy, double dz, EntityRule rule) {
+        if (rule.minSize() && hasNoHitbox(bounds)) bounds = withMinSize(bounds);
+        bounds = bounds.inflate(0.01);
+        float[] color = rule.color();
+        return new EntityHighlightBox(bounds.minX + dx, bounds.minY + dy, bounds.minZ + dz,
+                bounds.maxX + dx, bounds.maxY + dy, bounds.maxZ + dz,
+                color[0], color[1], color[2],
+                rule.alpha(),
+                rule.throughWalls());
     }
 
     private static void render(LevelRenderContext context) {

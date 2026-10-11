@@ -777,6 +777,11 @@ public class IslandTimeConfig extends Config {
         public boolean partialMatch = false;
 
         @Expose
+        @ConfigOption(name = "Smooth Entity Highlights", desc = "Move entity highlight boxes smoothly with the entity every frame, instead of only once per game tick. Turn this off if entity highlights ever look wrong or lag behind the entities")
+        @ConfigEditorBoolean
+        public boolean smoothEntities = true;
+
+        @Expose
         @ConfigOption(name = "Default Min Size Box", desc = "Default for new entries: give entities that have no hitbox (marker armor stands, markers, display entities) a 1 block highlight box so they can be seen. Can be changed per entry in the highlights GUI")
         @ConfigEditorBoolean
         public boolean minSizeBox = false;
