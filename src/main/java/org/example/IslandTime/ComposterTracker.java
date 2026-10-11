@@ -44,6 +44,8 @@ public class ComposterTracker {
     private static final long UPGRADE_SCAN_INTERVAL_MS = 500L;
     /** The vanilla tab overlay only shows this many entries. */
     private static final int MAX_TAB_ENTRIES = 80;
+    /** A Composter menu reading is ignored while the tab widget has been read within this time. */
+    private static final long MENU_DEFERS_TO_TAB_MS = 60_000L;
     private static final int UNKNOWN_LEVEL = -1;
 
     /** Same order the vanilla tab overlay uses, so the widget lines come out as the player sees them. */
@@ -60,7 +62,10 @@ public class ComposterTracker {
     private static ComposterCalculator.TabReading lastReading;
     private static long lastReadingAtMs;
     private static String lastReadingSource = "";
+    private static long lastTabReadingAtMs;
+    private static ComposterCalculator.TabReading lastAppliedMenuReading;
     private static String lastMenuSnapshot = "";
+    private static String lastUpgradeMenuSnapshot = "";
     private static long lastMenuSnapshotAtMs;
     private static long lastTabScanMs;
     private static long lastUpgradeScanMs;
@@ -106,6 +111,7 @@ public class ComposterTracker {
 
         ComposterCalculator.TabReading reading = ComposterCalculator.parseTabWidget(lines);
         if (reading == null) return;
+        lastTabReadingAtMs = now;
         applyReading(client, reading, "tab list", now);
     }
 
@@ -114,19 +120,39 @@ public class ComposterTracker {
      * and Fuel as "stored/capacity", as a second data source next to the tab widget.
      */
     private static void readComposterMenu(Minecraft client, long now) {
-        if (!(client.screen instanceof AbstractContainerScreen<?> containerScreen)) return;
-        if (!(client.player.containerMenu instanceof ChestMenu menu)) return;
+        if (!(client.screen instanceof AbstractContainerScreen<?> containerScreen)
+                || !(client.player.containerMenu instanceof ChestMenu menu)) {
+            lastAppliedMenuReading = null;
+            return;
+        }
         String title = ComposterCalculator.normalize(containerScreen.getTitle().getString());
-        if (!title.toLowerCase(Locale.ROOT).contains("composter")) return;
+        if (!title.toLowerCase(Locale.ROOT).contains("composter")) {
+            lastAppliedMenuReading = null;
+            return;
+        }
 
         List<ComposterCalculator.MenuItem> items = collectMenuItems(menu);
+        if (!isComposterMenuTitle(title)) {
+            lastUpgradeMenuSnapshot = describeMenu(title, items);
+            return;
+        }
         lastMenuSnapshot = describeMenu(title, items);
         lastMenuSnapshotAtMs = now;
-        if (!isComposterMenuTitle(title)) return;
+
+        // The tab widget is live and the preferred source; the menu only fills in when it is missing.
+        if (now - lastTabReadingAtMs < MENU_DEFERS_TO_TAB_MS) return;
 
         ComposterCalculator.TabReading reading = ComposterCalculator.parseMenu(items);
         if (reading == null) return;
+        // A menu that is not refreshed by the server keeps showing the same values; applying those
+        // again every scan would treat stale data as fresh. Only react to actual changes.
+        if (sameReading(reading, lastAppliedMenuReading)) return;
+        lastAppliedMenuReading = reading;
         applyReading(client, reading, "composter menu", now);
+    }
+
+    private static boolean sameReading(ComposterCalculator.TabReading a, ComposterCalculator.TabReading b) {
+        return b != null && a.organicMatter == b.organicMatter && a.fuel == b.fuel && a.timeLeftMs == b.timeLeftMs;
     }
 
     private static boolean isComposterMenuTitle(String title) {
@@ -385,6 +411,9 @@ public class ComposterTracker {
         } else {
             sb.append("captured ").append(ComposterCalculator.formatDuration(now - lastMenuSnapshotAtMs)).append(" ago\n");
             sb.append(lastMenuSnapshot);
+        }
+        if (!lastUpgradeMenuSnapshot.isEmpty()) {
+            sb.append("Composter Upgrades menu:\n").append(lastUpgradeMenuSnapshot);
         }
 
         sb.append("Upgrades: speed ").append(speedLevel == UNKNOWN_LEVEL ? "unknown" : speedLevel)
