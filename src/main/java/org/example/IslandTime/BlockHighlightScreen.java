@@ -97,7 +97,7 @@ public class BlockHighlightScreen extends Screen {
 
         addTargetField = new EditBox(font, dialogX, dialogY + 14, 240, 20, Component.literal("Target"));
         addTargetField.setMaxLength(256);
-        addTargetField.setHint(Component.literal("Block ID, entity:TYPE (e.g. armor_stand), sb:ID, or skull:HASH").withStyle(ChatFormatting.GRAY));
+        addTargetField.setHint(Component.literal("Block ID, entity:TYPE[name=TEXT], sb:ID, or skull:HASH").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(addTargetField);
 
         addColorField = new EditBox(font, dialogX, dialogY + 48, 240, 20, Component.literal("Color"));
@@ -285,7 +285,7 @@ public class BlockHighlightScreen extends Screen {
         List<BlockHighlightManager.HighlightEntry> entries = BlockHighlightManager.getEntries();
 
         if (entries.isEmpty()) {
-            Component emptyMsg = Component.literal("No highlights configured. Click '+ Add Highlight' or use /it waila on a block.")
+            Component emptyMsg = Component.literal("No highlights configured. Click '+ Add Highlight' or use /it waila on a block or entity.")
                     .withStyle(ChatFormatting.GRAY);
             int emptyW = font.width(emptyMsg);
             int maxW = listWidth - 20;

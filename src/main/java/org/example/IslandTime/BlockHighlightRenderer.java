@@ -5,6 +5,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -23,6 +24,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.Minecraft;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.LayeringTransform;
@@ -51,7 +53,8 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 
 /**
  * Renders colored overlays on blocks and entities matching configured targets.
- * Supports regular block IDs, entity IDs (entity:TYPE), and skull texture hashes (skull:HASH).
+ * Supports regular block IDs, entity IDs (entity:TYPE) with optional name filters
+ * (entity:TYPE[name=TEXT]), and skull texture hashes (skull:HASH).
  * Highlights use the block's actual collision/visual shape or an entity's bounding box.
  */
 public class BlockHighlightRenderer {
@@ -93,6 +96,21 @@ public class BlockHighlightRenderer {
                               double maxX, double maxY, double maxZ,
                               float r, float g, float b, float a,
                               boolean throughWalls) {}
+
+    /**
+     * An entity highlight rule. A rule matches an entity when its type matches (or the rule has no
+     * type) and its name contains the filter (or the rule has no name filter).
+     *
+     * @param typeId     registry ID such as "minecraft:armor_stand", or null for any entity type
+     * @param nameFilter lower-case text the entity's name must contain, or null for any name
+     */
+    record EntityRule(String typeId, String nameFilter, float[] color, float alpha,
+                      boolean throughWalls, int range) {
+        /** Higher scores are more specific; a more specific rule wins when several match. */
+        int specificity() {
+            return (typeId != null ? 1 : 0) + (nameFilter != null ? 2 : 0);
+        }
+    }
 
     private static List<HighlightBox> highlightedBoxes = List.of();
     private static List<EntityHighlightBox> highlightedEntityBoxes = List.of();
@@ -155,10 +173,7 @@ public class BlockHighlightRenderer {
         final Map<String, Float> skyblockIdAlpha = new HashMap<>();
         final Map<String, Boolean> skyblockIdThroughWalls = new HashMap<>();
         final Map<String, Integer> skyblockIdRange = new HashMap<>();
-        final Map<String, float[]> entityColors = new HashMap<>();
-        final Map<String, Float> entityAlpha = new HashMap<>();
-        final Map<String, Boolean> entityThroughWalls = new HashMap<>();
-        final Map<String, Integer> entityRange = new HashMap<>();
+        final List<EntityRule> entityRules = new ArrayList<>();
     }
 
     /**
@@ -251,19 +266,64 @@ public class BlockHighlightRenderer {
         return targets;
     }
 
-    private static void addEntityTarget(ScanTarget targets, String entityId, float[] color,
+    /**
+     * Adds an entity rule from an entity spec: "TYPE", "TYPE[name=TEXT]" or "*[name=TEXT]".
+     */
+    private static void addEntityTarget(ScanTarget targets, String entitySpec, float[] color,
                                         float alpha, boolean throughWalls, int range) {
-        if (entityId == null || entityId.isBlank()) return;
-        if (!entityId.contains(":")) {
-            entityId = "minecraft:" + entityId;
+        if (!BlockHighlightManager.isValidEntitySpec(entitySpec)) return;
+
+        String typeKey = null;
+        String typeId = BlockHighlightManager.parseEntityTypeId(entitySpec);
+        if (typeId != null) {
+            typeId = typeId.toLowerCase(Locale.ROOT);
+            if (!typeId.contains(":")) {
+                typeId = "minecraft:" + typeId;
+            }
+            Identifier id = Identifier.tryParse(typeId);
+            if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) return;
+            typeKey = id.toString();
         }
-        Identifier id = Identifier.tryParse(entityId);
-        if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) return;
-        String key = id.toString();
-        targets.entityColors.put(key, color);
-        targets.entityAlpha.put(key, alpha);
-        targets.entityThroughWalls.put(key, throughWalls);
-        targets.entityRange.put(key, range);
+
+        String nameFilter = BlockHighlightManager.parseEntityNameFilter(entitySpec);
+        if (nameFilter != null) {
+            nameFilter = normalizeEntityName(nameFilter);
+        }
+        targets.entityRules.add(new EntityRule(typeKey, nameFilter, color, alpha, throughWalls, range));
+    }
+
+    /**
+     * Normalizes an entity name for case-insensitive matching: drops formatting codes and lower-cases.
+     */
+    private static String normalizeEntityName(String name) {
+        String stripped = ChatFormatting.stripFormatting(name);
+        return (stripped != null ? stripped : name).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Finds the most specific rule matching the entity, or null if none match.
+     * When several rules are equally specific, the one added last wins.
+     */
+    private static EntityRule findEntityRule(List<EntityRule> rules, Entity entity, String entityTypeId,
+                                             BlockPos scanCenter) {
+        EntityRule best = null;
+        int bestSpecificity = 0;
+        String name = null;
+        for (EntityRule rule : rules) {
+            if (rule.typeId() != null && !rule.typeId().equals(entityTypeId)) continue;
+            int specificity = rule.specificity();
+            if (specificity < bestSpecificity) continue;
+            if (entity.blockPosition().distSqr(scanCenter) > (long) rule.range() * rule.range()) continue;
+            if (rule.nameFilter() != null) {
+                if (name == null) {
+                    name = normalizeEntityName(entity.getName().getString());
+                }
+                if (!name.contains(rule.nameFilter())) continue;
+            }
+            best = rule;
+            bestSpecificity = specificity;
+        }
+        return best;
     }
 
     /**
@@ -415,7 +475,7 @@ public class BlockHighlightRenderer {
             ScanTarget targets = buildScanTargets(config);
 
             if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty()
-                    && targets.skyblockIdColors.isEmpty() && targets.entityColors.isEmpty()) {
+                    && targets.skyblockIdColors.isEmpty() && targets.entityRules.isEmpty()) {
                 highlightedBoxes = List.of();
                 highlightedEntityBoxes = List.of();
                 return;
@@ -426,7 +486,7 @@ public class BlockHighlightRenderer {
             for (int r : targets.blockRange.values()) maxRange = Math.max(maxRange, r);
             for (int r : targets.skullHashRange.values()) maxRange = Math.max(maxRange, r);
             for (int r : targets.skyblockIdRange.values()) maxRange = Math.max(maxRange, r);
-            for (int r : targets.entityRange.values()) maxRange = Math.max(maxRange, r);
+            for (EntityRule rule : targets.entityRules) maxRange = Math.max(maxRange, rule.range());
 
             Set<Block> targetBlocks = targets.blockColors.keySet();
             boolean hasSkullTargets = !targets.skullHashColors.isEmpty();
@@ -458,10 +518,7 @@ public class BlockHighlightRenderer {
             Map<String, Float> sbIdAlphas = new HashMap<>(targets.skyblockIdAlpha);
             Map<String, Boolean> sbIdWalls = new HashMap<>(targets.skyblockIdThroughWalls);
             Map<String, Integer> sbIdRanges = new HashMap<>(targets.skyblockIdRange);
-            Map<String, float[]> entityColors = new HashMap<>(targets.entityColors);
-            Map<String, Float> entityAlphas = new HashMap<>(targets.entityAlpha);
-            Map<String, Boolean> entityWalls = new HashMap<>(targets.entityThroughWalls);
-            Map<String, Integer> entityRanges = new HashMap<>(targets.entityRange);
+            List<EntityRule> entityRules = new ArrayList<>(targets.entityRules);
             Map<Block, float[]> bColors = new HashMap<>(targets.blockColors);
             Map<Block, Float> bAlphas = new HashMap<>(targets.blockAlpha);
             Map<Block, Boolean> bWalls = new HashMap<>(targets.blockThroughWalls);
@@ -469,8 +526,7 @@ public class BlockHighlightRenderer {
 
             final boolean capturedHasSkyBlockTargets = hasSkyBlockTargets;
 
-            highlightedEntityBoxes = scanEntities(level, scanCenter, entityColors, entityAlphas,
-                    entityWalls, entityRanges);
+            highlightedEntityBoxes = scanEntities(level, scanCenter, entityRules);
 
             scanFuture = CompletableFuture.runAsync(() -> {
                 List<HighlightBox> boxes = new ArrayList<>();
@@ -642,27 +698,23 @@ public class BlockHighlightRenderer {
     }
 
     private static List<EntityHighlightBox> scanEntities(ClientLevel level, BlockPos scanCenter,
-                                                          Map<String, float[]> colors,
-                                                          Map<String, Float> alphas,
-                                                          Map<String, Boolean> throughWalls,
-                                                          Map<String, Integer> ranges) {
-        if (colors.isEmpty()) return List.of();
+                                                          List<EntityRule> rules) {
+        if (rules.isEmpty()) return List.of();
 
         List<EntityHighlightBox> boxes = new ArrayList<>();
         for (Entity entity : level.entitiesForRendering()) {
             try {
                 String entityId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
-                float[] color = colors.get(entityId);
-                if (color == null) continue;
-                int range = ranges.getOrDefault(entityId, 48);
-                if (entity.blockPosition().distSqr(scanCenter) > (long) range * range) continue;
+                EntityRule rule = findEntityRule(rules, entity, entityId, scanCenter);
+                if (rule == null) continue;
 
+                float[] color = rule.color();
                 AABB bounds = entity.getBoundingBox().inflate(0.01);
                 boxes.add(new EntityHighlightBox(bounds.minX, bounds.minY, bounds.minZ,
                         bounds.maxX, bounds.maxY, bounds.maxZ,
                         color[0], color[1], color[2],
-                        alphas.getOrDefault(entityId, 0.4f),
-                        throughWalls.getOrDefault(entityId, true)));
+                        rule.alpha(),
+                        rule.throughWalls()));
             } catch (Exception ignored) {
             }
         }

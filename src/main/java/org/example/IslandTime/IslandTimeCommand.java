@@ -616,12 +616,35 @@ public class IslandTimeCommand {
 
     private static int highlightAdd(Minecraft client, String input) {
         // Input format: "target" or "target color"
-        // target can be: stone (block), entity:item_frame (entity), sb:DITTO_SKULL (skyblock id), skull:HASH
-        String[] parts = input.trim().split("\\s+", 2);
-        String target = parts[0];
+        // target can be: stone (block), entity:item_frame (entity), sb:DITTO_SKULL (skyblock id), skull:HASH,
+        // or an entity with a name filter: entity:armor_stand[name=Some Name] / entity:*[name=Some Name]
+        // (the name may contain spaces, so a bracketed filter is kept together as part of the target)
+        String trimmed = input.trim();
+        String target;
+        String colorPart = null;
+        int filterStart = trimmed.indexOf('[');
+        int filterEnd = trimmed.lastIndexOf(']');
+        if (trimmed.startsWith("entity:") && filterStart >= 0 && filterEnd > filterStart) {
+            target = trimmed.substring(0, filterEnd + 1);
+            String rest = trimmed.substring(filterEnd + 1).trim();
+            if (!rest.isEmpty()) colorPart = rest;
+        } else {
+            String[] parts = trimmed.split("\\s+", 2);
+            target = parts[0];
+            if (parts.length > 1) colorPart = parts[1];
+        }
+
+        if (target.startsWith("entity:")
+                && !BlockHighlightManager.isValidEntitySpec(target.substring(7))) {
+            client.player.sendSystemMessage(
+                    Component.literal("Invalid entity target '" + target + "'. Use entity:TYPE, entity:TYPE[name=TEXT] or entity:*[name=TEXT].")
+                            .withStyle(ChatFormatting.RED));
+            return 1;
+        }
+
         String color = "yellow";
-        if (parts.length > 1) {
-            String colorStr = parts[1].trim();
+        if (colorPart != null) {
+            String colorStr = colorPart.trim();
             float[] parsed = BlockHighlightRenderer.parseColor(colorStr);
             if (parsed != null) {
                 color = colorStr;
@@ -733,9 +756,9 @@ public class IslandTimeCommand {
                 // Page 8 - Ghost, WAILA & Block Highlights
                 {"/it ghost", "Client-side remove the block you are looking at. Can be disabled in /it under Misc."},
                 {"/it highlight", "Open the Highlights GUI (same as /it highlights). Use /it highlight add <target> to add from chat."},
-                {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color."},
+                {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; filter entities by name with entity:armor_stand[name=TEXT] or entity:*[name=TEXT] (any type); sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color."},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
-                {"/it waila", "Inspect the block you're looking at — shows block ID, position, state, NBT, skull textures, and SkyBlock custom ID"},
+                {"/it waila", "Inspect the block or entity you're looking at — shows IDs, position, state, NBT, equipment, skull textures, and SkyBlock custom ID, with buttons to add it to highlights"},
                 {"/it help [page]", "Show this help (pages 1-11)"},
 
                 // Page 9 - Aging Items

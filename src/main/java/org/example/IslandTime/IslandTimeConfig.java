@@ -732,7 +732,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class BlockHighlight {
-        @ConfigOption(name = "Open Highlights", desc = "Click to open the highlights GUI for managing blocks and any registered entity type, such as item frames or armor stands. You can also use /it highlights")
+        @ConfigOption(name = "Open Highlights", desc = "Click to open the highlights GUI for managing blocks and any registered entity type, such as item frames or armor stands, optionally filtered by name (entity:armor_stand[name=TEXT]). You can also use /it highlights")
         @ConfigEditorButton(buttonText = " Open Highlights ")
         public Runnable openBlockHighlightsButton = new Runnable() {
             @Override
