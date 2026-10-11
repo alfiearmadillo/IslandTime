@@ -34,9 +34,17 @@ public class IslandTimeConfig extends Config {
     @Expose
     @Category(
             name = "Discord",
-            desc = "Discord webhook and ping settings for general IslandTime alerts such as island absence, item tracking, disconnects, and fuel expiry. New Year Cake notifications have separate webhook and ping settings in the New Year Cakes category."
+            desc = "Discord webhook and ping settings for general IslandTime alerts such as island absence, item tracking, disconnects, fuel expiry, composter alerts, and evolution alerts. New Year Cake notifications have separate webhook and ping settings in the New Year Cakes category."
     )
     public Discord discord = new Discord();
+
+    @Expose
+    @Category(name = "Chat Alerts", desc = "Discord alerts triggered by specific in-game chat messages")
+    public ChatAlerts chatAlerts = new ChatAlerts();
+
+    @Expose
+    @Category(name = "Composter", desc = "Discord alerts for when your Garden composter is about to run out or is empty")
+    public Composter composter = new Composter();
 
     @Expose
     @Category(name = "New Year Cakes", desc = "Discord reminders for the New Year's Celebration cake")
@@ -248,6 +256,76 @@ public class IslandTimeConfig extends Config {
                 }
             }
         };
+    }
+
+    public static class ChatAlerts {
+        @Expose
+        @ConfigOption(
+                name = "Evolution Alert",
+                desc = "Send one Discord alert (main webhook and ping ID) each time an \"EVOLUTION! Your <item> has " +
+                        "evolved!\" message appears in chat, e.g. for your Rosewater Flask"
+        )
+        @ConfigEditorBoolean
+        public boolean evolutionEnabled = true;
+    }
+
+    public static class Composter {
+        @ConfigOption(
+                name = "Composter Status",
+                desc = "Show what the mod currently knows about your composter. It reads the Composter tab widget " +
+                        "(enable it in /widget, visit the Garden) or the Composter menu, and your upgrade levels " +
+                        "(open the Composter Upgrades menu once). Also /it composter"
+        )
+        @ConfigEditorButton(buttonText = " View Status ")
+        public Runnable statusButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it composter");
+                }
+            }
+        };
+
+        @ConfigOption(
+                name = "Copy Debug Info",
+                desc = "Copies the tab list lines and the last Composter menu you opened to your clipboard. " +
+                        "Use it when the composter is not being found. Also /it composter debug"
+        )
+        @ConfigEditorButton(buttonText = " Copy Debug Info ")
+        public Runnable debugButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it composter debug");
+                }
+            }
+        };
+
+        @Expose
+        @ConfigOption(
+                name = "Enable Composter Alerts",
+                desc = "Track the Garden composter and send Discord alerts using the main Discord webhook and ping ID"
+        )
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Alert When Empty",
+                desc = "Send a Discord alert when the composter runs out of organic matter or fuel"
+        )
+        @ConfigEditorBoolean
+        public boolean alertWhenEmpty = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Warn Minutes Before Empty",
+                desc = "Send a Discord warning this many minutes before the composter runs empty (0 = no warning)"
+        )
+        @ConfigEditorSlider(minValue = 0, maxValue = 120, minStep = 1)
+        public int warnMinutes = 10;
     }
 
     public static class NewYearCakes {
@@ -592,7 +670,7 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
             name = "Keep Resource Pack",
-            desc = "When enabled, caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel). Hides the pack download prompt and only re-downloads if the pack changes."
+            desc = "When enabled, caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel). Hides the pack download prompt and only re-downloads if the pack changes; when Hypixel releases a newer pack, it is downloaded and replaces the old copy in your enabled packs."
         )
         @ConfigEditorBoolean
         public boolean keepResourcePack = false;
@@ -849,5 +927,24 @@ public class IslandTimeConfig extends Config {
                 client.execute(() -> client.setScreen(new PlayerListScreen()));
             }
         };
+
+        @Expose
+        @ConfigOption(
+                name = "Copy Chat Message Keybind",
+                desc = "When enabled, pressing the configured key while hovering a line of the chat mirror in the " +
+                        "player list copies that message's full text and hover text to your clipboard (handy for " +
+                        "reporting chat messages). Shift + right-click on a line always works too"
+        )
+        @ConfigEditorBoolean
+        public boolean copyChatKeybindEnabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Copy Chat Message Key",
+                desc = "Key used to copy the hovered chat mirror line in the player list. " +
+                        "Requires Copy Chat Message Keybind to be enabled"
+        )
+        @ConfigEditorKeybind(defaultKey = 67) // GLFW_KEY_C
+        public int copyChatKeybind = 67;
     }
 }

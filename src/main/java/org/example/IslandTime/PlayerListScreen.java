@@ -53,6 +53,10 @@ public class PlayerListScreen extends Screen {
     private boolean colorPickerOpen = false;
     private int colorPickerIndex = -1;
 
+    // "Copied" confirmation for the chat mirror copy action
+    private static final long COPY_FEEDBACK_MS = 2000L;
+    private long copyFeedbackUntilMs = 0L;
+
     // Scrollbar drag state
     private boolean draggingScrollbar = false;
     private static final int[] COLOR_OPTIONS = {
@@ -216,6 +220,11 @@ public class PlayerListScreen extends Screen {
 
         // Render chat mirror on top of the darkening, to the left of the player list
         renderChatMirror(context);
+
+        if (System.currentTimeMillis() < copyFeedbackUntilMs) {
+            context.text(font, Component.literal("Copied chat message to clipboard").withStyle(ChatFormatting.GREEN),
+                    4, height - 24, 0xFF55FF55, true);
+        }
 
         // Title
         Component titleComp = Component.literal("Player List").withStyle(ChatFormatting.GOLD);
@@ -434,6 +443,24 @@ public class PlayerListScreen extends Screen {
             }
         }
         return null;
+    }
+
+    /**
+     * Copies the full component dump of the chat-mirror line currently under the mouse cursor to
+     * the clipboard.
+     *
+     * @return true when a line was under the cursor and got copied
+     */
+    private boolean copyChatMessageUnderMouse() {
+        Minecraft client = Minecraft.getInstance();
+        double mouseX = client.mouseHandler.xpos() * (double) client.getWindow().getGuiScaledWidth() / (double) client.getWindow().getScreenWidth();
+        double mouseY = client.mouseHandler.ypos() * (double) client.getWindow().getGuiScaledHeight() / (double) client.getWindow().getScreenHeight();
+        Component clicked = chatMirrorMessageAt(mouseX, mouseY);
+        if (clicked == null) return false;
+
+        client.keyboardHandler.setClipboard(dumpComponentFull(clicked));
+        copyFeedbackUntilMs = System.currentTimeMillis() + COPY_FEEDBACK_MS;
+        return true;
     }
 
     /**
@@ -703,13 +730,9 @@ public class PlayerListScreen extends Screen {
         // Diagnostic feature: shift + right-click a mirrored chat line copies its full raw
         // component structure (plain text + hover text, own and every sibling's) to the
         // clipboard, so chat-parsing bugs (e.g. "[Sacks]" messages) can be reported with exact
-        // data instead of guesswork.
+        // data instead of guesswork. The same copy is available through a configurable keybind.
         if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && (event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0) {
-            Component clicked = chatMirrorMessageAt(mouseX, mouseY);
-            if (clicked != null) {
-                client.keyboardHandler.setClipboard(dumpComponentFull(clicked));
-                return true;
-            }
+            if (copyChatMessageUnderMouse()) return true;
         }
 
         // Handle color picker clicks
@@ -876,6 +899,14 @@ public class PlayerListScreen extends Screen {
         }
         if (searchField != null && searchField.isFocused()) {
             return super.keyPressed(event);
+        }
+        // Configurable keybind: copy the hovered chat mirror line (same as shift + right-click)
+        IslandTimeConfig cfg = ConfigManager.getConfig();
+        if (cfg != null && cfg.playerList.copyChatKeybindEnabled
+                && cfg.playerList.copyChatKeybind != 0
+                && event.key() == cfg.playerList.copyChatKeybind
+                && copyChatMessageUnderMouse()) {
+            return true;
         }
         if (event.key() == GLFW.GLFW_KEY_E) {
             this.onClose();

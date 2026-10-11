@@ -106,6 +106,50 @@ public class DiscordWebhookManager {
         sendWebhook(url, message);
     }
 
+    /**
+     * Sent a configurable number of minutes before the Garden composter is estimated to run out
+     * of organic matter or fuel (see ComposterTracker).
+     */
+    public static void sendComposterWarning(int minutes, String limitingResource) {
+        String url = webhookUrl;
+        if (url == null || url.isEmpty()) return;
+
+        String time = LocalDateTime.now().format(TIME_FORMATTER);
+        String ping = (discordUserId != null && !discordUserId.isEmpty()) ? "<@" + discordUserId + ">\n" : "";
+        String message = String.format(
+                "🌱 **Composter Warning**\n%sYour composter will run out of %s in about %d minute%s\nTime: %s",
+                ping, limitingResource, minutes, minutes == 1 ? "" : "s", time);
+        sendWebhook(url, message);
+    }
+
+    /** Sent once when the Garden composter has run out of organic matter or fuel. */
+    public static void sendComposterEmptyAlert(String limitingResource) {
+        String url = webhookUrl;
+        if (url == null || url.isEmpty()) return;
+
+        String time = LocalDateTime.now().format(TIME_FORMATTER);
+        String ping = (discordUserId != null && !discordUserId.isEmpty()) ? "<@" + discordUserId + ">\n" : "";
+        String message = String.format(
+                "🌱 **Composter Empty**\n%sYour composter has run out of %s\nRefill it to keep composting\nTime: %s",
+                ping, limitingResource, time);
+        sendWebhook(url, message);
+    }
+
+    /** Sent once for each "EVOLUTION! Your <item> has evolved!" chat message (see EvolutionAlertTracker). */
+    public static void sendEvolutionAlert(String itemName) {
+        String url = webhookUrl;
+        if (url == null || url.isEmpty()) return;
+
+        String time = LocalDateTime.now().format(TIME_FORMATTER);
+        String ping = (discordUserId != null && !discordUserId.isEmpty()) ? "<@" + discordUserId + ">\n" : "";
+        // The item name comes from game text; keep it from being able to ping anyone
+        String safeName = itemName.replace("@", "@\u200b");
+        String message = String.format(
+                "✨ **Evolution!**\n%sYour %s has evolved!\nTime: %s",
+                ping, safeName, time);
+        sendWebhook(url, message);
+    }
+
     public static void sendCustomMessage(String message) {
         String url = webhookUrl;
         sendCustomMessage(url, message);

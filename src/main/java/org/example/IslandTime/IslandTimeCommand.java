@@ -134,6 +134,7 @@ public class IslandTimeCommand {
                 .then(buildFueltimeCommand())
                 .then(buildFuelcostCommand())
                 .then(buildMinionIdCommand())
+                .then(buildComposterCommand())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -344,6 +345,7 @@ public class IslandTimeCommand {
                 .then(buildFueltimeCommand())
                 .then(buildFuelcostCommand())
                 .then(buildMinionIdCommand())
+                .then(buildComposterCommand())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -754,6 +756,8 @@ public class IslandTimeCommand {
                 {"/it settingslist", "List all saved loadouts and settings groups"},
                 {"/it settingsgroup <group> <n1> <n2> ...", "Create a settings group from named loadouts (a loadout can only be in one group)"},
                 {"/it settingscycle", "Cycle to the next loadout in the current group"},
+                {"/it composter", "Show composter tracking status and when it is estimated to run empty (configure alerts under Composter in /it GUI)"},
+                {"/it composter debug", "Copy the tab list and last Composter menu contents to the clipboard (for when the composter is not found)"},
         };
 
         int commandsPerPage = 5;
@@ -959,6 +963,33 @@ public class IslandTimeCommand {
                         .executes(ctx -> {
                             String date = StringArgumentType.getString(ctx, "date");
                             FuelCycleTracker.displayStats(ctx.getSource().getClient(), date);
+                            return 1;
+                        }));
+    }
+
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildComposterCommand() {
+        return literal("composter")
+                .executes(ctx -> {
+                    Minecraft client = ctx.getSource().getClient();
+                    if (client.player == null) return 1;
+
+                    client.player.sendSystemMessage(
+                            Component.literal("[IslandTime] Composter:").withStyle(ChatFormatting.GOLD));
+                    for (String line : ComposterTracker.describe()) {
+                        client.player.sendSystemMessage(
+                                Component.literal("  " + line).withStyle(ChatFormatting.GRAY));
+                    }
+                    return 1;
+                })
+                .then(literal("debug")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            if (client.player == null) return 1;
+
+                            client.keyboardHandler.setClipboard(ComposterTracker.dumpDiagnostics());
+                            client.player.sendSystemMessage(Component.literal(
+                                            "[IslandTime] Composter debug info (tab list + last Composter menu) copied to your clipboard.")
+                                    .withStyle(ChatFormatting.GREEN));
                             return 1;
                         }));
     }
