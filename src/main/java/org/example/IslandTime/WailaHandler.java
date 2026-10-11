@@ -435,6 +435,8 @@ public class WailaHandler {
             if (stand.isMarker()) flags.add("marker");
             if (stand.isSmall()) flags.add("small");
         }
+        boolean noHitbox = BlockHighlightRenderer.hasNoHitbox(entity.getBoundingBox());
+        if (noHitbox) flags.add("no hitbox");
         if (entity.isInvisible()) flags.add("invisible");
         if (entity.isCurrentlyGlowing()) flags.add("glowing");
         if (entity.isOnFire()) flags.add("on fire");
@@ -529,12 +531,15 @@ public class WailaHandler {
         // Highlight command buttons
         String shortId = typeId.startsWith("minecraft:") ? typeId.substring(10) : typeId;
         String idTarget = BlockHighlightManager.buildEntityTarget(shortId, null);
+        // Entities without a hitbox would only get an invisible sliver, so ask for a 1 block box
+        String highlightFlags = noHitbox ? " minsize" : "";
+        String noHitboxNote = noHitbox ? "\nThis entity has no hitbox, so it gets a 1 block highlight box" : "";
         client.player.sendSystemMessage(
                 Component.literal("[+ Add Entity ID to Highlighter]").withStyle(ChatFormatting.GREEN)
                         .withStyle(style -> style
-                                .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + idTarget))
+                                .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + idTarget + highlightFlags))
                                 .withHoverEvent(new HoverEvent.ShowText(
-                                        Component.literal("Click to highlight all " + shortId + " entities")
+                                        Component.literal("Click to highlight all " + shortId + " entities" + noHitboxNote)
                                                 .withStyle(ChatFormatting.GRAY)))));
 
         String filterName = sanitizeNameFilter(name);
@@ -543,9 +548,11 @@ public class WailaHandler {
             client.player.sendSystemMessage(
                     Component.literal("[+ Add Entity Name to Highlighter]").withStyle(ChatFormatting.GREEN)
                             .withStyle(style -> style
-                                    .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + nameTarget))
+                                    .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + nameTarget + highlightFlags))
                                     .withHoverEvent(new HoverEvent.ShowText(
-                                            Component.literal("Click to highlight all entities whose name contains \"" + filterName + "\"")
+                                            Component.literal("Click to highlight all entities named \"" + filterName
+                                                            + "\"\nTurn on Partial for the entry in /it highlights to match names that only contain it"
+                                                            + noHitboxNote)
                                                     .withStyle(ChatFormatting.GRAY)))));
         }
     }

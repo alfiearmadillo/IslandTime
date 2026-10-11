@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Manages a persistent list of highlight entries stored as JSON.
@@ -34,6 +35,11 @@ public class BlockHighlightManager {
      *   case-insensitive "contains" match against the entity's name (formatting codes ignored).
      * - A skull texture hash prefixed with "skull:" like "skull:abc123..."
      * - A SkyBlock item ID prefixed with "sb:" like "sb:DITTO_SKULL"
+     *
+     * By default IDs and names must match exactly. With {@link #isPartialMatch() partial matching} the
+     * target only has to be contained in the ID (block ID, entity type ID, SkyBlock ID or skull hash)
+     * or entity name instead, e.g. "d" matches every block with a d in its ID and "entity:ca" matches
+     * every entity type with "ca" in its ID.
      */
     public static class HighlightEntry {
         public String target;       // block/entity ID, "skull:TEXTURE_HASH", or "sb:SKYBLOCK_ID"
@@ -43,12 +49,46 @@ public class BlockHighlightManager {
         public boolean enabled = true;
         public int intensity = 50;  // 0-100
         public String area = "";    // SkyBlock area name (empty = show everywhere)
+        /**
+         * Match IDs and names by "contains" instead of exactly. Null in entries saved before this
+         * option existed: those keep their old behaviour (entity name filters always matched by
+         * "contains", everything else exactly), see {@link #isPartialMatch()}.
+         */
+        public Boolean partialMatch;
+        /** Entities with no hitbox (zero size) get a 1 block box so they can be seen. */
+        public boolean minSizeBox = false;
 
         public HighlightEntry() {}
 
         public HighlightEntry(String target, String color) {
             this.target = target;
             this.color = color;
+            this.partialMatch = Boolean.FALSE;
+        }
+
+        /**
+         * Returns true if the partial match toggle counts as on for this entry. For entries saved
+         * before the option existed that is the case when they have an entity name filter.
+         */
+        public boolean isPartialMatch() {
+            if (partialMatch != null) return partialMatch;
+            return getEntityNameFilter() != null;
+        }
+
+        /**
+         * Returns true if block, entity type, SkyBlock and skull IDs are matched by "contains".
+         * Entries saved before the option existed always matched IDs exactly.
+         */
+        public boolean isPartialIds() {
+            return partialMatch != null && partialMatch;
+        }
+
+        /**
+         * Returns true if entity names are matched by "contains" instead of exactly. Entries saved
+         * before the option existed always matched names by "contains".
+         */
+        public boolean isPartialNames() {
+            return partialMatch == null || partialMatch;
         }
 
         /**
@@ -188,6 +228,33 @@ public class BlockHighlightManager {
         String type = entityTypeId == null || entityTypeId.isBlank() ? "*" : entityTypeId.trim();
         if (nameFilter == null || nameFilter.isBlank()) return "entity:" + type;
         return "entity:" + type + "[name=" + nameFilter.trim() + "]";
+    }
+
+    /**
+     * Checks an ID against a highlight target text. Exact mode compares the whole ID (the text must
+     * already include a namespace, like the ID does). Partial mode checks that the text is contained
+     * in the ID, case-insensitively; a text without a namespace separator (':') is only checked
+     * against the part after the namespace, so "d" doesn't match every ID through "minecraft".
+     */
+    public static boolean idMatches(String text, String id, boolean partial) {
+        if (text == null || id == null) return false;
+        if (!partial) return text.equals(id);
+        String needle = text.trim().toLowerCase(Locale.ROOT);
+        if (needle.isEmpty()) return false;
+        String haystack = id.toLowerCase(Locale.ROOT);
+        if (needle.indexOf(':') < 0) {
+            haystack = haystack.substring(haystack.indexOf(':') + 1);
+        }
+        return haystack.contains(needle);
+    }
+
+    /**
+     * Checks an entity name against a name filter. Both must already be normalized (formatting
+     * removed, lower case). Exact mode compares the whole name, partial mode checks "contains".
+     */
+    public static boolean nameMatches(String filter, String name, boolean partial) {
+        if (filter == null || name == null) return false;
+        return partial ? name.contains(filter) : name.equals(filter);
     }
 
     public static void load() {

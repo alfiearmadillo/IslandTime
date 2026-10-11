@@ -770,6 +770,16 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Default Range", desc = "Default scan range for new entries (in blocks)")
         @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
+
+        @Expose
+        @ConfigOption(name = "Default Partial Match", desc = "Default for new entries: match IDs and entity names by \"contains\" instead of exactly. \"d\" highlights every block with a d in its ID, entity:ca every entity type with ca in its ID, and entity names only need to contain the text. Can be changed per entry in the highlights GUI")
+        @ConfigEditorBoolean
+        public boolean partialMatch = false;
+
+        @Expose
+        @ConfigOption(name = "Default Min Size Box", desc = "Default for new entries: give entities that have no hitbox (marker armor stands, markers, display entities) a 1 block highlight box so they can be seen. Can be changed per entry in the highlights GUI")
+        @ConfigEditorBoolean
+        public boolean minSizeBox = false;
     }
 
     public static class Waila {

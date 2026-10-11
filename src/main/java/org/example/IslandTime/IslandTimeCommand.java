@@ -615,24 +615,41 @@ public class IslandTimeCommand {
     // -------------------------------------------------------------------------
 
     private static int highlightAdd(Minecraft client, String input) {
-        // Input format: "target" or "target color"
+        // Input format: "target [color] [partial] [minsize]"
         // target can be: stone (block), entity:item_frame (entity), sb:DITTO_SKULL (skyblock id), skull:HASH,
         // or an entity with a name filter: entity:armor_stand[name=Some Name] / entity:*[name=Some Name]
         // (the name may contain spaces, so a bracketed filter is kept together as part of the target)
+        // The words "partial" (match IDs/names by "contains") and "minsize" (1 block box for entities with
+        // no hitbox) may follow the target in any order next to the color.
         String trimmed = input.trim();
         String target;
-        String colorPart = null;
+        String rest = "";
         int filterStart = trimmed.indexOf('[');
         int filterEnd = trimmed.lastIndexOf(']');
         if (trimmed.startsWith("entity:") && filterStart >= 0 && filterEnd > filterStart) {
             target = trimmed.substring(0, filterEnd + 1);
-            String rest = trimmed.substring(filterEnd + 1).trim();
-            if (!rest.isEmpty()) colorPart = rest;
+            rest = trimmed.substring(filterEnd + 1).trim();
         } else {
             String[] parts = trimmed.split("\\s+", 2);
             target = parts[0];
-            if (parts.length > 1) colorPart = parts[1];
+            if (parts.length > 1) rest = parts[1];
         }
+
+        boolean wantPartial = false;
+        boolean wantMinSize = false;
+        StringBuilder colorBuilder = new StringBuilder();
+        for (String word : rest.split("\\s+")) {
+            if (word.isEmpty()) continue;
+            if (word.equalsIgnoreCase("partial")) {
+                wantPartial = true;
+            } else if (word.equalsIgnoreCase("minsize")) {
+                wantMinSize = true;
+            } else {
+                if (colorBuilder.length() > 0) colorBuilder.append(' ');
+                colorBuilder.append(word);
+            }
+        }
+        String colorPart = colorBuilder.length() > 0 ? colorBuilder.toString() : null;
 
         if (target.startsWith("entity:")
                 && !BlockHighlightManager.isValidEntitySpec(target.substring(7))) {
@@ -658,6 +675,21 @@ public class IslandTimeCommand {
         // Check for duplicates
         int existing = BlockHighlightManager.findByTarget(target);
         if (existing >= 0) {
+            // Asking again with partial/minsize turns those options on for the existing entry
+            BlockHighlightManager.HighlightEntry existingEntry = BlockHighlightManager.getEntries().get(existing);
+            boolean turnOnPartial = wantPartial && !existingEntry.isPartialIds();
+            boolean turnOnMinSize = wantMinSize && !existingEntry.minSizeBox;
+            if (turnOnPartial || turnOnMinSize) {
+                if (turnOnPartial) existingEntry.partialMatch = true;
+                if (turnOnMinSize) existingEntry.minSizeBox = true;
+                BlockHighlightManager.save();
+                client.player.sendSystemMessage(
+                        Component.literal("Updated highlight: ").withStyle(ChatFormatting.GREEN)
+                                .append(Component.literal(target).withStyle(ChatFormatting.AQUA))
+                                .append(Component.literal((turnOnPartial ? " (partial match on)" : "")
+                                        + (turnOnMinSize ? " (min size box on)" : "")).withStyle(ChatFormatting.GRAY)));
+                return 1;
+            }
             client.player.sendSystemMessage(
                     Component.literal("Already highlighting: ").withStyle(ChatFormatting.YELLOW)
                             .append(Component.literal(target).withStyle(ChatFormatting.AQUA)));
@@ -670,7 +702,11 @@ public class IslandTimeCommand {
             entry.range = config.blockHighlight.range;
             entry.intensity = config.blockHighlight.intensity;
             entry.throughWalls = config.blockHighlight.throughWalls;
+            entry.partialMatch = config.blockHighlight.partialMatch;
+            entry.minSizeBox = config.blockHighlight.minSizeBox;
         }
+        if (wantPartial) entry.partialMatch = true;
+        if (wantMinSize) entry.minSizeBox = true;
         BlockHighlightManager.getEntries().add(entry);
         BlockHighlightManager.save();
         client.player.sendSystemMessage(
@@ -756,7 +792,7 @@ public class IslandTimeCommand {
                 // Page 8 - Ghost, WAILA & Block Highlights
                 {"/it ghost", "Client-side remove the block you are looking at. Can be disabled in /it under Misc."},
                 {"/it highlight", "Open the Highlights GUI (same as /it highlights). Use /it highlight add <target> to add from chat."},
-                {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; filter entities by name with entity:armor_stand[name=TEXT] or entity:*[name=TEXT] (any type); sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color."},
+                {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; filter entities by name with entity:armor_stand[name=TEXT] or entity:*[name=TEXT] (any type); sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color, plus partial (IDs and names only need to contain the text, e.g. entity:ca) and/or minsize (1 block box for entities with no hitbox)."},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block or entity you're aiming at, even out of reach or untargetable (like marker armor stands). Can be bound to a key in /it > WAILA — shows IDs, position, state, NBT, equipment, skull textures, and SkyBlock custom ID, with buttons to add it to highlights"},
                 {"/it help [page]", "Show this help (pages 1-11)"},

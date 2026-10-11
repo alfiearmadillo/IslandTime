@@ -54,8 +54,10 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 /**
  * Renders colored overlays on blocks and entities matching configured targets.
  * Supports regular block IDs, entity IDs (entity:TYPE) with optional name filters
- * (entity:TYPE[name=TEXT]), and skull texture hashes (skull:HASH).
- * Highlights use the block's actual collision/visual shape or an entity's bounding box.
+ * (entity:TYPE[name=TEXT]), and skull texture hashes (skull:HASH). Entries can match IDs and
+ * names partially ("contains") instead of exactly.
+ * Highlights use the block's actual collision/visual shape or an entity's bounding box; entries can
+ * give hitbox-less entities (marker armor stands, ...) a 1 block box so they are visible.
  */
 public class BlockHighlightRenderer {
 
@@ -99,18 +101,43 @@ public class BlockHighlightRenderer {
 
     /**
      * An entity highlight rule. A rule matches an entity when its type matches (or the rule has no
-     * type) and its name contains the filter (or the rule has no name filter).
+     * type) and its name matches the filter (or the rule has no name filter).
      *
-     * @param typeId     registry ID such as "minecraft:armor_stand", or null for any entity type
-     * @param nameFilter lower-case text the entity's name must contain, or null for any name
+     * @param typeId      registry ID such as "minecraft:armor_stand" (or, when partialType, the text the
+     *                    ID must contain), or null for any entity type
+     * @param nameFilter  lower-case text to match the entity's name against, or null for any name
+     * @param partialType match the type ID by "contains" instead of exactly
+     * @param partialName match the name by "contains" instead of exactly
+     * @param minSize     highlight entities that have no hitbox with a 1 block box
      */
-    record EntityRule(String typeId, String nameFilter, float[] color, float alpha,
-                      boolean throughWalls, int range) {
-        /** Higher scores are more specific; a more specific rule wins when several match. */
+    record EntityRule(String typeId, String nameFilter, boolean partialType, boolean partialName,
+                      boolean minSize, float[] color, float alpha, boolean throughWalls, int range) {
+        /**
+         * Higher scores are more specific; a more specific rule wins when several match. A name
+         * beats a type, and an exact match beats a partial one.
+         */
         int specificity() {
-            return (typeId != null ? 1 : 0) + (nameFilter != null ? 2 : 0);
+            int type = typeId == null ? 0 : (partialType ? 1 : 2);
+            int name = nameFilter == null ? 0 : (partialName ? 3 : 4);
+            return type + name;
         }
     }
+
+    /**
+     * A skull hash or SkyBlock ID rule that matches by "contains" instead of exactly.
+     *
+     * @param needle lower-case text the ID must contain
+     */
+    record IdRule(String needle, float[] color, float alpha, boolean throughWalls, int range) {}
+
+    /** Entity box edges shorter than this count as "no hitbox" (marker armor stands, markers, displays). */
+    static final double MIN_HITBOX_EDGE = 0.01;
+
+    /** Edge length given to the missing sides of a hitbox-less entity when the min-size toggle is on. */
+    private static final double MIN_SIZE_EDGE = 1.0;
+
+    /** Most block highlight boxes a scan keeps, so very broad partial matches can't freeze the game. */
+    private static final int MAX_BLOCK_BOXES = 20000;
 
     private static List<HighlightBox> highlightedBoxes = List.of();
     private static List<EntityHighlightBox> highlightedEntityBoxes = List.of();
@@ -173,6 +200,8 @@ public class BlockHighlightRenderer {
         final Map<String, Float> skyblockIdAlpha = new HashMap<>();
         final Map<String, Boolean> skyblockIdThroughWalls = new HashMap<>();
         final Map<String, Integer> skyblockIdRange = new HashMap<>();
+        final List<IdRule> skullPartialRules = new ArrayList<>();
+        final List<IdRule> skyblockPartialRules = new ArrayList<>();
         final List<EntityRule> entityRules = new ArrayList<>();
     }
 
@@ -214,8 +243,17 @@ public class BlockHighlightRenderer {
         // Detect current area from tab menu
         String currentArea = detectCurrentArea();
 
-        // Parse from BlockHighlightManager entries
+        // Partial entries go first so an exact entry for the same block overrides them
+        List<BlockHighlightManager.HighlightEntry> ordered = new ArrayList<>();
         for (BlockHighlightManager.HighlightEntry he : BlockHighlightManager.getEntries()) {
+            if (he.isPartialIds()) ordered.add(he);
+        }
+        for (BlockHighlightManager.HighlightEntry he : BlockHighlightManager.getEntries()) {
+            if (!he.isPartialIds()) ordered.add(he);
+        }
+
+        // Parse from BlockHighlightManager entries
+        for (BlockHighlightManager.HighlightEntry he : ordered) {
             if (!he.enabled || he.intensity <= 0) continue;
 
             // Area filtering: if entry has an area set, only include if it matches current area
@@ -226,25 +264,50 @@ public class BlockHighlightRenderer {
             float[] color = parseColor(he.color);
             if (color == null) color = defaultColor;
             float alpha = he.intensity / 125.0f;
+            boolean partial = he.isPartialIds();
 
             if (he.isSkullTarget()) {
                 String hash = he.getSkullHash();
                 if (hash != null && !hash.isEmpty()) {
-                    targets.skullHashColors.put(hash, color);
-                    targets.skullHashAlpha.put(hash, alpha);
-                    targets.skullHashThroughWalls.put(hash, he.throughWalls);
-                    targets.skullHashRange.put(hash, he.range);
+                    if (partial) {
+                        targets.skullPartialRules.add(new IdRule(hash.toLowerCase(Locale.ROOT),
+                                color, alpha, he.throughWalls, he.range));
+                    } else {
+                        targets.skullHashColors.put(hash, color);
+                        targets.skullHashAlpha.put(hash, alpha);
+                        targets.skullHashThroughWalls.put(hash, he.throughWalls);
+                        targets.skullHashRange.put(hash, he.range);
+                    }
                 }
             } else if (he.isSkyBlockTarget()) {
                 String sbId = he.getSkyBlockId();
                 if (sbId != null && !sbId.isEmpty()) {
-                    targets.skyblockIdColors.put(sbId, color);
-                    targets.skyblockIdAlpha.put(sbId, alpha);
-                    targets.skyblockIdThroughWalls.put(sbId, he.throughWalls);
-                    targets.skyblockIdRange.put(sbId, he.range);
+                    if (partial) {
+                        targets.skyblockPartialRules.add(new IdRule(sbId.toLowerCase(Locale.ROOT),
+                                color, alpha, he.throughWalls, he.range));
+                    } else {
+                        targets.skyblockIdColors.put(sbId, color);
+                        targets.skyblockIdAlpha.put(sbId, alpha);
+                        targets.skyblockIdThroughWalls.put(sbId, he.throughWalls);
+                        targets.skyblockIdRange.put(sbId, he.range);
+                    }
                 }
             } else if (he.isEntityTarget()) {
-                addEntityTarget(targets, he.getEntityId(), color, alpha, he.throughWalls, he.range);
+                addEntityTarget(targets, he.getEntityId(), color, alpha, he.throughWalls, he.range,
+                        partial, he.isPartialNames(), he.minSizeBox);
+            } else if (partial) {
+                String text = he.target == null ? "" : he.target.trim();
+                if (text.isEmpty()) continue;
+                for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
+                    if (!BlockHighlightManager.idMatches(text, id.toString(), true)) continue;
+                    Block block = BuiltInRegistries.BLOCK.getValue(id);
+                    // Air is everywhere, so a broad text like "air" would otherwise highlight the whole world
+                    if (block.defaultBlockState().isAir()) continue;
+                    targets.blockColors.put(block, color);
+                    targets.blockAlpha.put(block, alpha);
+                    targets.blockThroughWalls.put(block, he.throughWalls);
+                    targets.blockRange.put(block, he.range);
+                }
             } else {
                 String blockId = he.getBlockId();
                 if (blockId == null) continue;
@@ -258,7 +321,8 @@ public class BlockHighlightRenderer {
                     targets.blockRange.put(block, he.range);
                 } else {
                     // Allow entity IDs without the optional entity: prefix as well.
-                    addEntityTarget(targets, targetId.toString(), color, alpha, he.throughWalls, he.range);
+                    addEntityTarget(targets, targetId.toString(), color, alpha, he.throughWalls, he.range,
+                            false, false, he.minSizeBox);
                 }
             }
         }
@@ -268,28 +332,35 @@ public class BlockHighlightRenderer {
 
     /**
      * Adds an entity rule from an entity spec: "TYPE", "TYPE[name=TEXT]" or "*[name=TEXT]".
+     * With partialType the type is any text contained in an entity type ID instead of a registered ID.
      */
     private static void addEntityTarget(ScanTarget targets, String entitySpec, float[] color,
-                                        float alpha, boolean throughWalls, int range) {
+                                        float alpha, boolean throughWalls, int range,
+                                        boolean partialType, boolean partialName, boolean minSize) {
         if (!BlockHighlightManager.isValidEntitySpec(entitySpec)) return;
 
         String typeKey = null;
         String typeId = BlockHighlightManager.parseEntityTypeId(entitySpec);
         if (typeId != null) {
             typeId = typeId.toLowerCase(Locale.ROOT);
-            if (!typeId.contains(":")) {
-                typeId = "minecraft:" + typeId;
+            if (partialType) {
+                typeKey = typeId;
+            } else {
+                if (!typeId.contains(":")) {
+                    typeId = "minecraft:" + typeId;
+                }
+                Identifier id = Identifier.tryParse(typeId);
+                if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) return;
+                typeKey = id.toString();
             }
-            Identifier id = Identifier.tryParse(typeId);
-            if (id == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(id)) return;
-            typeKey = id.toString();
         }
 
         String nameFilter = BlockHighlightManager.parseEntityNameFilter(entitySpec);
         if (nameFilter != null) {
             nameFilter = normalizeEntityName(nameFilter);
         }
-        targets.entityRules.add(new EntityRule(typeKey, nameFilter, color, alpha, throughWalls, range));
+        targets.entityRules.add(new EntityRule(typeKey, nameFilter, partialType, partialName, minSize,
+                color, alpha, throughWalls, range));
     }
 
     /**
@@ -310,7 +381,8 @@ public class BlockHighlightRenderer {
         int bestSpecificity = 0;
         String name = null;
         for (EntityRule rule : rules) {
-            if (rule.typeId() != null && !rule.typeId().equals(entityTypeId)) continue;
+            if (rule.typeId() != null
+                    && !BlockHighlightManager.idMatches(rule.typeId(), entityTypeId, rule.partialType())) continue;
             int specificity = rule.specificity();
             if (specificity < bestSpecificity) continue;
             if (entity.blockPosition().distSqr(scanCenter) > (long) rule.range() * rule.range()) continue;
@@ -318,7 +390,7 @@ public class BlockHighlightRenderer {
                 if (name == null) {
                     name = normalizeEntityName(entity.getName().getString());
                 }
-                if (!name.contains(rule.nameFilter())) continue;
+                if (!BlockHighlightManager.nameMatches(rule.nameFilter(), name, rule.partialName())) continue;
             }
             best = rule;
             bestSpecificity = specificity;
@@ -343,7 +415,8 @@ public class BlockHighlightRenderer {
             sb.append(e.target).append(",").append(e.color).append(",")
               .append(e.range).append(",").append(e.throughWalls).append(",")
               .append(e.enabled).append(",").append(e.intensity).append(",")
-              .append(e.area != null ? e.area : "").append(";");
+              .append(e.area != null ? e.area : "").append(",")
+              .append(e.partialMatch).append(",").append(e.minSizeBox).append(";");
         }
         return sb.toString();
     }
@@ -475,7 +548,8 @@ public class BlockHighlightRenderer {
             ScanTarget targets = buildScanTargets(config);
 
             if (targets.blockColors.isEmpty() && targets.skullHashColors.isEmpty()
-                    && targets.skyblockIdColors.isEmpty() && targets.entityRules.isEmpty()) {
+                    && targets.skyblockIdColors.isEmpty() && targets.skullPartialRules.isEmpty()
+                    && targets.skyblockPartialRules.isEmpty() && targets.entityRules.isEmpty()) {
                 highlightedBoxes = List.of();
                 highlightedEntityBoxes = List.of();
                 return;
@@ -486,11 +560,13 @@ public class BlockHighlightRenderer {
             for (int r : targets.blockRange.values()) maxRange = Math.max(maxRange, r);
             for (int r : targets.skullHashRange.values()) maxRange = Math.max(maxRange, r);
             for (int r : targets.skyblockIdRange.values()) maxRange = Math.max(maxRange, r);
+            for (IdRule rule : targets.skullPartialRules) maxRange = Math.max(maxRange, rule.range());
+            for (IdRule rule : targets.skyblockPartialRules) maxRange = Math.max(maxRange, rule.range());
             for (EntityRule rule : targets.entityRules) maxRange = Math.max(maxRange, rule.range());
 
             Set<Block> targetBlocks = targets.blockColors.keySet();
-            boolean hasSkullTargets = !targets.skullHashColors.isEmpty();
-            boolean hasSkyBlockTargets = !targets.skyblockIdColors.isEmpty();
+            boolean hasSkullTargets = !targets.skullHashColors.isEmpty() || !targets.skullPartialRules.isEmpty();
+            boolean hasSkyBlockTargets = !targets.skyblockIdColors.isEmpty() || !targets.skyblockPartialRules.isEmpty();
 
             // If we have skull targets, also scan for player_head/player_wall_head blocks
             Set<Block> allScanBlocks = new HashSet<>(targetBlocks);
@@ -518,6 +594,8 @@ public class BlockHighlightRenderer {
             Map<String, Float> sbIdAlphas = new HashMap<>(targets.skyblockIdAlpha);
             Map<String, Boolean> sbIdWalls = new HashMap<>(targets.skyblockIdThroughWalls);
             Map<String, Integer> sbIdRanges = new HashMap<>(targets.skyblockIdRange);
+            List<IdRule> skullPartial = new ArrayList<>(targets.skullPartialRules);
+            List<IdRule> sbIdPartial = new ArrayList<>(targets.skyblockPartialRules);
             List<EntityRule> entityRules = new ArrayList<>(targets.entityRules);
             Map<Block, float[]> bColors = new HashMap<>(targets.blockColors);
             Map<Block, Float> bAlphas = new HashMap<>(targets.blockAlpha);
@@ -596,7 +674,7 @@ public class BlockHighlightRenderer {
                                                     float alpha = bAlphas.getOrDefault(block, 0.4f);
                                                     boolean tw = bWalls.getOrDefault(block, true);
                                                     AABB bounds = getBlockBounds(state, level, bpos);
-                                                    boxes.add(new HighlightBox(bpos,
+                                                    addBox(boxes, new HighlightBox(bpos,
                                                             color[0], color[1], color[2], alpha,
                                                             (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
                                                             (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
@@ -606,24 +684,32 @@ public class BlockHighlightRenderer {
                                             }
 
                                             // Check skull texture hash match
-                                            if (!skullColors.isEmpty()) {
+                                            if (!skullColors.isEmpty() || !skullPartial.isEmpty()) {
                                                 BlockEntity be = level.getBlockEntity(bpos);
                                                 if (be instanceof SkullBlockEntity skull) {
                                                     String hash = getSkullTextureHash(skull);
                                                     if (hash != null) {
                                                         float[] skullColor = skullColors.get(hash);
-                                                        if (skullColor != null) {
-                                                            int range = skullRanges.getOrDefault(hash, scanRadius);
-                                                            if (bpos.distSqr(scanCenter) <= (long) range * range) {
-                                                                float alpha = skullAlphas.getOrDefault(hash, 0.4f);
-                                                                boolean tw = skullWalls.getOrDefault(hash, true);
-                                                                AABB bounds = getBlockBounds(state, level, bpos);
-                                                                boxes.add(new HighlightBox(bpos,
-                                                                        skullColor[0], skullColor[1], skullColor[2], alpha,
-                                                                        (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
-                                                                        (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
-                                                                        tw));
+                                                        int range = skullRanges.getOrDefault(hash, scanRadius);
+                                                        float alpha = skullAlphas.getOrDefault(hash, 0.4f);
+                                                        boolean tw = skullWalls.getOrDefault(hash, true);
+                                                        if (skullColor == null) {
+                                                            IdRule rule = findIdRule(skullPartial, hash);
+                                                            if (rule != null) {
+                                                                skullColor = rule.color();
+                                                                range = rule.range();
+                                                                alpha = rule.alpha();
+                                                                tw = rule.throughWalls();
                                                             }
+                                                        }
+                                                        if (skullColor != null
+                                                                && bpos.distSqr(scanCenter) <= (long) range * range) {
+                                                            AABB bounds = getBlockBounds(state, level, bpos);
+                                                            addBox(boxes, new HighlightBox(bpos,
+                                                                    skullColor[0], skullColor[1], skullColor[2], alpha,
+                                                                    (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
+                                                                    (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
+                                                                    tw));
                                                         }
                                                     }
                                                 }
@@ -671,16 +757,24 @@ public class BlockHighlightRenderer {
                                             }
                                         }
                                     }
-                                    if (sbColor == null) continue;
 
                                     int range = sbIdRanges.getOrDefault(sbId, scanRadius);
-                                    if (bpos.distSqr(scanCenter) > (long) range * range) continue;
-
                                     float alpha = sbIdAlphas.getOrDefault(sbId, 0.4f);
                                     boolean tw = sbIdWalls.getOrDefault(sbId, true);
+                                    if (sbColor == null) {
+                                        IdRule rule = findIdRule(sbIdPartial, sbId);
+                                        if (rule == null) continue;
+                                        sbColor = rule.color();
+                                        range = rule.range();
+                                        alpha = rule.alpha();
+                                        tw = rule.throughWalls();
+                                    }
+
+                                    if (bpos.distSqr(scanCenter) > (long) range * range) continue;
+
                                     BlockState state = level.getBlockState(bpos);
                                     AABB bounds = getBlockBounds(state, level, bpos);
-                                    boxes.add(new HighlightBox(bpos,
+                                    addBox(boxes, new HighlightBox(bpos,
                                             sbColor[0], sbColor[1], sbColor[2], alpha,
                                             (float) bounds.minX, (float) bounds.minY, (float) bounds.minZ,
                                             (float) bounds.maxX, (float) bounds.maxY, (float) bounds.maxZ,
@@ -697,6 +791,62 @@ public class BlockHighlightRenderer {
         }
     }
 
+    /**
+     * Finds the partial rule whose text is contained in the ID (case-insensitive), or null.
+     * When several match, the one added last wins.
+     */
+    private static IdRule findIdRule(List<IdRule> rules, String id) {
+        if (id == null) return null;
+        String lower = id.toLowerCase(Locale.ROOT);
+        IdRule match = null;
+        for (IdRule rule : rules) {
+            if (lower.contains(rule.needle())) match = rule;
+        }
+        return match;
+    }
+
+    /** Adds a block box unless the scan already holds {@link #MAX_BLOCK_BOXES}. */
+    private static void addBox(List<HighlightBox> boxes, HighlightBox box) {
+        if (boxes.size() < MAX_BLOCK_BOXES) boxes.add(box);
+    }
+
+    /**
+     * Returns true if the box has no size on at least one axis, like marker armor stands, marker
+     * entities and display entities, so the highlight would be an invisible sliver.
+     */
+    static boolean hasNoHitbox(AABB box) {
+        return box.getXsize() < MIN_HITBOX_EDGE
+                || box.getYsize() < MIN_HITBOX_EDGE
+                || box.getZsize() < MIN_HITBOX_EDGE;
+    }
+
+    /**
+     * Grows every axis of the box that has no size to {@link #MIN_SIZE_EDGE} around the box centre.
+     * Axes that do have a size are left alone.
+     */
+    private static AABB withMinSize(AABB box) {
+        double minX = box.minX, maxX = box.maxX;
+        double minY = box.minY, maxY = box.maxY;
+        double minZ = box.minZ, maxZ = box.maxZ;
+        double half = MIN_SIZE_EDGE / 2.0;
+        if (maxX - minX < MIN_HITBOX_EDGE) {
+            double c = (minX + maxX) / 2.0;
+            minX = c - half;
+            maxX = c + half;
+        }
+        if (maxY - minY < MIN_HITBOX_EDGE) {
+            double c = (minY + maxY) / 2.0;
+            minY = c - half;
+            maxY = c + half;
+        }
+        if (maxZ - minZ < MIN_HITBOX_EDGE) {
+            double c = (minZ + maxZ) / 2.0;
+            minZ = c - half;
+            maxZ = c + half;
+        }
+        return new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
     private static List<EntityHighlightBox> scanEntities(ClientLevel level, BlockPos scanCenter,
                                                           List<EntityRule> rules) {
         if (rules.isEmpty()) return List.of();
@@ -709,7 +859,9 @@ public class BlockHighlightRenderer {
                 if (rule == null) continue;
 
                 float[] color = rule.color();
-                AABB bounds = entity.getBoundingBox().inflate(0.01);
+                AABB bounds = entity.getBoundingBox();
+                if (rule.minSize() && hasNoHitbox(bounds)) bounds = withMinSize(bounds);
+                bounds = bounds.inflate(0.01);
                 boxes.add(new EntityHighlightBox(bounds.minX, bounds.minY, bounds.minZ,
                         bounds.maxX, bounds.maxY, bounds.maxZ,
                         color[0], color[1], color[2],
