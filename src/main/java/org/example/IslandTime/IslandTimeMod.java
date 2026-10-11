@@ -28,6 +28,7 @@ public class IslandTimeMod implements ClientModInitializer {
         PlayerListManager.load();
         BlockHighlightManager.load();
         AgingItemsConfig.load();
+        ComposterTracker.load();
         IslandChatRelay.register();
         ChatMessageStore.register();
         NewYearCakeTracker.register();
@@ -55,6 +56,7 @@ public class IslandTimeMod implements ClientModInitializer {
             NewYearCakeTracker.tick();
             BackpackHoverHandler.tick(client);
             SparklingAlert.tick(client);
+            ComposterTracker.tick(client);
         });
 
         // Start the localhost poller when the player connects to a server,
@@ -103,6 +105,7 @@ public class IslandTimeMod implements ClientModInitializer {
             TooltipOverrideConfig.save();    // NEW: save tooltip override flag
             ResourcePackConfig.save();       // Save resource pack config
             BlockHighlightManager.save();    // Save block highlight entries
+            ComposterTracker.save();
 
             DiscordWebhookManager.shutdown();
             IslandChatRelay.shutdown();      // stops poller + webhook thread

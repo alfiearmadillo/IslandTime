@@ -34,9 +34,13 @@ public class IslandTimeConfig extends Config {
     @Expose
     @Category(
             name = "Discord",
-            desc = "Discord webhook and ping settings for general IslandTime alerts such as island absence, item tracking, disconnects, and fuel expiry. New Year Cake notifications have separate webhook and ping settings in the New Year Cakes category."
+            desc = "Discord webhook and ping settings for general IslandTime alerts such as island absence, item tracking, disconnects, fuel expiry, and composter alerts. New Year Cake notifications have separate webhook and ping settings in the New Year Cakes category."
     )
     public Discord discord = new Discord();
+
+    @Expose
+    @Category(name = "Composter", desc = "Discord alerts for when your Garden composter is about to run out or is empty")
+    public Composter composter = new Composter();
 
     @Expose
     @Category(name = "New Year Cakes", desc = "Discord reminders for the New Year's Celebration cake")
@@ -248,6 +252,49 @@ public class IslandTimeConfig extends Config {
                 }
             }
         };
+    }
+
+    public static class Composter {
+        @ConfigOption(
+                name = "Composter Status",
+                desc = "Show what the mod currently knows about your composter. It reads the Composter tab widget " +
+                        "(enable it in /widget, visit the Garden) and your upgrade levels (open the Composter " +
+                        "Upgrades menu once). Also /it composter"
+        )
+        @ConfigEditorButton(buttonText = " View Status ")
+        public Runnable statusButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it composter");
+                }
+            }
+        };
+
+        @Expose
+        @ConfigOption(
+                name = "Enable Composter Alerts",
+                desc = "Track the Garden composter and send Discord alerts using the main Discord webhook and ping ID"
+        )
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Alert When Empty",
+                desc = "Send a Discord alert when the composter runs out of organic matter or fuel"
+        )
+        @ConfigEditorBoolean
+        public boolean alertWhenEmpty = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Warn Minutes Before Empty",
+                desc = "Send a Discord warning this many minutes before the composter runs empty (0 = no warning)"
+        )
+        @ConfigEditorSlider(minValue = 0, maxValue = 120, minStep = 1)
+        public int warnMinutes = 10;
     }
 
     public static class NewYearCakes {
