@@ -135,6 +135,21 @@ public class DiscordWebhookManager {
         sendWebhook(url, message);
     }
 
+    /** Sent once for each "EVOLUTION! Your <item> has evolved!" chat message (see EvolutionAlertTracker). */
+    public static void sendEvolutionAlert(String itemName) {
+        String url = webhookUrl;
+        if (url == null || url.isEmpty()) return;
+
+        String time = LocalDateTime.now().format(TIME_FORMATTER);
+        String ping = (discordUserId != null && !discordUserId.isEmpty()) ? "<@" + discordUserId + ">\n" : "";
+        // The item name comes from game text; keep it from being able to ping anyone
+        String safeName = itemName.replace("@", "@\u200b");
+        String message = String.format(
+                "✨ **Evolution!**\n%sYour %s has evolved!\nTime: %s",
+                ping, safeName, time);
+        sendWebhook(url, message);
+    }
+
     public static void sendCustomMessage(String message) {
         String url = webhookUrl;
         sendCustomMessage(url, message);

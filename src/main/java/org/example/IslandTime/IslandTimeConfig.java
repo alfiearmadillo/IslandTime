@@ -34,9 +34,13 @@ public class IslandTimeConfig extends Config {
     @Expose
     @Category(
             name = "Discord",
-            desc = "Discord webhook and ping settings for general IslandTime alerts such as island absence, item tracking, disconnects, fuel expiry, and composter alerts. New Year Cake notifications have separate webhook and ping settings in the New Year Cakes category."
+            desc = "Discord webhook and ping settings for general IslandTime alerts such as island absence, item tracking, disconnects, fuel expiry, composter alerts, and evolution alerts. New Year Cake notifications have separate webhook and ping settings in the New Year Cakes category."
     )
     public Discord discord = new Discord();
+
+    @Expose
+    @Category(name = "Chat Alerts", desc = "Discord alerts triggered by specific in-game chat messages")
+    public ChatAlerts chatAlerts = new ChatAlerts();
 
     @Expose
     @Category(name = "Composter", desc = "Discord alerts for when your Garden composter is about to run out or is empty")
@@ -252,6 +256,17 @@ public class IslandTimeConfig extends Config {
                 }
             }
         };
+    }
+
+    public static class ChatAlerts {
+        @Expose
+        @ConfigOption(
+                name = "Evolution Alert",
+                desc = "Send one Discord alert (main webhook and ping ID) each time an \"EVOLUTION! Your <item> has " +
+                        "evolved!\" message appears in chat, e.g. for your Rosewater Flask"
+        )
+        @ConfigEditorBoolean
+        public boolean evolutionEnabled = true;
     }
 
     public static class Composter {
@@ -639,7 +654,7 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
             name = "Keep Resource Pack",
-            desc = "When enabled, caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel). Hides the pack download prompt and only re-downloads if the pack changes."
+            desc = "When enabled, caches the Hypixel SkyBlock resource pack locally and keeps it active everywhere (even outside Hypixel). Hides the pack download prompt and only re-downloads if the pack changes; when Hypixel releases a newer pack, it is downloaded and replaces the old copy in your enabled packs."
         )
         @ConfigEditorBoolean
         public boolean keepResourcePack = false;
@@ -896,5 +911,24 @@ public class IslandTimeConfig extends Config {
                 client.execute(() -> client.setScreen(new PlayerListScreen()));
             }
         };
+
+        @Expose
+        @ConfigOption(
+                name = "Copy Chat Message Keybind",
+                desc = "When enabled, pressing the configured key while hovering a line of the chat mirror in the " +
+                        "player list copies that message's full text and hover text to your clipboard (handy for " +
+                        "reporting chat messages). Shift + right-click on a line always works too"
+        )
+        @ConfigEditorBoolean
+        public boolean copyChatKeybindEnabled = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Copy Chat Message Key",
+                desc = "Key used to copy the hovered chat mirror line in the player list. " +
+                        "Requires Copy Chat Message Keybind to be enabled"
+        )
+        @ConfigEditorKeybind(defaultKey = 67) // GLFW_KEY_C
+        public int copyChatKeybind = 67;
     }
 }
