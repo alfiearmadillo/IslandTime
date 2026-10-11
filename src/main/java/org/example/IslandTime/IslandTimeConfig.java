@@ -71,6 +71,10 @@ public class IslandTimeConfig extends Config {
     public BlockHighlight blockHighlight = new BlockHighlight();
 
     @Expose
+    @Category(name = "WAILA", desc = "What Am I Looking At: inspect the block or entity under your crosshair")
+    public Waila waila = new Waila();
+
+    @Expose
     @Category(name = "Critter Safari", desc = "On-screen tracker for unique critters caught during a Critter Safari run")
     public CritterSafari critterSafari = new CritterSafari();
 
@@ -766,6 +770,18 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Default Range", desc = "Default scan range for new entries (in blocks)")
         @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
+    }
+
+    public static class Waila {
+        @Expose
+        @ConfigOption(name = "WAILA Keybind", desc = "Press this key while in the world (no screen open) to run /it waila on whatever you are aiming at. Unbound by default; pick a key that isn't used by something else. Press Escape while binding to clear it")
+        @ConfigEditorKeybind(defaultKey = -1)
+        public int keybind = -1;
+
+        @Expose
+        @ConfigOption(name = "Max Range", desc = "How far (in blocks) WAILA looks along the line you are aiming. Blocks and entities beyond your normal reach are still inspected as long as they are the first thing along that line. Only blocks in loaded chunks and entities your client knows about can be found")
+        @ConfigEditorSlider(minValue = 5, maxValue = 256, minStep = 1)
+        public int range = 128;
     }
 
     public static class CritterSafari {

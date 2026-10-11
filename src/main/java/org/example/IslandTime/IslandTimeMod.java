@@ -58,6 +58,7 @@ public class IslandTimeMod implements ClientModInitializer {
             BackpackHoverHandler.tick(client);
             SparklingAlert.tick(client);
             ComposterTracker.tick(client);
+            WailaHandler.tickKeybind(client);
         });
 
         // Start the localhost poller when the player connects to a server,

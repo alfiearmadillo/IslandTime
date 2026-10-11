@@ -34,6 +34,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -53,8 +54,46 @@ import java.util.Optional;
  */
 public class WailaHandler {
 
+    /** Smallest range (in blocks) WAILA will look along the aim ray, whatever the config says. */
+    private static final int MIN_RANGE = 5;
+
+    /** Largest range (in blocks) WAILA will look along the aim ray, whatever the config says. */
+    private static final int MAX_RANGE = 512;
+
+    /** Fallback range if the config isn't available. */
+    private static final int DEFAULT_RANGE = 128;
+
+    /** Whether the WAILA key was held down on the previous tick, so a held key only fires once. */
+    private static boolean keyWasDown = false;
+
+    /**
+     * Client tick hook for the WAILA keybind. Fires once per key press while in the world with no
+     * screen open. Does nothing if the key is unbound.
+     */
+    public static void tickKeybind(Minecraft client) {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        int key = config != null && config.waila != null ? config.waila.keybind : -1;
+        // Unbound is stored as 0 or -1; polling a key code GLFW doesn't know raises a GLFW error
+        boolean down = key >= GLFW.GLFW_KEY_SPACE && key <= GLFW.GLFW_KEY_LAST
+                && GLFW.glfwGetKey(client.getWindow().handle(), key) == GLFW.GLFW_PRESS;
+
+        boolean pressed = down && !keyWasDown;
+        keyWasDown = down;
+
+        if (pressed && client.screen == null && client.player != null && client.level != null) {
+            inspect(client);
+        }
+    }
+
+    private static int getRange() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        int range = config != null && config.waila != null ? config.waila.range : DEFAULT_RANGE;
+        return Math.max(MIN_RANGE, Math.min(MAX_RANGE, range));
+    }
+
     public static void inspect(Minecraft client) {
-        if (client.level == null || client.player == null) {
+        if (client.player == null) return;
+        if (client.level == null) {
             client.player.sendSystemMessage(
                     Component.literal("Not in a world.").withStyle(ChatFormatting.RED));
             return;
@@ -65,23 +104,37 @@ public class WailaHandler {
             return;
         }
 
-        // The vanilla crosshair skips entities that can't be picked (and anything beyond reach),
-        // so look along the view vector ourselves before falling back to the targeted block.
-        Entity viewedEntity = findEntityAlongView(client);
+        // The vanilla crosshair skips entities that can't be picked and anything beyond reach, so cast
+        // our own ray from where the player is aiming. Whatever it hits first (block or entity) wins,
+        // however far away it is, up to the configured range.
+        Entity camera = client.getCameraEntity();
+        if (camera == null) camera = client.player;
+        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        Vec3 eye = camera.getEyePosition(partialTick);
+        Vec3 direction = camera.getViewVector(partialTick);
+        int range = getRange();
+        Vec3 end = eye.add(direction.scale(range));
+
+        BlockHitResult blockHit = client.level.clip(
+                new ClipContext(eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, camera));
+        boolean hitBlock = blockHit.getType() == HitResult.Type.BLOCK;
+        double blockDistance = hitBlock ? eye.distanceTo(blockHit.getLocation()) : range;
+
+        Entity viewedEntity = findEntityAlongView(client, camera, eye, direction, end, blockDistance);
         if (viewedEntity != null) {
             inspectEntity(client, viewedEntity);
             return;
         }
 
-        if (client.hitResult == null || client.hitResult.getType() != HitResult.Type.BLOCK) {
+        if (!hitBlock) {
             client.player.sendSystemMessage(
-                    Component.literal("No block or entity targeted. Look at a block or entity and try again.")
+                    Component.literal("No block or entity found within " + range
+                                    + " blocks of where you are aiming. Look at a block or entity and try again.")
                             .withStyle(ChatFormatting.RED));
             return;
         }
 
-        BlockHitResult hit = (BlockHitResult) client.hitResult;
-        BlockPos pos = hit.getBlockPos();
+        BlockPos pos = blockHit.getBlockPos();
         Level level = client.level;
         BlockState state = level.getBlockState(pos);
         Block block = state.getBlock();
@@ -110,6 +163,12 @@ public class WailaHandler {
                                         .withClickEvent(new ClickEvent.CopyToClipboard(posStr))
                                         .withHoverEvent(new HoverEvent.ShowText(
                                                 Component.literal("Click to copy position").withStyle(ChatFormatting.GRAY))))));
+
+        // Distance from the camera, useful when looking at something out of reach
+        client.player.sendSystemMessage(
+                Component.literal("Distance: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(String.format(Locale.ROOT, "%.1f blocks", blockDistance))
+                                .withStyle(ChatFormatting.WHITE)));
 
         // Block state properties
         var values = state.getValues().toList();
@@ -234,9 +293,6 @@ public class WailaHandler {
     /** Longest entity name placed into an "add to highlighter" command. */
     private static final int MAX_NAME_FILTER_LENGTH = 80;
 
-    /** How far (in blocks) WAILA looks along the view vector for entities the crosshair can't target. */
-    private static final double ENTITY_VIEW_RANGE = 20.0;
-
     /** Smallest pick-box edge used for untargetable entities, so tiny or zero-size ones can be looked at. */
     private static final double MIN_UNTARGETABLE_PICK_SIZE = 0.5;
 
@@ -244,29 +300,15 @@ public class WailaHandler {
     private static final double HIT_DISTANCE_TIE_EPSILON = 0.1;
 
     /**
-     * Ray-casts from the camera along the view vector and returns the entity being looked at, or null.
-     * Unlike the vanilla crosshair this also finds entities that are not pickable (marker armor stands,
-     * dropped items, displays, ...) and entities beyond interaction reach. Blocks in the way hide entities
-     * behind them. Pickable entities win over untargetable ones, then the nearest hit wins, so e.g. a mob
+     * Returns the entity the aim ray (eye to end, along direction) hits first, or null. Unlike the
+     * vanilla crosshair this also finds entities that are not pickable (marker armor stands, dropped
+     * items, displays, ...) and entities beyond interaction reach. Only hits no farther than maxDistance
+     * count, which is where the ray hits a block, so blocks in the way hide entities behind them.
+     * Pickable entities win over untargetable ones, then the nearest hit wins, so e.g. a mob
      * is preferred over the invisible name tag stand floating above it.
      */
-    private static Entity findEntityAlongView(Minecraft client) {
-        Entity camera = client.getCameraEntity();
-        if (camera == null) camera = client.player;
-        if (client.level == null || camera == null) return null;
-
-        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
-        Vec3 eye = camera.getEyePosition(partialTick);
-        Vec3 direction = camera.getViewVector(partialTick);
-        Vec3 end = eye.add(direction.scale(ENTITY_VIEW_RANGE));
-
-        double maxDistance = ENTITY_VIEW_RANGE;
-        BlockHitResult blockHit = client.level.clip(
-                new ClipContext(eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, camera));
-        if (blockHit.getType() != HitResult.Type.MISS) {
-            maxDistance = Math.min(maxDistance, eye.distanceTo(blockHit.getLocation()));
-        }
-
+    private static Entity findEntityAlongView(Minecraft client, Entity camera, Vec3 eye, Vec3 direction,
+                                              Vec3 end, double maxDistance) {
         Entity rideRoot = camera.getRootVehicle();
         Entity best = null;
         int bestTier = 0;

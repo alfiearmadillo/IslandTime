@@ -758,7 +758,7 @@ public class IslandTimeCommand {
                 {"/it highlight", "Open the Highlights GUI (same as /it highlights). Use /it highlight add <target> to add from chat."},
                 {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; filter entities by name with entity:armor_stand[name=TEXT] or entity:*[name=TEXT] (any type); sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color."},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
-                {"/it waila", "Inspect the block or entity you're looking at (including untargetable entities like marker armor stands) — shows IDs, position, state, NBT, equipment, skull textures, and SkyBlock custom ID, with buttons to add it to highlights"},
+                {"/it waila", "Inspect the block or entity you're aiming at, even out of reach or untargetable (like marker armor stands). Can be bound to a key in /it > WAILA — shows IDs, position, state, NBT, equipment, skull textures, and SkyBlock custom ID, with buttons to add it to highlights"},
                 {"/it help [page]", "Show this help (pages 1-11)"},
 
                 // Page 9 - Aging Items
