@@ -144,8 +144,9 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
                 name = "Default Gabagool Price",
-                desc = "Sell price for one Crude Gabagool. Applies to the active day only; past days keep " +
-                        "their own price."
+                desc = "Sell price for one Crude Gabagool. Applied to the active and queued days (and any day " +
+                        "without a price) and marked 'temp auto price' until you set that day's price manually. " +
+                        "Ended days keep their own price."
         )
         @ConfigEditorText
         public String todayGabagoolPriceString = "";

@@ -186,10 +186,11 @@ public class FuelCycleTracker {
     // slot closes, and entirely whenever a fresh cohort starts.
     private static final ConcurrentHashMap<String, Set<String>> minionsCountedByDaySlot = new ConcurrentHashMap<>();
 
-    // Number of fuel units already queued for each minion in the current cohort. This
-    // keeps a minion's cycle number independent of the exact moment its GUI was opened,
-    // so refueling a full set cannot split one cycle across several day records merely
-    // because the minions were clicked in sequence.
+    // The day-slot index each minion's next fuel unit will land in within the current
+    // cohort (i.e. how many day-slots, counted from the cohort's first, its queued fuel
+    // reaches). This keeps a minion's cycle number independent of the exact moment its GUI
+    // was opened, so refueling a full set cannot split one cycle across several day records
+    // merely because the minions were clicked in sequence.
     private static final ConcurrentHashMap<String, Integer> minionFuelUnitsQueued = new ConcurrentHashMap<>();
 
     private static long    lastTickTime        = 0;
@@ -215,6 +216,12 @@ public class FuelCycleTracker {
 
     /** Default mob-kill coins/day at 100% AFK, used as the snapshot baseline for newly created days. */
     private static double mobKillCoinsAt100Baseline = 0.0;
+
+    /** Comment shown on a day whose gabagool price is still the auto-applied default. */
+    public static final String AUTO_PRICE_NOTE = "temp auto price";
+
+    /** Default gabagool price from MoulConfig, or NaN when none is configured. */
+    private static volatile double defaultGabagoolPrice = Double.NaN;
 
     private static final ConcurrentSkipListMap<String, DayRecord> dayRecords = new ConcurrentSkipListMap<>();
 
@@ -312,6 +319,9 @@ public class FuelCycleTracker {
         public double gabagoolPrice = 0.0;
         /** True when this record's price was explicitly overridden instead of inherited from MoulConfig. */
         public boolean manualGabagoolPrice = false;
+        /** True while {@link #gabagoolPrice} is still the auto-applied MoulConfig default (a
+         *  temporary placeholder until a real price is entered manually). */
+        public boolean autoGabagoolPrice = false;
 
         /** Amount of Crude Gabagool auto-tracked today from Hypixel's periodic "[Sacks]" chat
          *  messages (see SackIncomeTracker) — sum of all positive sack-gain deltas seen today. */
@@ -332,6 +342,22 @@ public class FuelCycleTracker {
 
         public int getEffectiveMinionCount() {
             return manualMinionCount != null ? manualMinionCount : minionsRefueledAuto;
+        }
+
+        /** True when the price is still the auto-applied default rather than a manual one. */
+        public boolean hasAutoGabagoolPrice() {
+            return autoGabagoolPrice && !manualGabagoolPrice;
+        }
+
+        /** Notes to display: manual notes win, otherwise flags a still-temporary auto price. */
+        public String getDisplayNotes() {
+            if (notes != null && !notes.isBlank()) return notes;
+            return hasAutoGabagoolPrice() ? AUTO_PRICE_NOTE : "";
+        }
+
+        /** Whether this day's "fuel day up" alert has already fired / the day was closed out. */
+        boolean isClosed() {
+            return manualCycleTimes ? cycleClosed : cycleEndMs > 0;
         }
 
         /** Automatic total fuel cost, recalculated from the effective minion count. */
@@ -494,6 +520,7 @@ public class FuelCycleTracker {
             DayRecord record = new DayRecord(d);
             record.mobKillCoinsAt100 = mobKillCoinsAt100Baseline;
             record.cycleStartMs = System.currentTimeMillis();
+            applyDefaultGabagoolPrice(record);
             return record;
         });
     }
@@ -820,16 +847,49 @@ public class FuelCycleTracker {
         if (record == null) return;
         record.gabagoolPrice = Math.max(0.0, value);
         record.manualGabagoolPrice = true;
+        record.autoGabagoolPrice = false;
         save();
     }
 
-    /** Applies the configured default without turning it into a per-day manual override. */
-    public static void applyDefaultGabagoolPrice(String date, double value) {
+    /** Clears a manual price override, reverting the day to the configured default (if any). */
+    public static void clearManualGabagoolPrice(String date) {
         DayRecord record = dayRecords.get(date);
-        double normalized = Math.max(0.0, value);
-        if (record == null || record.manualGabagoolPrice || record.gabagoolPrice == normalized) return;
-        record.gabagoolPrice = normalized;
+        if (record == null || !record.manualGabagoolPrice) return;
+        record.manualGabagoolPrice = false;
+        if (!Double.isNaN(defaultGabagoolPrice)) {
+            record.gabagoolPrice = defaultGabagoolPrice;
+            record.autoGabagoolPrice = true;
+        }
         save();
+    }
+
+    /**
+     * Sets the configured default gabagool price ({@code value <= 0} or NaN = no default) and
+     * applies it, without turning it into a manual override, to every day that is still
+     * active or queued, and to any day that never received a price at all. Days that have
+     * already ended keep whatever price they had.
+     */
+    public static void setDefaultGabagoolPrice(double value) {
+        defaultGabagoolPrice = (!Double.isFinite(value) || value <= 0.0) ? Double.NaN : value;
+        if (Double.isNaN(defaultGabagoolPrice)) return;
+
+        boolean changed = false;
+        for (DayRecord record : dayRecords.values()) {
+            changed |= applyDefaultGabagoolPrice(record);
+        }
+        if (changed) save();
+    }
+
+    /** @return true when the record's price was changed. */
+    private static boolean applyDefaultGabagoolPrice(DayRecord record) {
+        double price = defaultGabagoolPrice;
+        if (Double.isNaN(price) || record.manualGabagoolPrice) return false;
+        // Ended days keep their own price; only fill one in if it never received any.
+        if (record.isClosed() && record.gabagoolPrice > 0.0) return false;
+        if (record.gabagoolPrice == price && record.autoGabagoolPrice) return false;
+        record.gabagoolPrice = price;
+        record.autoGabagoolPrice = true;
+        return true;
     }
 
     /** Sets a manual override for gabagool amount, taking precedence over the auto-tracked value. */
@@ -922,10 +982,15 @@ public class FuelCycleTracker {
         long oldEffectiveEnd = oldEnd > oldStart ? oldEnd : oldStart + DAY_MS;
         boolean wasActiveRecord = cohortStartMs > 0
                 && date.equals(daySlotKey(cohortStartMs, activeDaySlotIndex));
+        long now = System.currentTimeMillis();
+        boolean wasClosed = selected.isClosed();
         selected.cycleStartMs = startMs;
         selected.cycleEndMs = endMs;
         selected.manualCycleTimes = true;
-        selected.cycleClosed = oldEnd > 0;
+        // Only a day whose alert already fired stays closed, and only while its new end is
+        // still in the past. A manually-timed record always has an end set, so using that
+        // as the "closed" marker would silently swallow the alert of an active/queued day.
+        selected.cycleClosed = wasClosed && endMs <= now;
 
         if (wasActiveRecord) {
             long shift = endMs - oldEffectiveEnd;
@@ -958,7 +1023,6 @@ public class FuelCycleTracker {
             }
         }
 
-        long now = System.currentTimeMillis();
         boolean activeOrQueued = oldEnd <= 0 || oldStart >= now || oldEnd > now;
         if (activeOrQueued) {
             final long oldStartForSort = oldStart;
@@ -981,9 +1045,11 @@ public class FuelCycleTracker {
                     if (next.date != null && next.date.contains("~")) continue;
                     long duration = next.cycleEndMs > next.cycleStartMs
                             ? next.cycleEndMs - next.cycleStartMs : DAY_MS;
+                    boolean nextWasClosed = next.isClosed();
                     next.cycleStartMs = previousEnd;
                     next.cycleEndMs = previousEnd + duration;
                     next.manualCycleTimes = true;
+                    next.cycleClosed = nextWasClosed && next.cycleEndMs <= now;
                     previousEnd = next.cycleEndMs;
                 }
             }
@@ -1229,10 +1295,26 @@ public class FuelCycleTracker {
         int queuedBefore = hasActiveFuel
                 ? minionFuelUnitsQueued.getOrDefault(minionKey, inferQueuedFuelUnits(minionKey, cohortStartMs))
                 : 0;
-        int firstDayIndex = hasActiveFuel
-                ? queuedBefore
-                : Math.max(0, (int) ((now - cohortStartMs) / DAY_MS));
-        minionFuelUnitsQueued.put(minionKey, queuedBefore + fuelCount);
+        int currentDayIndex = Math.max(0, (int) ((now - cohortStartMs) / DAY_MS));
+        int firstDayIndex;
+        if (!hasActiveFuel) {
+            firstDayIndex = currentDayIndex;
+        } else if (queuedBefore >= currentDayIndex) {
+            firstDayIndex = queuedBefore;
+        } else {
+            // A minion with fuel still burning always has its next unit queued at or after
+            // the current day-slot, so a smaller count is stale (e.g. saved by an older
+            // version that counted units from the minion's last fresh fueling rather than
+            // from the cohort's first day). Using it would pile the new fuel onto old,
+            // already-closed days instead of queuing (and alerting on) new ones, so derive
+            // the slot from where this minion's existing fuel actually runs out instead.
+            int expiryDayIndex = (int) Math.max(0, (existingExpiry - cohortStartMs) / DAY_MS);
+            firstDayIndex = Math.max(currentDayIndex, expiryDayIndex);
+        }
+        // Stored as the day-slot index this minion's NEXT unit lands in (the same value
+        // inferQueuedFuelUnits() reconstructs), so it stays correct for a minion that was
+        // freshly fueled partway through a long-running cohort.
+        minionFuelUnitsQueued.put(minionKey, firstDayIndex + fuelCount);
 
         if (lastTickTime == 0) lastTickTime = now;
 
@@ -1471,6 +1553,7 @@ public class FuelCycleTracker {
         record.activeMs = 20 * 60 * 60 * 1000L;
         record.mobKillCoinsAt100 = mobKillCoinsAt100Baseline;
         record.gabagoolPrice = 15.0;
+        record.autoGabagoolPrice = false;
         record.gabagoolAmountAuto = 500;
 
         System.out.println("[FuelCycleTracker] DEBUG: Injecting fake day record — " + fakeDate);
@@ -1796,6 +1879,7 @@ public class FuelCycleTracker {
                     long now = System.currentTimeMillis();
                     removeExpiredMinionFuel(now);
 
+                    reopenWronglyClosedDays(now);
                     purgeStaleLegacyMinionKeys();
                 }
             } catch (Exception e) {
@@ -1885,6 +1969,23 @@ public class FuelCycleTracker {
             System.err.println("[FuelCycleTracker] Legacy migration failed: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Older versions marked any edited day as already closed whenever it had an end time —
+     * which every manually-timed day does — so an active or queued day edited in the fuel
+     * tracker GUI never fired its "fuel day up" alert. A day can only genuinely have been
+     * closed once its end has passed, so reopen any whose end is still in the future.
+     */
+    private static void reopenWronglyClosedDays(long now) {
+        boolean changed = false;
+        for (DayRecord record : dayRecords.values()) {
+            if (record.manualCycleTimes && record.cycleClosed && record.cycleEndMs > now) {
+                record.cycleClosed = false;
+                changed = true;
+            }
+        }
+        if (changed) save();
     }
 
     private static String readLineOrThrow(BufferedReader reader) throws IOException {
