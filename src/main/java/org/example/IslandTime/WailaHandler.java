@@ -4,46 +4,137 @@ import com.mojang.authlib.properties.Property;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Handles the /it waila command — "What Am I Looking At".
- * Inspects any targeted block and displays detailed info in chat,
- * including block type, state properties, position, tile entity data,
+ * Inspects any targeted block or entity and displays detailed info in chat.
+ * For blocks: block type, state properties, position, tile entity data,
  * and Hypixel SkyBlock custom data (e.g. skull textures/IDs).
+ * For entities: entity type, name, IDs, position, health, equipment, held items and full NBT.
+ * Entities that vanilla's crosshair can't target (marker armor stands, dropped items, displays, ...)
+ * are found by ray-casting along the view vector.
+ * Both come with buttons to add the target to the highlighter.
  */
 public class WailaHandler {
 
+    /** Smallest range (in blocks) WAILA will look along the aim ray, whatever the config says. */
+    private static final int MIN_RANGE = 5;
+
+    /** Largest range (in blocks) WAILA will look along the aim ray, whatever the config says. */
+    private static final int MAX_RANGE = 512;
+
+    /** Fallback range if the config isn't available. */
+    private static final int DEFAULT_RANGE = 128;
+
+    /** Whether the WAILA key was held down on the previous tick, so a held key only fires once. */
+    private static boolean keyWasDown = false;
+
+    /**
+     * Client tick hook for the WAILA keybind. Fires once per key press while in the world with no
+     * screen open. Does nothing if the key is unbound.
+     */
+    public static void tickKeybind(Minecraft client) {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        int key = config != null && config.waila != null ? config.waila.keybind : -1;
+        // Unbound is stored as 0 or -1; polling a key code GLFW doesn't know raises a GLFW error
+        boolean down = key >= GLFW.GLFW_KEY_SPACE && key <= GLFW.GLFW_KEY_LAST
+                && GLFW.glfwGetKey(client.getWindow().handle(), key) == GLFW.GLFW_PRESS;
+
+        boolean pressed = down && !keyWasDown;
+        keyWasDown = down;
+
+        if (pressed && client.screen == null && client.player != null && client.level != null) {
+            inspect(client);
+        }
+    }
+
+    private static int getRange() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        int range = config != null && config.waila != null ? config.waila.range : DEFAULT_RANGE;
+        return Math.max(MIN_RANGE, Math.min(MAX_RANGE, range));
+    }
+
     public static void inspect(Minecraft client) {
-        if (client.level == null || client.player == null) {
+        if (client.player == null) return;
+        if (client.level == null) {
             client.player.sendSystemMessage(
                     Component.literal("Not in a world.").withStyle(ChatFormatting.RED));
             return;
         }
 
-        if (client.hitResult == null || client.hitResult.getType() != HitResult.Type.BLOCK) {
+        if (client.hitResult != null && client.hitResult.getType() == HitResult.Type.ENTITY) {
+            inspectEntity(client, ((EntityHitResult) client.hitResult).getEntity());
+            return;
+        }
+
+        // The vanilla crosshair skips entities that can't be picked and anything beyond reach, so cast
+        // our own ray from where the player is aiming. Whatever it hits first (block or entity) wins,
+        // however far away it is, up to the configured range.
+        Entity camera = client.getCameraEntity();
+        if (camera == null) camera = client.player;
+        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        Vec3 eye = camera.getEyePosition(partialTick);
+        Vec3 direction = camera.getViewVector(partialTick);
+        int range = getRange();
+        Vec3 end = eye.add(direction.scale(range));
+
+        BlockHitResult blockHit = client.level.clip(
+                new ClipContext(eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, camera));
+        boolean hitBlock = blockHit.getType() == HitResult.Type.BLOCK;
+        double blockDistance = hitBlock ? eye.distanceTo(blockHit.getLocation()) : range;
+
+        Entity viewedEntity = findEntityAlongView(client, camera, eye, direction, end, blockDistance);
+        if (viewedEntity != null) {
+            inspectEntity(client, viewedEntity);
+            return;
+        }
+
+        if (!hitBlock) {
             client.player.sendSystemMessage(
-                    Component.literal("No block targeted. Look at a block and try again.")
+                    Component.literal("No block or entity found within " + range
+                                    + " blocks of where you are aiming. Look at a block or entity and try again.")
                             .withStyle(ChatFormatting.RED));
             return;
         }
 
-        BlockHitResult hit = (BlockHitResult) client.hitResult;
-        BlockPos pos = hit.getBlockPos();
+        BlockPos pos = blockHit.getBlockPos();
         Level level = client.level;
         BlockState state = level.getBlockState(pos);
         Block block = state.getBlock();
@@ -72,6 +163,12 @@ public class WailaHandler {
                                         .withClickEvent(new ClickEvent.CopyToClipboard(posStr))
                                         .withHoverEvent(new HoverEvent.ShowText(
                                                 Component.literal("Click to copy position").withStyle(ChatFormatting.GRAY))))));
+
+        // Distance from the camera, useful when looking at something out of reach
+        client.player.sendSystemMessage(
+                Component.literal("Distance: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(String.format(Locale.ROOT, "%.1f blocks", blockDistance))
+                                .withStyle(ChatFormatting.WHITE)));
 
         // Block state properties
         var values = state.getValues().toList();
@@ -187,6 +284,369 @@ public class WailaHandler {
                                     .withHoverEvent(new HoverEvent.ShowText(
                                             Component.literal("Click to highlight all blocks with SkyBlock ID " + finalSbId).withStyle(ChatFormatting.GRAY)))));
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity inspection
+    // -------------------------------------------------------------------------
+
+    /** Longest entity name placed into an "add to highlighter" command. */
+    private static final int MAX_NAME_FILTER_LENGTH = 80;
+
+    /** Smallest pick-box edge used for untargetable entities, so tiny or zero-size ones can be looked at. */
+    private static final double MIN_UNTARGETABLE_PICK_SIZE = 0.5;
+
+    /** Hit distances closer than this are treated as equal when choosing between overlapping entities. */
+    private static final double HIT_DISTANCE_TIE_EPSILON = 0.1;
+
+    /**
+     * Returns the entity the aim ray (eye to end, along direction) hits first, or null. Unlike the
+     * vanilla crosshair this also finds entities that are not pickable (marker armor stands, dropped
+     * items, displays, ...) and entities beyond interaction reach. Only hits no farther than maxDistance
+     * count, which is where the ray hits a block, so blocks in the way hide entities behind them.
+     * Pickable entities win over untargetable ones, then the nearest hit wins, so e.g. a mob
+     * is preferred over the invisible name tag stand floating above it.
+     */
+    private static Entity findEntityAlongView(Minecraft client, Entity camera, Vec3 eye, Vec3 direction,
+                                              Vec3 end, double maxDistance) {
+        Entity rideRoot = camera.getRootVehicle();
+        Entity best = null;
+        int bestTier = 0;
+        double bestDistance = 0;
+        double bestOffAxis = 0;
+        for (Entity entity : client.level.entitiesForRendering()) {
+            try {
+                // Skips the viewer, their vehicle and anything riding along with them
+                if (entity.isRemoved() || entity.getRootVehicle() == rideRoot) continue;
+
+                boolean pickable = entity.isPickable();
+                AABB box = pickable
+                        ? entity.getBoundingBox().inflate(entity.getPickRadius())
+                        : getUntargetablePickBox(entity);
+                // An entity wrapped around the viewer would otherwise capture every ray
+                if (box.contains(eye)) continue;
+                Optional<Vec3> hit = box.clip(eye, end);
+                if (hit.isEmpty()) continue;
+
+                double distance = eye.distanceTo(hit.get());
+                if (distance > maxDistance) continue;
+
+                // How far the entity's own centre is from the view ray, to break ties between overlapping boxes
+                Vec3 toCenter = entity.getBoundingBox().getCenter().subtract(eye);
+                double along = toCenter.dot(direction);
+                double offAxis = toCenter.lengthSqr() - along * along;
+
+                int tier = pickable ? 0 : 1;
+                boolean better;
+                if (best == null) {
+                    better = true;
+                } else if (tier != bestTier) {
+                    better = tier < bestTier;
+                } else if (Math.abs(distance - bestDistance) > HIT_DISTANCE_TIE_EPSILON) {
+                    better = distance < bestDistance;
+                } else {
+                    better = offAxis < bestOffAxis;
+                }
+                if (better) {
+                    best = entity;
+                    bestTier = tier;
+                    bestDistance = distance;
+                    bestOffAxis = offAxis;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return best;
+    }
+
+    /**
+     * The box used to pick an entity that vanilla can't target. Marker armor stands have a zero-size
+     * hitbox but still render like normal stands, so they use a normal stand's size; every other
+     * entity is grown to a minimum size so tiny hitboxes are still easy to look at.
+     */
+    private static AABB getUntargetablePickBox(Entity entity) {
+        AABB box = entity.getBoundingBox();
+        if (entity instanceof ArmorStand stand && stand.isMarker()) {
+            EntityDimensions dimensions = EntityType.ARMOR_STAND.getDimensions();
+            if (stand.isSmall()) dimensions = dimensions.scale(0.5f);
+            box = dimensions.makeBoundingBox(stand.position());
+        }
+        double growX = Math.max(0.0, MIN_UNTARGETABLE_PICK_SIZE - box.getXsize()) / 2.0;
+        double growY = Math.max(0.0, MIN_UNTARGETABLE_PICK_SIZE - box.getYsize()) / 2.0;
+        double growZ = Math.max(0.0, MIN_UNTARGETABLE_PICK_SIZE - box.getZsize()) / 2.0;
+        return box.inflate(growX, growY, growZ);
+    }
+
+    private static void inspectEntity(Minecraft client, Entity entity) {
+        Level level = client.level;
+
+        client.player.sendSystemMessage(
+                Component.literal("═══ WAILA (Entity) ═══").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+
+        // Entity type (clickable to copy)
+        String typeId = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+        sendCopyLine(client, "Entity: ", typeId, ChatFormatting.AQUA, "Click to copy entity ID");
+
+        // Name
+        String name = entity.getName().getString();
+        sendCopyLine(client, "Name: ", name, ChatFormatting.WHITE, "Click to copy name");
+        if (entity.getCustomName() != null) {
+            client.player.sendSystemMessage(
+                    Component.literal("  Name Tag: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(entity.isCustomNameVisible() ? "visible" : "hidden")
+                                    .withStyle(ChatFormatting.YELLOW)));
+        }
+
+        // Identifiers
+        client.player.sendSystemMessage(
+                Component.literal("Class: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(entity.getClass().getSimpleName()).withStyle(ChatFormatting.DARK_AQUA)));
+        sendCopyLine(client, "Entity ID: ", String.valueOf(entity.getId()), ChatFormatting.WHITE,
+                "Click to copy entity network ID");
+        sendCopyLine(client, "UUID: ", entity.getStringUUID(), ChatFormatting.DARK_GRAY, "Click to copy UUID");
+
+        // Position and size
+        String posStr = String.format(Locale.ROOT, "%.2f, %.2f, %.2f", entity.getX(), entity.getY(), entity.getZ());
+        sendCopyLine(client, "Position: ", posStr, ChatFormatting.WHITE, "Click to copy position");
+        BlockPos blockPos = entity.blockPosition();
+        String blockPosStr = blockPos.getX() + ", " + blockPos.getY() + ", " + blockPos.getZ();
+        sendCopyLine(client, "Block Position: ", blockPosStr, ChatFormatting.WHITE, "Click to copy block position");
+        client.player.sendSystemMessage(
+                Component.literal("Rotation: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(String.format(Locale.ROOT, "yaw %.1f, pitch %.1f",
+                                entity.getYRot(), entity.getXRot())).withStyle(ChatFormatting.WHITE)));
+        client.player.sendSystemMessage(
+                Component.literal("Size: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(String.format(Locale.ROOT, "%.2f wide, %.2f tall",
+                                entity.getBbWidth(), entity.getBbHeight())).withStyle(ChatFormatting.WHITE)));
+        client.player.sendSystemMessage(
+                Component.literal("Distance: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(String.format(Locale.ROOT, "%.2f blocks",
+                                client.player.distanceTo(entity))).withStyle(ChatFormatting.WHITE)));
+        client.player.sendSystemMessage(
+                Component.literal("Pose: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(entity.getPose().name().toLowerCase(Locale.ROOT))
+                                .withStyle(ChatFormatting.WHITE)));
+
+        // Flags
+        List<String> flags = new ArrayList<>();
+        if (!entity.isPickable()) flags.add("untargetable");
+        if (entity instanceof ArmorStand stand) {
+            if (stand.isMarker()) flags.add("marker");
+            if (stand.isSmall()) flags.add("small");
+        }
+        boolean noHitbox = BlockHighlightRenderer.hasNoHitbox(entity.getBoundingBox());
+        if (noHitbox) flags.add("no hitbox");
+        if (entity.isInvisible()) flags.add("invisible");
+        if (entity.isCurrentlyGlowing()) flags.add("glowing");
+        if (entity.isOnFire()) flags.add("on fire");
+        if (entity.isSilent()) flags.add("silent");
+        if (entity.isNoGravity()) flags.add("no gravity");
+        if (entity instanceof LivingEntity living && living.isBaby()) flags.add("baby");
+        if (!flags.isEmpty()) {
+            client.player.sendSystemMessage(
+                    Component.literal("Flags: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(String.join(", ", flags)).withStyle(ChatFormatting.YELLOW)));
+        }
+
+        // Scoreboard tags
+        if (!entity.entityTags().isEmpty()) {
+            client.player.sendSystemMessage(
+                    Component.literal("Tags: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(String.join(", ", entity.entityTags()))
+                                    .withStyle(ChatFormatting.YELLOW)));
+        }
+
+        // Riding relationships
+        Entity vehicle = entity.getVehicle();
+        if (vehicle != null) {
+            client.player.sendSystemMessage(
+                    Component.literal("Riding: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(describeEntity(vehicle)).withStyle(ChatFormatting.WHITE)));
+        }
+        for (Entity passenger : entity.getPassengers()) {
+            client.player.sendSystemMessage(
+                    Component.literal("Passenger: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(describeEntity(passenger)).withStyle(ChatFormatting.WHITE)));
+        }
+
+        // Health and equipment
+        if (entity instanceof LivingEntity living) {
+            client.player.sendSystemMessage(
+                    Component.literal("Health: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(String.format(Locale.ROOT, "%.1f / %.1f",
+                                    living.getHealth(), living.getMaxHealth())).withStyle(ChatFormatting.RED)));
+            if (living.getArmorValue() > 0) {
+                client.player.sendSystemMessage(
+                        Component.literal("Armor: ").withStyle(ChatFormatting.GRAY)
+                                .append(Component.literal(String.valueOf(living.getArmorValue()))
+                                        .withStyle(ChatFormatting.WHITE)));
+            }
+            if (living.getAbsorptionAmount() > 0) {
+                client.player.sendSystemMessage(
+                        Component.literal("Absorption: ").withStyle(ChatFormatting.GRAY)
+                                .append(Component.literal(String.format(Locale.ROOT, "%.1f", living.getAbsorptionAmount()))
+                                        .withStyle(ChatFormatting.YELLOW)));
+            }
+
+            boolean headerShown = false;
+            for (EquipmentSlot slot : EquipmentSlot.values()) {
+                ItemStack stack = living.getItemBySlot(slot);
+                if (stack.isEmpty()) continue;
+                if (!headerShown) {
+                    client.player.sendSystemMessage(Component.literal("Equipment:").withStyle(ChatFormatting.GRAY));
+                    headerShown = true;
+                }
+                sendItemInfo(client, "  " + slot.getName() + ": ", stack);
+            }
+        }
+
+        // Dropped item / framed item
+        if (entity instanceof ItemEntity itemEntity) {
+            sendItemInfo(client, "Item: ", itemEntity.getItem());
+        } else if (entity instanceof ItemFrame itemFrame && !itemFrame.getItem().isEmpty()) {
+            sendItemInfo(client, "Framed Item: ", itemFrame.getItem());
+        }
+
+        // Full NBT (clickable to copy)
+        try {
+            TagValueOutput output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, entity.registryAccess());
+            entity.saveWithoutId(output);
+            CompoundTag nbt = output.buildResult();
+            if (!nbt.isEmpty()) {
+                String nbtStr = nbt.toString();
+                String preview = nbtStr.length() > 80 ? nbtStr.substring(0, 80) + "..." : nbtStr;
+                client.player.sendSystemMessage(
+                        Component.literal("NBT: ").withStyle(ChatFormatting.GRAY)
+                                .append(Component.literal(preview).withStyle(ChatFormatting.DARK_GRAY)
+                                        .withStyle(style -> style
+                                                .withClickEvent(new ClickEvent.CopyToClipboard(nbtStr))
+                                                .withHoverEvent(new HoverEvent.ShowText(
+                                                        Component.literal("Click to copy full NBT data").withStyle(ChatFormatting.GRAY))))));
+            }
+        } catch (Exception e) {
+            // NBT serialization can fail for some entities
+        }
+
+        // Highlight command buttons
+        String shortId = typeId.startsWith("minecraft:") ? typeId.substring(10) : typeId;
+        String idTarget = BlockHighlightManager.buildEntityTarget(shortId, null);
+        // Entities without a hitbox would only get an invisible sliver, so ask for a 1 block box
+        String highlightFlags = noHitbox ? " minsize" : "";
+        String noHitboxNote = noHitbox ? "\nThis entity has no hitbox, so it gets a 1 block highlight box" : "";
+        client.player.sendSystemMessage(
+                Component.literal("[+ Add Entity ID to Highlighter]").withStyle(ChatFormatting.GREEN)
+                        .withStyle(style -> style
+                                .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + idTarget + highlightFlags))
+                                .withHoverEvent(new HoverEvent.ShowText(
+                                        Component.literal("Click to highlight all " + shortId + " entities" + noHitboxNote)
+                                                .withStyle(ChatFormatting.GRAY)))));
+
+        String filterName = sanitizeNameFilter(name);
+        if (!filterName.isEmpty()) {
+            String nameTarget = BlockHighlightManager.buildEntityTarget(null, filterName);
+            client.player.sendSystemMessage(
+                    Component.literal("[+ Add Entity Name to Highlighter]").withStyle(ChatFormatting.GREEN)
+                            .withStyle(style -> style
+                                    .withClickEvent(new ClickEvent.RunCommand("/it highlight add " + nameTarget + highlightFlags))
+                                    .withHoverEvent(new HoverEvent.ShowText(
+                                            Component.literal("Click to highlight all entities named \"" + filterName
+                                                            + "\"\nTurn on Partial for the entry in /it highlights to match names that only contain it"
+                                                            + noHitboxNote)
+                                                    .withStyle(ChatFormatting.GRAY)))));
+        }
+    }
+
+    /** Sends a "Label: value" line where the value copies to the clipboard when clicked. */
+    private static void sendCopyLine(Minecraft client, String label, String value,
+                                     ChatFormatting valueColor, String hover) {
+        client.player.sendSystemMessage(
+                Component.literal(label).withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(value).withStyle(valueColor)
+                                .withStyle(style -> style
+                                        .withClickEvent(new ClickEvent.CopyToClipboard(value))
+                                        .withHoverEvent(new HoverEvent.ShowText(
+                                                Component.literal(hover).withStyle(ChatFormatting.GRAY))))));
+    }
+
+    /** Short "type (name)" description of an entity, used for riding relationships. */
+    private static String describeEntity(Entity entity) {
+        String id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
+        return id + " (" + entity.getName().getString() + ")";
+    }
+
+    /**
+     * Sends a line describing an item: name, count, registry ID, plus its SkyBlock ID and skull
+     * texture hash (both clickable to copy) when it has them.
+     */
+    private static void sendItemInfo(Minecraft client, String label, ItemStack stack) {
+        if (stack.isEmpty()) {
+            client.player.sendSystemMessage(
+                    Component.literal(label).withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal("(empty)").withStyle(ChatFormatting.DARK_GRAY)));
+            return;
+        }
+
+        String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+        String text = stack.getHoverName().getString()
+                + (stack.getCount() > 1 ? " x" + stack.getCount() : "");
+        client.player.sendSystemMessage(
+                Component.literal(label).withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(text).withStyle(ChatFormatting.WHITE))
+                        .append(Component.literal(" (" + itemId + ")").withStyle(ChatFormatting.DARK_AQUA)
+                                .withStyle(style -> style
+                                        .withClickEvent(new ClickEvent.CopyToClipboard(itemId))
+                                        .withHoverEvent(new HoverEvent.ShowText(
+                                                Component.literal("Click to copy item ID").withStyle(ChatFormatting.GRAY))))));
+
+        String skyblockId = getItemSkyBlockId(stack);
+        if (skyblockId != null) {
+            sendCopyLine(client, "    SkyBlock ID: ", skyblockId, ChatFormatting.GOLD, "Click to copy SkyBlock ID");
+        }
+        String textureHash = getItemSkullTextureHash(stack);
+        if (textureHash != null) {
+            sendCopyLine(client, "    Texture Hash: ", textureHash, ChatFormatting.LIGHT_PURPLE,
+                    "Click to copy texture hash");
+        }
+    }
+
+    /** Reads the SkyBlock item ID (custom_data.id) from an item stack, or null. */
+    private static String getItemSkyBlockId(ItemStack stack) {
+        try {
+            CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+            if (customData == null || customData.isEmpty()) return null;
+            String id = customData.copyTag().getString("id").orElse(null);
+            return id == null || id.isEmpty() ? null : id;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Reads the skull texture hash from a player head item's profile, or null. */
+    private static String getItemSkullTextureHash(ItemStack stack) {
+        try {
+            var profile = stack.get(DataComponents.PROFILE);
+            if (profile == null) return null;
+            for (Property prop : profile.partialProfile().properties().get("textures")) {
+                String hash = extractTextureHash(new String(Base64.getDecoder().decode(prop.value())));
+                if (hash != null) return hash;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * Cleans an entity name for use as a highlight name filter: drops formatting codes and
+     * control characters (which cannot be sent in a command) and limits the length.
+     */
+    private static String sanitizeNameFilter(String name) {
+        String stripped = ChatFormatting.stripFormatting(name);
+        String clean = (stripped != null ? stripped : name).replaceAll("[\\p{Cntrl}§]", "").trim();
+        if (clean.length() > MAX_NAME_FILTER_LENGTH) {
+            clean = clean.substring(0, MAX_NAME_FILTER_LENGTH).trim();
+        }
+        return clean;
     }
 
     /**

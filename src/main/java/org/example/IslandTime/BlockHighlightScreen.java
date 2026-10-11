@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * GUI screen for block and entity highlight management.
  * Displays a scrollable list of highlight entries with controls for:
- * add, edit (target/color/range/intensity/through-walls), enable/disable, delete.
+ * add, edit (target/color/range/intensity/through-walls/partial match/min size box), enable/disable, delete.
  */
 public class BlockHighlightScreen extends Screen {
 
@@ -39,6 +39,8 @@ public class BlockHighlightScreen extends Screen {
     private EditBox addIntensityField;
     private EditBox addAreaField;
     private boolean addThroughWalls = true;
+    private boolean addPartialMatch = false;
+    private boolean addMinSizeBox = false;
 
     // Edit dialog
     private boolean editDialogOpen = false;
@@ -48,6 +50,9 @@ public class BlockHighlightScreen extends Screen {
     private EditBox editRangeField;
     private EditBox editIntensityField;
     private EditBox editAreaField;
+    private boolean editPartialMatch = false;
+    private boolean editPartialMatchInitial = false;
+    private boolean editMinSizeBox = false;
 
     // Color picker
     private boolean colorPickerOpen = false;
@@ -71,6 +76,10 @@ public class BlockHighlightScreen extends Screen {
         super(Component.literal("Highlights"));
     }
 
+    private static Component toggleLabel(String name, boolean on) {
+        return Component.literal(name + ": " + (on ? "ON" : "OFF"));
+    }
+
     @Override
     protected void init() {
         super.init();
@@ -90,14 +99,16 @@ public class BlockHighlightScreen extends Screen {
         addDialogOpen = true;
         IslandTimeConfig config = ConfigManager.getConfig();
         addThroughWalls = config.blockHighlight.throughWalls;
+        addPartialMatch = config.blockHighlight.partialMatch;
+        addMinSizeBox = config.blockHighlight.minSizeBox;
         clearWidgets();
 
         int dialogX = width / 2 - 120;
-        int dialogY = height / 2 - 88;
+        int dialogY = height / 2 - 102;
 
         addTargetField = new EditBox(font, dialogX, dialogY + 14, 240, 20, Component.literal("Target"));
         addTargetField.setMaxLength(256);
-        addTargetField.setHint(Component.literal("Block ID, entity:TYPE (e.g. armor_stand), sb:ID, or skull:HASH").withStyle(ChatFormatting.GRAY));
+        addTargetField.setHint(Component.literal("Block ID, entity:TYPE[name=TEXT], sb:ID, or skull:HASH").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(addTargetField);
 
         addColorField = new EditBox(font, dialogX, dialogY + 48, 240, 20, Component.literal("Color"));
@@ -124,14 +135,30 @@ public class BlockHighlightScreen extends Screen {
         addAreaField.setHint(Component.literal("Area (blank = everywhere)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(addAreaField);
 
-        // Through Walls toggle
+        // Through Walls / Partial Match / Min Size Box toggles
         addRenderableWidget(Button.builder(
-                Component.literal("Walls: " + (addThroughWalls ? "ON" : "OFF")),
+                toggleLabel("Walls", addThroughWalls),
                 btn -> {
                     addThroughWalls = !addThroughWalls;
-                    btn.setMessage(Component.literal("Walls: " + (addThroughWalls ? "ON" : "OFF")));
+                    btn.setMessage(toggleLabel("Walls", addThroughWalls));
                 }
-        ).bounds(dialogX, dialogY + 144, 115, 20).build());
+        ).bounds(dialogX, dialogY + 144, 76, 20).build());
+
+        addRenderableWidget(Button.builder(
+                toggleLabel("Partial", addPartialMatch),
+                btn -> {
+                    addPartialMatch = !addPartialMatch;
+                    btn.setMessage(toggleLabel("Partial", addPartialMatch));
+                }
+        ).bounds(dialogX + 82, dialogY + 144, 76, 20).build());
+
+        addRenderableWidget(Button.builder(
+                toggleLabel("Min Box", addMinSizeBox),
+                btn -> {
+                    addMinSizeBox = !addMinSizeBox;
+                    btn.setMessage(toggleLabel("Min Box", addMinSizeBox));
+                }
+        ).bounds(dialogX + 164, dialogY + 144, 76, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Add"), btn -> {
             String target = addTargetField.getValue().trim();
@@ -146,15 +173,17 @@ public class BlockHighlightScreen extends Screen {
                     entry.intensity = Math.max(0, Math.min(100, Integer.parseInt(addIntensityField.getValue().trim())));
                 } catch (NumberFormatException ignored) {}
                 entry.throughWalls = addThroughWalls;
+                entry.partialMatch = addPartialMatch;
+                entry.minSizeBox = addMinSizeBox;
                 entry.area = addAreaField.getValue().trim();
                 BlockHighlightManager.getEntries().add(entry);
                 BlockHighlightManager.save();
                 closeDialog();
             }
-        }).bounds(dialogX + 125, dialogY + 144, 55, 20).build());
+        }).bounds(dialogX + 125, dialogY + 186, 55, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 185, dialogY + 144, 55, 20).build());
+                .bounds(dialogX + 185, dialogY + 186, 55, 20).build());
 
         setFocused(addTargetField);
     }
@@ -163,10 +192,13 @@ public class BlockHighlightScreen extends Screen {
         BlockHighlightManager.HighlightEntry entry = BlockHighlightManager.getEntries().get(index);
         editDialogOpen = true;
         editIndex = index;
+        editPartialMatch = entry.isPartialMatch();
+        editPartialMatchInitial = editPartialMatch;
+        editMinSizeBox = entry.minSizeBox;
         clearWidgets();
 
         int dialogX = width / 2 - 120;
-        int dialogY = height / 2 - 88;
+        int dialogY = height / 2 - 102;
 
         editTargetField = new EditBox(font, dialogX, dialogY + 14, 240, 20, Component.literal("Target"));
         editTargetField.setMaxLength(256);
@@ -196,15 +228,31 @@ public class BlockHighlightScreen extends Screen {
         editAreaField.setHint(Component.literal("Area (blank = everywhere)").withStyle(ChatFormatting.GRAY));
         addRenderableWidget(editAreaField);
 
-        // Through Walls toggle
+        // Through Walls / Partial Match / Min Size Box toggles
         addRenderableWidget(Button.builder(
-                Component.literal("Walls: " + (entry.throughWalls ? "ON" : "OFF")),
+                toggleLabel("Walls", entry.throughWalls),
                 btn -> {
                     BlockHighlightManager.HighlightEntry e = BlockHighlightManager.getEntries().get(editIndex);
                     e.throughWalls = !e.throughWalls;
-                    btn.setMessage(Component.literal("Walls: " + (e.throughWalls ? "ON" : "OFF")));
+                    btn.setMessage(toggleLabel("Walls", e.throughWalls));
                 }
-        ).bounds(dialogX, dialogY + 144, 115, 20).build());
+        ).bounds(dialogX, dialogY + 144, 76, 20).build());
+
+        addRenderableWidget(Button.builder(
+                toggleLabel("Partial", editPartialMatch),
+                btn -> {
+                    editPartialMatch = !editPartialMatch;
+                    btn.setMessage(toggleLabel("Partial", editPartialMatch));
+                }
+        ).bounds(dialogX + 82, dialogY + 144, 76, 20).build());
+
+        addRenderableWidget(Button.builder(
+                toggleLabel("Min Box", editMinSizeBox),
+                btn -> {
+                    editMinSizeBox = !editMinSizeBox;
+                    btn.setMessage(toggleLabel("Min Box", editMinSizeBox));
+                }
+        ).bounds(dialogX + 164, dialogY + 144, 76, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Save"), btn -> {
             BlockHighlightManager.HighlightEntry e = BlockHighlightManager.getEntries().get(editIndex);
@@ -217,12 +265,15 @@ public class BlockHighlightScreen extends Screen {
                 e.intensity = Math.max(0, Math.min(100, Integer.parseInt(editIntensityField.getValue().trim())));
             } catch (NumberFormatException ignored) {}
             e.area = editAreaField.getValue().trim();
+            // Leave entries saved before the option existed alone unless the toggle was changed
+            if (editPartialMatch != editPartialMatchInitial) e.partialMatch = editPartialMatch;
+            e.minSizeBox = editMinSizeBox;
             BlockHighlightManager.save();
             closeDialog();
-        }).bounds(dialogX + 125, dialogY + 144, 55, 20).build());
+        }).bounds(dialogX + 125, dialogY + 186, 55, 20).build());
 
         addRenderableWidget(Button.builder(Component.literal("Cancel"), btn -> closeDialog())
-                .bounds(dialogX + 185, dialogY + 144, 55, 20).build());
+                .bounds(dialogX + 185, dialogY + 186, 55, 20).build());
 
         setFocused(editTargetField);
     }
@@ -252,8 +303,8 @@ public class BlockHighlightScreen extends Screen {
 
         if (addDialogOpen || editDialogOpen) {
             int dialogX = width / 2 - 130;
-            int dialogY = height / 2 - 100;
-            int dialogH = 182;
+            int dialogY = height / 2 - 114;
+            int dialogH = 224;
             context.fill(dialogX, dialogY, dialogX + 260, dialogY + dialogH, 0xEE000000);
             String title = addDialogOpen ? "Add Highlight" : "Edit Highlight";
             Component titleC = Component.literal(title);
@@ -261,7 +312,7 @@ public class BlockHighlightScreen extends Screen {
             context.text(font, titleC, width / 2 - tw / 2, dialogY + 4, -1, true);
 
             // Labels (same layout for both add and edit)
-            int baseY = height / 2 - 88;
+            int baseY = height / 2 - 102;
             context.text(font, Component.literal("Target:").withStyle(ChatFormatting.GRAY),
                     width / 2 - 120, baseY + 4, 0xFFAAAAAA, true);
             context.text(font, Component.literal("Color:").withStyle(ChatFormatting.GRAY),
@@ -272,6 +323,10 @@ public class BlockHighlightScreen extends Screen {
                     width / 2 - 120 + 125, baseY + 72, 0xFFAAAAAA, true);
             context.text(font, Component.literal("Area:").withStyle(ChatFormatting.GRAY),
                     width / 2 - 120, baseY + 106, 0xFFAAAAAA, true);
+            context.text(font, Component.literal("Partial: text only needs to be contained").withStyle(ChatFormatting.DARK_GRAY),
+                    width / 2 - 120, baseY + 166, 0xFF777777, true);
+            context.text(font, Component.literal("Min Box: 1 block box for 0-size entities").withStyle(ChatFormatting.DARK_GRAY),
+                    width / 2 - 120, baseY + 175, 0xFF777777, true);
         }
 
         if (colorPickerOpen) {
@@ -285,7 +340,7 @@ public class BlockHighlightScreen extends Screen {
         List<BlockHighlightManager.HighlightEntry> entries = BlockHighlightManager.getEntries();
 
         if (entries.isEmpty()) {
-            Component emptyMsg = Component.literal("No highlights configured. Click '+ Add Highlight' or use /it waila on a block.")
+            Component emptyMsg = Component.literal("No highlights configured. Click '+ Add Highlight' or use /it waila on a block or entity.")
                     .withStyle(ChatFormatting.GRAY);
             int emptyW = font.width(emptyMsg);
             int maxW = listWidth - 20;
@@ -343,8 +398,13 @@ public class BlockHighlightScreen extends Screen {
 
             // Details line: range, intensity, walls, area
             String details = "Range:" + entry.range + " Intensity:" + entry.intensity + " Walls:" + (entry.throughWalls ? "Y" : "N");
+            if (entry.isPartialMatch()) details += " Partial";
+            if (entry.minSizeBox) details += " MinBox";
             if (entry.area != null && !entry.area.isBlank()) {
                 details += " Area:" + entry.area;
+            }
+            if (font.width(details) > nameMaxWidth) {
+                details = font.plainSubstrByWidth(details, nameMaxWidth - font.width("...")) + "...";
             }
             context.text(font, Component.literal(details).withStyle(ChatFormatting.GRAY),
                     listLeft + PADDING + 18, rowY + 16, 0xFF888888, true);

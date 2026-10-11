@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Manages a persistent list of highlight entries stored as JSON.
@@ -29,8 +30,16 @@ public class BlockHighlightManager {
      * - A block ID like "diamond_ore" or "minecraft:diamond_ore"
      * - An entity ID prefixed with "entity:" like "entity:item_frame" or "entity:armor_stand"
      *   (any registered entity type is supported)
+     * - An entity with a name filter like "entity:armor_stand[name=Sparkling Critter]", or just a
+     *   name filter for any entity type like "entity:*[name=Sparkling Critter]". The name filter is a
+     *   case-insensitive "contains" match against the entity's name (formatting codes ignored).
      * - A skull texture hash prefixed with "skull:" like "skull:abc123..."
      * - A SkyBlock item ID prefixed with "sb:" like "sb:DITTO_SKULL"
+     *
+     * By default IDs and names must match exactly. With {@link #isPartialMatch() partial matching} the
+     * target only has to be contained in the ID (block ID, entity type ID, SkyBlock ID or skull hash)
+     * or entity name instead, e.g. "d" matches every block with a d in its ID and "entity:ca" matches
+     * every entity type with "ca" in its ID.
      */
     public static class HighlightEntry {
         public String target;       // block/entity ID, "skull:TEXTURE_HASH", or "sb:SKYBLOCK_ID"
@@ -40,12 +49,46 @@ public class BlockHighlightManager {
         public boolean enabled = true;
         public int intensity = 50;  // 0-100
         public String area = "";    // SkyBlock area name (empty = show everywhere)
+        /**
+         * Match IDs and names by "contains" instead of exactly. Null in entries saved before this
+         * option existed: those keep their old behaviour (entity name filters always matched by
+         * "contains", everything else exactly), see {@link #isPartialMatch()}.
+         */
+        public Boolean partialMatch;
+        /** Entities with no hitbox (zero size) get a 1 block box so they can be seen. */
+        public boolean minSizeBox = false;
 
         public HighlightEntry() {}
 
         public HighlightEntry(String target, String color) {
             this.target = target;
             this.color = color;
+            this.partialMatch = Boolean.FALSE;
+        }
+
+        /**
+         * Returns true if the partial match toggle counts as on for this entry. For entries saved
+         * before the option existed that is the case when they have an entity name filter.
+         */
+        public boolean isPartialMatch() {
+            if (partialMatch != null) return partialMatch;
+            return getEntityNameFilter() != null;
+        }
+
+        /**
+         * Returns true if block, entity type, SkyBlock and skull IDs are matched by "contains".
+         * Entries saved before the option existed always matched IDs exactly.
+         */
+        public boolean isPartialIds() {
+            return partialMatch != null && partialMatch;
+        }
+
+        /**
+         * Returns true if entity names are matched by "contains" instead of exactly. Entries saved
+         * before the option existed always matched names by "contains".
+         */
+        public boolean isPartialNames() {
+            return partialMatch == null || partialMatch;
         }
 
         /**
@@ -75,6 +118,22 @@ public class BlockHighlightManager {
         public String getEntityId() {
             if (!isEntityTarget()) return null;
             return target.substring(7);
+        }
+
+        /**
+         * Returns the entity type ID of an entity target, ignoring any name filter.
+         * Returns null for non-entity targets and for name-only targets ("entity:*[name=...]").
+         */
+        public String getEntityTypeId() {
+            return isEntityTarget() ? parseEntityTypeId(getEntityId()) : null;
+        }
+
+        /**
+         * Returns the entity name filter of an entity target ("entity:TYPE[name=TEXT]"),
+         * or null if there is none.
+         */
+        public String getEntityNameFilter() {
+            return isEntityTarget() ? parseEntityNameFilter(getEntityId()) : null;
         }
 
         /**
@@ -123,6 +182,79 @@ public class BlockHighlightManager {
             }
             return target != null ? target : "(empty)";
         }
+    }
+
+    /**
+     * Returns the entity type part of an entity spec ("TYPE", "TYPE[name=TEXT]" or "*[name=TEXT]"),
+     * or null if the spec has no type (empty or "*").
+     */
+    public static String parseEntityTypeId(String entitySpec) {
+        if (entitySpec == null) return null;
+        int bracket = entitySpec.indexOf('[');
+        String type = (bracket >= 0 ? entitySpec.substring(0, bracket) : entitySpec).trim();
+        return type.isEmpty() || type.equals("*") ? null : type;
+    }
+
+    /**
+     * Returns the name filter of an entity spec ("TYPE[name=TEXT]"), or null if there is none
+     * (or it is blank).
+     */
+    public static String parseEntityNameFilter(String entitySpec) {
+        if (entitySpec == null) return null;
+        int bracket = entitySpec.indexOf('[');
+        if (bracket < 0) return null;
+        String filter = entitySpec.substring(bracket + 1).trim();
+        if (filter.endsWith("]")) filter = filter.substring(0, filter.length() - 1);
+        if (!filter.regionMatches(true, 0, "name=", 0, 5)) return null;
+        String name = filter.substring(5).trim();
+        return name.isEmpty() ? null : name;
+    }
+
+    /**
+     * Returns true if the entity spec (the part after "entity:") is well formed: either a plain
+     * entity type, or an optional type followed by a non-empty "[name=TEXT]" filter.
+     */
+    public static boolean isValidEntitySpec(String entitySpec) {
+        if (entitySpec == null || entitySpec.isBlank()) return false;
+        if (entitySpec.indexOf('[') < 0) return parseEntityTypeId(entitySpec) != null;
+        return entitySpec.trim().endsWith("]") && parseEntityNameFilter(entitySpec) != null;
+    }
+
+    /**
+     * Builds an entity target from an optional entity type ID and an optional name filter.
+     * Pass a null/blank type for a name-only filter that matches any entity type.
+     */
+    public static String buildEntityTarget(String entityTypeId, String nameFilter) {
+        String type = entityTypeId == null || entityTypeId.isBlank() ? "*" : entityTypeId.trim();
+        if (nameFilter == null || nameFilter.isBlank()) return "entity:" + type;
+        return "entity:" + type + "[name=" + nameFilter.trim() + "]";
+    }
+
+    /**
+     * Checks an ID against a highlight target text. Exact mode compares the whole ID (the text must
+     * already include a namespace, like the ID does). Partial mode checks that the text is contained
+     * in the ID, case-insensitively; a text without a namespace separator (':') is only checked
+     * against the part after the namespace, so "d" doesn't match every ID through "minecraft".
+     */
+    public static boolean idMatches(String text, String id, boolean partial) {
+        if (text == null || id == null) return false;
+        if (!partial) return text.equals(id);
+        String needle = text.trim().toLowerCase(Locale.ROOT);
+        if (needle.isEmpty()) return false;
+        String haystack = id.toLowerCase(Locale.ROOT);
+        if (needle.indexOf(':') < 0) {
+            haystack = haystack.substring(haystack.indexOf(':') + 1);
+        }
+        return haystack.contains(needle);
+    }
+
+    /**
+     * Checks an entity name against a name filter. Both must already be normalized (formatting
+     * removed, lower case). Exact mode compares the whole name, partial mode checks "contains".
+     */
+    public static boolean nameMatches(String filter, String name, boolean partial) {
+        if (filter == null || name == null) return false;
+        return partial ? name.contains(filter) : name.equals(filter);
     }
 
     public static void load() {

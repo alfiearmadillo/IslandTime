@@ -71,6 +71,10 @@ public class IslandTimeConfig extends Config {
     public BlockHighlight blockHighlight = new BlockHighlight();
 
     @Expose
+    @Category(name = "WAILA", desc = "What Am I Looking At: inspect the block or entity under your crosshair")
+    public Waila waila = new Waila();
+
+    @Expose
     @Category(name = "Critter Safari", desc = "On-screen tracker for unique critters caught during a Critter Safari run")
     public CritterSafari critterSafari = new CritterSafari();
 
@@ -733,7 +737,7 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class BlockHighlight {
-        @ConfigOption(name = "Open Highlights", desc = "Click to open the highlights GUI for managing blocks and any registered entity type, such as item frames or armor stands. You can also use /it highlights")
+        @ConfigOption(name = "Open Highlights", desc = "Click to open the highlights GUI for managing blocks and any registered entity type, such as item frames or armor stands, optionally filtered by name (entity:armor_stand[name=TEXT]). You can also use /it highlights")
         @ConfigEditorButton(buttonText = " Open Highlights ")
         public Runnable openBlockHighlightsButton = new Runnable() {
             @Override
@@ -767,6 +771,33 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Default Range", desc = "Default scan range for new entries (in blocks)")
         @ConfigEditorSlider(minValue = 1, maxValue = 320, minStep = 1)
         public int range = 48;
+
+        @Expose
+        @ConfigOption(name = "Default Partial Match", desc = "Default for new entries: match IDs and entity names by \"contains\" instead of exactly. \"d\" highlights every block with a d in its ID, entity:ca every entity type with ca in its ID, and entity names only need to contain the text. Can be changed per entry in the highlights GUI")
+        @ConfigEditorBoolean
+        public boolean partialMatch = false;
+
+        @Expose
+        @ConfigOption(name = "Smooth Entity Highlights", desc = "Move entity highlight boxes smoothly with the entity every frame, instead of only once per game tick. Turn this off if entity highlights ever look wrong or lag behind the entities")
+        @ConfigEditorBoolean
+        public boolean smoothEntities = true;
+
+        @Expose
+        @ConfigOption(name = "Default Min Size Box", desc = "Default for new entries: give entities that have no hitbox (marker armor stands, markers, display entities) a 1 block highlight box so they can be seen. Can be changed per entry in the highlights GUI")
+        @ConfigEditorBoolean
+        public boolean minSizeBox = false;
+    }
+
+    public static class Waila {
+        @Expose
+        @ConfigOption(name = "WAILA Keybind", desc = "Press this key while in the world (no screen open) to run /it waila on whatever you are aiming at. Unbound by default; pick a key that isn't used by something else. Press Escape while binding to clear it")
+        @ConfigEditorKeybind(defaultKey = -1)
+        public int keybind = -1;
+
+        @Expose
+        @ConfigOption(name = "Max Range", desc = "How far (in blocks) WAILA looks along the line you are aiming. Blocks and entities beyond your normal reach are still inspected as long as they are the first thing along that line. Only blocks in loaded chunks and entities your client knows about can be found")
+        @ConfigEditorSlider(minValue = 5, maxValue = 256, minStep = 1)
+        public int range = 128;
     }
 
     public static class CritterSafari {
