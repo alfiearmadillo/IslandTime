@@ -36,10 +36,14 @@ final class ComposterAlertState {
         boolean oldWarned = warned;
 
         if (newEmptyAtMs <= now) {
-            // Already empty (or not running): there is nothing left to warn about.
-            armed = false;
-            warned = false;
-            emptyAtMs = now;
+            if (armed) {
+                // Seen empty before the pending alert went out: let poll() raise it.
+                emptyAtMs = Math.min(emptyAtMs, now);
+            } else {
+                // Already empty (or not running): there is nothing left to warn about.
+                warned = false;
+                emptyAtMs = now;
+            }
             limiting = newLimiting;
         } else {
             boolean refilled = oldEmptyAtMs <= 0 || newEmptyAtMs > oldEmptyAtMs + REFILL_THRESHOLD_MS;
