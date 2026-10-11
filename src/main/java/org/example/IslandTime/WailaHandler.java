@@ -13,26 +13,33 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.TagValueOutput;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Handles the /it waila command — "What Am I Looking At".
@@ -40,6 +47,8 @@ import java.util.Locale;
  * For blocks: block type, state properties, position, tile entity data,
  * and Hypixel SkyBlock custom data (e.g. skull textures/IDs).
  * For entities: entity type, name, IDs, position, health, equipment, held items and full NBT.
+ * Entities that vanilla's crosshair can't target (marker armor stands, dropped items, displays, ...)
+ * are found by ray-casting along the view vector.
  * Both come with buttons to add the target to the highlighter.
  */
 public class WailaHandler {
@@ -53,6 +62,14 @@ public class WailaHandler {
 
         if (client.hitResult != null && client.hitResult.getType() == HitResult.Type.ENTITY) {
             inspectEntity(client, ((EntityHitResult) client.hitResult).getEntity());
+            return;
+        }
+
+        // The vanilla crosshair skips entities that can't be picked (and anything beyond reach),
+        // so look along the view vector ourselves before falling back to the targeted block.
+        Entity viewedEntity = findEntityAlongView(client);
+        if (viewedEntity != null) {
+            inspectEntity(client, viewedEntity);
             return;
         }
 
@@ -217,6 +234,107 @@ public class WailaHandler {
     /** Longest entity name placed into an "add to highlighter" command. */
     private static final int MAX_NAME_FILTER_LENGTH = 80;
 
+    /** How far (in blocks) WAILA looks along the view vector for entities the crosshair can't target. */
+    private static final double ENTITY_VIEW_RANGE = 20.0;
+
+    /** Smallest pick-box edge used for untargetable entities, so tiny or zero-size ones can be looked at. */
+    private static final double MIN_UNTARGETABLE_PICK_SIZE = 0.5;
+
+    /** Hit distances closer than this are treated as equal when choosing between overlapping entities. */
+    private static final double HIT_DISTANCE_TIE_EPSILON = 0.1;
+
+    /**
+     * Ray-casts from the camera along the view vector and returns the entity being looked at, or null.
+     * Unlike the vanilla crosshair this also finds entities that are not pickable (marker armor stands,
+     * dropped items, displays, ...) and entities beyond interaction reach. Blocks in the way hide entities
+     * behind them. Pickable entities win over untargetable ones, then the nearest hit wins, so e.g. a mob
+     * is preferred over the invisible name tag stand floating above it.
+     */
+    private static Entity findEntityAlongView(Minecraft client) {
+        Entity camera = client.getCameraEntity();
+        if (camera == null) camera = client.player;
+        if (client.level == null || camera == null) return null;
+
+        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        Vec3 eye = camera.getEyePosition(partialTick);
+        Vec3 direction = camera.getViewVector(partialTick);
+        Vec3 end = eye.add(direction.scale(ENTITY_VIEW_RANGE));
+
+        double maxDistance = ENTITY_VIEW_RANGE;
+        BlockHitResult blockHit = client.level.clip(
+                new ClipContext(eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, camera));
+        if (blockHit.getType() != HitResult.Type.MISS) {
+            maxDistance = Math.min(maxDistance, eye.distanceTo(blockHit.getLocation()));
+        }
+
+        Entity rideRoot = camera.getRootVehicle();
+        Entity best = null;
+        int bestTier = 0;
+        double bestDistance = 0;
+        double bestOffAxis = 0;
+        for (Entity entity : client.level.entitiesForRendering()) {
+            try {
+                // Skips the viewer, their vehicle and anything riding along with them
+                if (entity.isRemoved() || entity.getRootVehicle() == rideRoot) continue;
+
+                boolean pickable = entity.isPickable();
+                AABB box = pickable
+                        ? entity.getBoundingBox().inflate(entity.getPickRadius())
+                        : getUntargetablePickBox(entity);
+                // An entity wrapped around the viewer would otherwise capture every ray
+                if (box.contains(eye)) continue;
+                Optional<Vec3> hit = box.clip(eye, end);
+                if (hit.isEmpty()) continue;
+
+                double distance = eye.distanceTo(hit.get());
+                if (distance > maxDistance) continue;
+
+                // How far the entity's own centre is from the view ray, to break ties between overlapping boxes
+                Vec3 toCenter = entity.getBoundingBox().getCenter().subtract(eye);
+                double along = toCenter.dot(direction);
+                double offAxis = toCenter.lengthSqr() - along * along;
+
+                int tier = pickable ? 0 : 1;
+                boolean better;
+                if (best == null) {
+                    better = true;
+                } else if (tier != bestTier) {
+                    better = tier < bestTier;
+                } else if (Math.abs(distance - bestDistance) > HIT_DISTANCE_TIE_EPSILON) {
+                    better = distance < bestDistance;
+                } else {
+                    better = offAxis < bestOffAxis;
+                }
+                if (better) {
+                    best = entity;
+                    bestTier = tier;
+                    bestDistance = distance;
+                    bestOffAxis = offAxis;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return best;
+    }
+
+    /**
+     * The box used to pick an entity that vanilla can't target. Marker armor stands have a zero-size
+     * hitbox but still render like normal stands, so they use a normal stand's size; every other
+     * entity is grown to a minimum size so tiny hitboxes are still easy to look at.
+     */
+    private static AABB getUntargetablePickBox(Entity entity) {
+        AABB box = entity.getBoundingBox();
+        if (entity instanceof ArmorStand stand && stand.isMarker()) {
+            EntityDimensions dimensions = EntityType.ARMOR_STAND.getDimensions();
+            if (stand.isSmall()) dimensions = dimensions.scale(0.5f);
+            box = dimensions.makeBoundingBox(stand.position());
+        }
+        double growX = Math.max(0.0, MIN_UNTARGETABLE_PICK_SIZE - box.getXsize()) / 2.0;
+        double growY = Math.max(0.0, MIN_UNTARGETABLE_PICK_SIZE - box.getYsize()) / 2.0;
+        double growZ = Math.max(0.0, MIN_UNTARGETABLE_PICK_SIZE - box.getZsize()) / 2.0;
+        return box.inflate(growX, growY, growZ);
+    }
+
     private static void inspectEntity(Minecraft client, Entity entity) {
         Level level = client.level;
 
@@ -270,6 +388,11 @@ public class WailaHandler {
 
         // Flags
         List<String> flags = new ArrayList<>();
+        if (!entity.isPickable()) flags.add("untargetable");
+        if (entity instanceof ArmorStand stand) {
+            if (stand.isMarker()) flags.add("marker");
+            if (stand.isSmall()) flags.add("small");
+        }
         if (entity.isInvisible()) flags.add("invisible");
         if (entity.isCurrentlyGlowing()) flags.add("glowing");
         if (entity.isOnFire()) flags.add("on fire");
