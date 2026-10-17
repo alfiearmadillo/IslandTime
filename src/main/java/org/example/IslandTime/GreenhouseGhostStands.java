@@ -4,6 +4,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -11,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
@@ -73,6 +75,8 @@ final class GreenhouseGhostStands {
     private static final Map<RenderType, Optional<RenderType>> TWINS = new IdentityHashMap<>();
     private static Map<String, Optional<ArmorStand>> cache = new HashMap<>();
     private static List<Entry> entries = List.of();
+    /** The wanted stands that have a ghost, by identity; the others are drawn as boxes. */
+    private static Set<GreenhouseBlueprint.Stand> drawn = Collections.newSetFromMap(new IdentityHashMap<>());
     private static List<Wanted> builtFor = null;
     private static ClientLevel builtLevel = null;
     private static int builtAreaX;
@@ -87,13 +91,26 @@ final class GreenhouseGhostStands {
         return failed;
     }
 
+    /** Whether a ghost was made for this wanted stand (as of the last {@link #submit}); if not, it needs a box. */
+    static boolean isDrawn(GreenhouseBlueprint.Stand stand) {
+        return drawn.contains(stand);
+    }
+
+    /** Lets go of the stands, and with them the world they were made for. Called when there is nothing to draw. */
+    static void reset() {
+        if (builtFor == null && builtLevel == null && cache.isEmpty()) return;
+        cache = new HashMap<>();
+        entries = List.of();
+        drawn = Collections.newSetFromMap(new IdentityHashMap<>());
+        builtFor = null;
+        builtLevel = null;
+    }
+
     private static void fail(String what, Throwable cause) {
         if (!failed) System.err.println("[IslandTime] Drawing greenhouse ghost armor stands failed (" + what
                 + "), using boxes instead: " + cause);
         failed = true;
-        cache = new HashMap<>();
-        entries = List.of();
-        builtFor = null;
+        reset();
     }
 
     /**
@@ -117,7 +134,8 @@ final class GreenhouseGhostStands {
             float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
             CameraRenderState camera = context.levelState().cameraRenderState;
             Vec3 cam = camera.pos;
-            PoseStack poseStack = context.poseStack();
+            // A stack of our own, so that a failure half way through a stand can't leave the game's unbalanced
+            PoseStack poseStack = new PoseStack();
 
             List<Entry> visible = new ArrayList<>(entries.size());
             for (Entry entry : entries) {
@@ -156,23 +174,31 @@ final class GreenhouseGhostStands {
         if (level != builtLevel) cache = new HashMap<>();
         Map<String, Optional<ArmorStand>> next = new HashMap<>();
         List<Entry> built = new ArrayList<>(wanted.size());
+        Set<GreenhouseBlueprint.Stand> have = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Wanted w : wanted) {
-            if (w.done() && hideDone) continue;
             GreenhouseBlueprint.Stand stand = w.stand();
             double x = areaX + stand.x;
             double y = GreenhouseGeometry.CROP_Y + stand.y;
             double z = areaZ + stand.z;
             String key = signature(stand, x, y, z) + (w.done() ? "d" : "w");
-            if (next.containsKey(key)) continue;
+            Optional<ArmorStand> twin = next.get(key);
+            if (twin != null) {
+                // Identical to one already made: it is drawn once, so it counts as drawn
+                if (twin.isPresent()) have.add(stand);
+                continue;
+            }
             Optional<ArmorStand> entity = cache.get(key);
             if (entity == null) {
                 entity = Optional.ofNullable(GreenhouseStandItems.createGhost(level, stand, x, y, z));
             }
             next.put(key, entity);
+            if (entity.isPresent()) have.add(stand);
+            if (w.done() && hideDone) continue;
             entity.ifPresent(e -> built.add(new Entry(e, w.done(), x, y, z)));
         }
         cache = next;
         entries = built;
+        drawn = have;
         builtFor = wanted;
         builtLevel = level;
         builtAreaX = areaX;

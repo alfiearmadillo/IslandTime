@@ -352,6 +352,7 @@ public class GreenhouseBlueprintRenderer {
                 || client.level == null || client.player == null) {
             snapshot = null;
             ticksSinceScan = SCAN_INTERVAL_TICKS;
+            GreenhouseGhostStands.reset();
             return;
         }
         if (++ticksSinceScan < SCAN_INTERVAL_TICKS) return;
@@ -363,6 +364,7 @@ public class GreenhouseBlueprintRenderer {
             snapshot = null;
             System.err.println("[IslandTime] Greenhouse blueprint scan failed: " + e);
         }
+        if (snapshot == null) GreenhouseGhostStands.reset();
     }
 
     private static Snapshot buildSnapshot(Minecraft client, IslandTimeConfig config) {
@@ -701,7 +703,7 @@ public class GreenhouseBlueprintRenderer {
             GreenhouseBlueprint.Stand stand = p.stands.get(i);
             boolean standThere = i < cell.standOk().length && cell.standOk()[i];
             if (!done && standThere) continue;
-            if (standGhosts && stand.drawable()) continue;
+            if (standGhosts && stand.drawable() && GreenhouseGhostStands.isDrawn(stand)) continue;
             float[] standColor = wrong && !standThere ? COLOR_WRONG
                     : known ? rgb(p.color()) : rgb(GreenhouseScan.colorOf(stand.head));
             float half = Math.max((float) stand.visualWidth(), STAND_MIN_SIZE) / 2.0f;

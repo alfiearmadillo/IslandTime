@@ -139,7 +139,6 @@ final class GreenhouseBlueprint {
     /** How many numbers {@link Stand#pose} holds: x, y and z rotation of head, body, left arm, right arm, left leg, right leg. */
     static final int POSE_VALUES = 18;
     private static final int POSE_LEFT_ARM = 6;
-    private static final int POSE_RIGHT_ARM = 9;
     private static final int POSE_LEFT_LEG = 12;
     private static final int POSE_RIGHT_LEG = 15;
 
@@ -255,14 +254,16 @@ final class GreenhouseBlueprint {
             x = n - x;
             yaw = normalizeYaw(-yaw);
             if (pose != null && pose.length == POSE_VALUES) {
-                // A mirrored rotation turns the other way round the y and z axes, and the left limbs become the right ones
+                // A mirrored rotation turns the other way round the y and z axes, and the left leg becomes the
+                // right one. The arms stay as they are: the main hand is always the right arm, so a stand's
+                // arms keep the side that holds its item.
                 float[] mirrored = pose.clone();
                 for (int i = 0; i < POSE_VALUES; i += 3) {
                     mirrored[i + 1] = -mirrored[i + 1];
                     mirrored[i + 2] = -mirrored[i + 2];
                 }
-                swap(mirrored, POSE_LEFT_ARM, POSE_RIGHT_ARM);
                 swap(mirrored, POSE_LEFT_LEG, POSE_RIGHT_LEG);
+                System.arraycopy(pose, POSE_LEFT_ARM, mirrored, POSE_LEFT_ARM, 6);
                 pose = mirrored;
             }
         }
