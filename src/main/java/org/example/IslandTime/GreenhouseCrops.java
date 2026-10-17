@@ -197,17 +197,6 @@ final class GreenhouseCrops {
         return best;
     }
 
-    /**
-     * The two mushrooms look the same to the game's armor stand names, so a planned red mushroom is
-     * satisfied by a brown one and the other way round.
-     */
-    static boolean interchangeable(String keyA, String keyB) {
-        if (keyA == null || keyB == null) return false;
-        if (keyA.equals(keyB)) return true;
-        return (keyA.equals("RED_MUSHROOM") && keyB.equals("BROWN_MUSHROOM"))
-                || (keyA.equals("BROWN_MUSHROOM") && keyB.equals("RED_MUSHROOM"));
-    }
-
     /** Lower cases a name and drops everything but letters and digits. */
     static String normalize(String name) {
         StringBuilder sb = new StringBuilder(name.length());

@@ -96,11 +96,10 @@ public class GreenhouseBlueprintRenderer {
 
     private static final float[] COLOR_WRONG = {1.0f, 0.2f, 0.2f};
 
-    // The red outline around what isn't right. Its beams are drawn sticking out of the cell by
-    // OUTLINE_GROW, so they show over a ghost block, and over a real block that is in the way.
+    // The red outline around what isn't right. Its beams stick out of the cell by up to OUTLINE_GROW,
+    // so they show over a ghost block, and over a real block that is in the way. How thick and how
+    // solid they are comes from the settings.
     private static final float[] COLOR_OUTLINE = {1.0f, 0.15f, 0.15f};
-    private static final float OUTLINE_ALPHA = 0.95f;
-    private static final float OUTLINE_BEAM = 0.05f;
     private static final float OUTLINE_GROW = 0.03f;
     /** Armor stand outlines are at least this wide in total (held items stick out of a small stand's box). */
     private static final float OUTLINE_STAND_MIN_WIDTH = 0.5f;
@@ -122,13 +121,24 @@ public class GreenhouseBlueprintRenderer {
      *
      * @param standOk  for each of the placement's armor stands, whether a matching one is there
      * @param unwanted the armor stands that are in the way, which get a red outline
+     * @param hidden   not drawn at all because the soil under it isn't right yet (see
+     *                 {@code cropsOnlyOnCorrectFloor})
      */
     record Cell(GreenhouseBlueprint.Placement placement, GreenhouseEvaluator.Status status,
                 boolean blockOk, boolean standsOk, boolean[] standOk,
-                List<GreenhouseBlueprint.Stand> unwanted) {}
+                List<GreenhouseBlueprint.Stand> unwanted, boolean hidden) {}
 
     /** One cell of the soil that the blueprint has a block for. */
     record FloorCell(int x, int z, String block, GreenhouseEvaluator.Status status) {}
+
+    /**
+     * How the red outline is drawn.
+     *
+     * @param beam  how thick its lines are, in blocks
+     * @param grow  how far the outline sticks out of the space it marks, in blocks
+     * @param alpha how solid it is, 0 to 1
+     */
+    private record OutlineStyle(float beam, float grow, float alpha) {}
 
     /** One line of the legend: how many of something are right out of how many the board needs. */
     record LegendRow(String name, int color, int done, int total) {}
@@ -140,6 +150,7 @@ public class GreenhouseBlueprintRenderer {
      * @param ghostStands the armor stands to draw as ghosts: the ones still to put up, and the ones that
      *                    are right already (drawn fainter, unless completed things are hidden)
      * @param extraSpots  the blocks and armor stands in the area that the layout has no place for
+     * @param waiting     how many crops still to do are hidden until the soil under them is right
      * @param perfect everything matches the blueprint and nothing else is in the way
      */
     record Snapshot(String name, PlotRef plot, int boardNumber, int boardCount,
@@ -147,7 +158,7 @@ public class GreenhouseBlueprintRenderer {
                     List<Cell> cells, List<FloorCell> floor,
                     List<LegendRow> legend, List<LegendRow> floorLegend,
                     List<GreenhouseGhostStands.Wanted> ghostStands, List<GreenhouseEvaluator.Extra> extraSpots,
-                    int done, int total, int floorDone, int floorTotal, int extras,
+                    int done, int total, int floorDone, int floorTotal, int extras, int waiting,
                     boolean perfect, boolean copy) {}
 
     /** What {@link #captureNow(Minecraft)} found: a board to save, or why there isn't one. */
@@ -387,16 +398,20 @@ public class GreenhouseBlueprintRenderer {
         GreenhouseEvaluator.Evaluation evaluation =
                 GreenhouseEvaluator.evaluate(board, scan, config.greenhouseBlueprint.showFloor);
 
+        boolean floorFirst = config.greenhouseBlueprint.cropsOnlyOnCorrectFloor;
+        int waiting = 0;
         List<Cell> cells = new ArrayList<>(evaluation.cells().size());
         List<GreenhouseGhostStands.Wanted> ghostStands = new ArrayList<>();
         Map<String, int[]> counts = new LinkedHashMap<>();
         Map<String, Integer> colors = new LinkedHashMap<>();
         for (GreenhouseEvaluator.Result result : evaluation.cells()) {
             GreenhouseBlueprint.Placement p = result.placement();
-            cells.add(new Cell(p, result.status(), result.blockOk(), result.standsOk(), result.standOk(),
-                    result.unwanted()));
             boolean cellDone = result.status() == GreenhouseEvaluator.Status.DONE;
-            for (int i = 0; i < p.stands.size(); i++) {
+            boolean hidden = floorFirst && !evaluation.floorRight(p);
+            cells.add(new Cell(p, result.status(), result.blockOk(), result.standsOk(), result.standOk(),
+                    result.unwanted(), hidden));
+            if (hidden && !cellDone) waiting++;
+            for (int i = 0; i < p.stands.size() && !hidden; i++) {
                 // A stand that is there already is only drawn (fainter) when the whole placement is right
                 if (p.stands.get(i).drawable() && (cellDone || !result.standOk()[i])) {
                     ghostStands.add(new GreenhouseGhostStands.Wanted(p.stands.get(i), cellDone));
@@ -424,7 +439,7 @@ public class GreenhouseBlueprintRenderer {
                 cells, floor, legendRows(counts, colors), floorLegendRows(floorCounts),
                 ghostStands, evaluation.extraSpots(),
                 evaluation.done(), evaluation.cells().size(), evaluation.floorDone(), evaluation.floor().size(),
-                evaluation.extras(), evaluation.perfect(), false);
+                evaluation.extras(), waiting, evaluation.perfect(), false);
     }
 
     /** What saving right now would copy: every crop in the plot's greenhouse area, and the soil under it. */
@@ -436,7 +451,7 @@ public class GreenhouseBlueprintRenderer {
         Map<String, Integer> colors = new LinkedHashMap<>();
         for (GreenhouseBlueprint.Placement p : board.placements) {
             cells.add(new Cell(p, GreenhouseEvaluator.Status.MISSING, false, false,
-                    new boolean[p.stands.size()], List.of()));
+                    new boolean[p.stands.size()], List.of(), false));
             int[] count = counts.computeIfAbsent(p.displayName(), k -> new int[2]);
             colors.putIfAbsent(p.displayName(), p.color());
             count[0]++;
@@ -460,7 +475,7 @@ public class GreenhouseBlueprintRenderer {
                 GreenhouseGeometry.areaMin(plot.x()), GreenhouseGeometry.areaMin(plot.z()),
                 cells, List.of(), legendRows(counts, colors), floorLegendRows(floorCounts),
                 List.of(), List.of(),
-                cells.size(), cells.size(), floorTotal, floorTotal, 0, false, true);
+                cells.size(), cells.size(), floorTotal, floorTotal, 0, 0, false, true);
     }
 
     private static List<LegendRow> legendRows(Map<String, int[]> counts, Map<String, Integer> colors) {
@@ -529,6 +544,7 @@ public class GreenhouseBlueprintRenderer {
                     + snap.done() + " of " + snap.total() + " crops right"
                     + (snap.floorTotal() > 0 ? ", " + snap.floorDone() + " of " + snap.floorTotal() + " soil blocks right" : "")
                     + (snap.extras() > 0 ? ", " + snap.extras() + " extra not in the layout" : "")
+                    + (snap.waiting() > 0 ? ", " + snap.waiting() + " hidden until their soil is right" : "")
                     + (snap.perfect() ? " - the greenhouse matches the layout" : ""));
         }
         return lines;
@@ -593,7 +609,7 @@ public class GreenhouseBlueprintRenderer {
 
         for (Cell cell : snap.cells()) {
             boolean done = cell.status() == GreenhouseEvaluator.Status.DONE;
-            if (done && hideCompleted) continue;
+            if (cell.hidden() || done && hideCompleted) continue;
             renderCellBoxes(pose, buffer, snap, cell, done ? opacity * 0.5f : opacity,
                     models && ghostModelOf(cell.placement()) != null, standGhosts);
         }
@@ -637,7 +653,7 @@ public class GreenhouseBlueprintRenderer {
                                           float opacity, Vec3 cameraPos) {
         for (Cell cell : snap.cells()) {
             GreenhouseBlueprint.Placement p = cell.placement();
-            if (cell.status() == GreenhouseEvaluator.Status.DONE || cell.blockOk()) continue;
+            if (cell.hidden() || cell.status() == GreenhouseEvaluator.Status.DONE || cell.blockOk()) continue;
             BlockState state = ghostModelOf(p);
             if (state == null) continue;
             GreenhouseGhostBlocks.render(poseStack, bufferSource, level, state,
@@ -723,6 +739,10 @@ public class GreenhouseBlueprintRenderer {
      */
     private static void renderOutlines(PoseStack poseStack, MultiBufferSource.BufferSource bufferSource,
                                        Snapshot snap, IslandTimeConfig config, Vec3 cameraPos) {
+        float beam = Math.max(1, Math.min(25, config.greenhouseBlueprint.outlineThickness)) / 100.0f;
+        float alpha = Math.max(10, Math.min(100, config.greenhouseBlueprint.outlineOpacity)) / 100.0f;
+        OutlineStyle style = new OutlineStyle(beam, Math.min(OUTLINE_GROW, beam / 2.0f), alpha);
+
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         Matrix4fc pose = poseStack.last().pose();
@@ -731,28 +751,28 @@ public class GreenhouseBlueprintRenderer {
                 : RenderTypes.debugFilledBox());
 
         for (Cell cell : snap.cells()) {
-            if (cell.status() == GreenhouseEvaluator.Status.DONE) continue;
+            if (cell.hidden() || cell.status() == GreenhouseEvaluator.Status.DONE) continue;
             GreenhouseBlueprint.Placement p = cell.placement();
             if (p.size == 1 && !p.block.isEmpty() && !cell.blockOk()) {
-                outlineCell(pose, buffer, snap, p.x, p.z, GreenhouseGeometry.CROP_Y, cameraPos);
+                outlineCell(pose, buffer, style, snap, p.x, p.z, GreenhouseGeometry.CROP_Y, cameraPos);
             }
             for (int i = 0; i < p.stands.size(); i++) {
                 if (i < cell.standOk().length && cell.standOk()[i]) continue;
-                outlineStand(pose, buffer, snap, p.stands.get(i), cameraPos);
+                outlineStand(pose, buffer, style, snap, p.stands.get(i), cameraPos);
             }
             for (GreenhouseBlueprint.Stand stand : cell.unwanted()) {
-                outlineStand(pose, buffer, snap, stand, cameraPos);
+                outlineStand(pose, buffer, style, snap, stand, cameraPos);
             }
         }
         if (config.greenhouseBlueprint.showFloor) {
             for (FloorCell cell : snap.floor()) {
                 if (cell.status() == GreenhouseEvaluator.Status.DONE) continue;
-                outlineCell(pose, buffer, snap, cell.x(), cell.z(), GreenhouseGeometry.SOIL_Y, cameraPos);
+                outlineCell(pose, buffer, style, snap, cell.x(), cell.z(), GreenhouseGeometry.SOIL_Y, cameraPos);
             }
         }
         for (GreenhouseEvaluator.Extra extra : snap.extraSpots()) {
-            if (extra.stand() == null) outlineCell(pose, buffer, snap, extra.x(), extra.z(), GreenhouseGeometry.CROP_Y, cameraPos);
-            else outlineStand(pose, buffer, snap, extra.stand(), cameraPos);
+            if (extra.stand() == null) outlineCell(pose, buffer, style, snap, extra.x(), extra.z(), GreenhouseGeometry.CROP_Y, cameraPos);
+            else outlineStand(pose, buffer, style, snap, extra.stand(), cameraPos);
         }
 
         poseStack.popPose();
@@ -760,17 +780,17 @@ public class GreenhouseBlueprintRenderer {
     }
 
     /** Outlines the block space at a cell of the area, {@code y} being the block's lowest y. */
-    private static void outlineCell(Matrix4fc pose, VertexConsumer buffer, Snapshot snap, int x, int z, int y,
-                                    Vec3 cameraPos) {
+    private static void outlineCell(Matrix4fc pose, VertexConsumer buffer, OutlineStyle style, Snapshot snap,
+                                    int x, int z, int y, Vec3 cameraPos) {
         float x0 = snap.areaX() + x;
         float z0 = snap.areaZ() + z;
         if (!inOutlineRange(x0 + 0.5, y + 0.5, z0 + 0.5, cameraPos)) return;
-        outlineBox(pose, buffer, x0 - OUTLINE_GROW, y - OUTLINE_GROW, z0 - OUTLINE_GROW,
-                x0 + 1 + OUTLINE_GROW, y + 1 + OUTLINE_GROW, z0 + 1 + OUTLINE_GROW);
+        float g = style.grow();
+        outlineBox(pose, buffer, style, x0 - g, y - g, z0 - g, x0 + 1 + g, y + 1 + g, z0 + 1 + g);
     }
 
     /** Outlines the space an armor stand takes up, with room for what it holds. */
-    private static void outlineStand(Matrix4fc pose, VertexConsumer buffer, Snapshot snap,
+    private static void outlineStand(Matrix4fc pose, VertexConsumer buffer, OutlineStyle style, Snapshot snap,
                                      GreenhouseBlueprint.Stand stand, Vec3 cameraPos) {
         float cx = snap.areaX() + (float) stand.x;
         float cz = snap.areaZ() + (float) stand.z;
@@ -778,7 +798,7 @@ public class GreenhouseBlueprintRenderer {
         float half = Math.max((float) stand.visualWidth(), OUTLINE_STAND_MIN_WIDTH) / 2.0f + OUTLINE_STAND_GROW;
         float height = (float) stand.visualHeight() + OUTLINE_STAND_GROW;
         if (!inOutlineRange(cx, y0 + height / 2.0, cz, cameraPos)) return;
-        outlineBox(pose, buffer, cx - half, y0 - OUTLINE_GROW, cz - half, cx + half, y0 + height, cz + half);
+        outlineBox(pose, buffer, style, cx - half, y0 - style.grow(), cz - half, cx + half, y0 + height, cz + half);
     }
 
     private static boolean inOutlineRange(double x, double y, double z, Vec3 cameraPos) {
@@ -788,25 +808,29 @@ public class GreenhouseBlueprintRenderer {
         return dx * dx + dy * dy + dz * dz <= OUTLINE_RANGE * OUTLINE_RANGE;
     }
 
-    /** The twelve edges of a box, as thin beams whose outer faces are the box's own. */
-    private static void outlineBox(Matrix4fc pose, VertexConsumer buffer,
+    /**
+     * The twelve edges of a box, as beams whose outer faces are the box's own. A beam is never thicker
+     * than a third of the box's smallest side, so the beams of a thick outline don't swallow a small box.
+     */
+    private static void outlineBox(Matrix4fc pose, VertexConsumer buffer, OutlineStyle style,
                                    float x0, float y0, float z0, float x1, float y1, float z1) {
-        float t = OUTLINE_BEAM;
+        float t = Math.min(style.beam(), Math.min(x1 - x0, Math.min(y1 - y0, z1 - z0)) / 3.0f);
+        float a = style.alpha();
         float[] c = COLOR_OUTLINE;
         for (int i = 0; i < 4; i++) {
             float y = (i & 1) == 0 ? y0 : y1 - t;
             float z = (i & 2) == 0 ? z0 : z1 - t;
-            BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y, z, x1, y + t, z + t, c[0], c[1], c[2], OUTLINE_ALPHA);
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y, z, x1, y + t, z + t, c[0], c[1], c[2], a);
         }
         for (int i = 0; i < 4; i++) {
             float x = (i & 1) == 0 ? x0 : x1 - t;
             float z = (i & 2) == 0 ? z0 : z1 - t;
-            BlockHighlightRenderer.renderFilledBox(pose, buffer, x, y0 + t, z, x + t, y1 - t, z + t, c[0], c[1], c[2], OUTLINE_ALPHA);
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, x, y0 + t, z, x + t, y1 - t, z + t, c[0], c[1], c[2], a);
         }
         for (int i = 0; i < 4; i++) {
             float x = (i & 1) == 0 ? x0 : x1 - t;
             float y = (i & 2) == 0 ? y0 : y1 - t;
-            BlockHighlightRenderer.renderFilledBox(pose, buffer, x, y, z0 + t, x + t, y + t, z1 - t, c[0], c[1], c[2], OUTLINE_ALPHA);
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, x, y, z0 + t, x + t, y + t, z1 - t, c[0], c[1], c[2], a);
         }
     }
 
@@ -861,7 +885,7 @@ public class GreenhouseBlueprintRenderer {
         for (Cell cell : snap.cells()) {
             GreenhouseBlueprint.Placement p = cell.placement();
             boolean done = cell.status() == GreenhouseEvaluator.Status.DONE;
-            if (done && hideCompleted) continue;
+            if (cell.hidden() || done && hideCompleted) continue;
 
             double cx = snap.areaX() + p.x + p.size / 2.0;
             double cz = snap.areaZ() + p.z + p.size / 2.0;
@@ -943,6 +967,12 @@ public class GreenhouseBlueprintRenderer {
                 lines.add(Component.literal(snap.extras() + " extra block" + (snap.extras() == 1 ? "" : "s")
                         + " or armor stand" + (snap.extras() == 1 ? "" : "s") + " not in the layout")
                         .withStyle(ChatFormatting.RED));
+                swatches.add(0);
+            }
+            if (snap.waiting() > 0) {
+                lines.add(Component.literal(snap.waiting() + " crop" + (snap.waiting() == 1 ? "" : "s")
+                        + " hidden until the soil under " + (snap.waiting() == 1 ? "it is" : "them is") + " right")
+                        .withStyle(ChatFormatting.YELLOW));
                 swatches.add(0);
             }
             addLegendRows(snap, lines, swatches, false);

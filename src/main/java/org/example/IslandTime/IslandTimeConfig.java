@@ -829,9 +829,24 @@ public class IslandTimeConfig extends Config {
         public boolean incorrectOutline = true;
 
         @Expose
+        @ConfigOption(name = "Outline Thickness", desc = "How thick the red outline's lines are, in hundredths of a block (5 = a twentieth of a block)")
+        @ConfigEditorSlider(minValue = 1, maxValue = 25, minStep = 1)
+        public int outlineThickness = 5;
+
+        @Expose
+        @ConfigOption(name = "Outline Opacity", desc = "How solid the red outline is, in percent")
+        @ConfigEditorSlider(minValue = 10, maxValue = 100, minStep = 5)
+        public int outlineOpacity = 95;
+
+        @Expose
         @ConfigOption(name = "Check Floor", desc = "Also copy and compare the soil under the crops: a ghost block shows where a soil block is missing or the wrong type, and the legend lists the soil the layout needs. Turn this off to ignore the floor. Layouts always store the floor when you copy them")
         @ConfigEditorBoolean
         public boolean showFloor = true;
+
+        @Expose
+        @ConfigOption(name = "Crops Only On Correct Floor", desc = "Only show a crop's preview (ghost, outline and name) once the soil under it is what the layout wants, so you can lay the floor first and then the crops. A crop that is bigger than one block waits for all the soil under it. Needs Check Floor, and crops over soil the layout has no block for are always shown")
+        @ConfigEditorBoolean
+        public boolean cropsOnlyOnCorrectFloor = false;
 
         @Expose
         @ConfigOption(name = "Ghost Opacity", desc = "How solid the ghosts are, in percent")

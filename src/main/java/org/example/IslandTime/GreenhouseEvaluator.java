@@ -67,6 +67,18 @@ final class GreenhouseEvaluator {
             return n;
         }
 
+        /**
+         * Whether the soil under every cell of a placement is what the layout wants. Cells the layout has
+         * no soil for aren't checked, and neither is anything when the floor wasn't evaluated.
+         */
+        boolean floorRight(GreenhouseBlueprint.Placement p) {
+            for (FloorResult f : floor) {
+                if (f.status() != Status.DONE && f.x() >= p.x && f.x() < p.x + p.size
+                        && f.z() >= p.z && f.z() < p.z + p.size) return false;
+            }
+            return true;
+        }
+
         /** Everything matches, and nothing else is in the way. False for an empty board. */
         boolean perfect() {
             return (!cells.isEmpty() || !floor.isEmpty())

@@ -63,18 +63,12 @@ final class GreenhouseScan {
 
     /**
      * Whether two blocks count as the same plant. Only the block itself matters, not its growth stage or
-     * other properties. The two mushrooms are interchangeable, as they are for the armor stand names.
+     * other properties, so a red mushroom is not a brown mushroom.
      */
     static boolean sameBlock(String a, String b) {
         String idA = idOf(a);
         String idB = idOf(b);
-        if (idA.isEmpty() || idB.isEmpty()) return false;
-        if (idA.equals(idB)) return true;
-        return isMushroom(idA) && isMushroom(idB);
-    }
-
-    private static boolean isMushroom(String id) {
-        return id.equals("minecraft:red_mushroom") || id.equals("minecraft:brown_mushroom");
+        return !idA.isEmpty() && idA.equals(idB);
     }
 
     /**
