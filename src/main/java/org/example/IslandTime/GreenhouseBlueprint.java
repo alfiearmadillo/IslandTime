@@ -253,6 +253,28 @@ final class GreenhouseBlueprint {
     }
 
     /**
+     * Moves the {@code facing} of a block state (a cocoa pod's, say) the way a board is moved: mirrored
+     * west to east first if asked to, then turned clockwise by quarter turns. Anything else is left alone.
+     */
+    static String turnFacing(String state, boolean mirror, int quarterTurns) {
+        if (state == null) return "";
+        int at = state.indexOf("facing=");
+        if (at < 0) return state;
+        int start = at + "facing=".length();
+        int end = start;
+        while (end < state.length() && Character.isLetter(state.charAt(end))) end++;
+        String[] clockwise = {"north", "east", "south", "west"};
+        int index = -1;
+        for (int i = 0; i < clockwise.length; i++) {
+            if (clockwise[i].equals(state.substring(start, end))) index = i;
+        }
+        if (index < 0) return state;
+        if (mirror && index % 2 == 1) index = (index + 2) % 4;
+        index = Math.floorMod(index + quarterTurns, 4);
+        return state.substring(0, start) + clockwise[index] + state.substring(end);
+    }
+
+    /**
      * Mirrors a board west to east, then turns it clockwise by quarter turns. Crops, armor stands and
      * the floor all move together.
      *
@@ -268,6 +290,7 @@ final class GreenhouseBlueprint {
             Placement p = source.copy();
             if (mirror) {
                 p.x = n - p.x - p.size;
+                p.block = turnFacing(p.block, true, 0);
                 for (Stand s : p.stands) s.x = n - s.x;
             }
             for (int i = 0; i < turns; i++) {
@@ -275,6 +298,7 @@ final class GreenhouseBlueprint {
                 int z = p.z;
                 p.x = n - z - p.size;
                 p.z = x;
+                p.block = turnFacing(p.block, false, 1);
                 for (Stand s : p.stands) {
                     double sx = s.x;
                     s.x = n - s.z;

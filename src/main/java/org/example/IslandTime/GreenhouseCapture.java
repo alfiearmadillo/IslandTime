@@ -68,24 +68,33 @@ final class GreenhouseCapture {
             bigs.add(p);
         }
 
+        // Single cells: every block in the crop layer, and every stand that is a crop of its own
+        // (or that isn't next to a big crop, so can't be one of its decorations)
         Map<Integer, GreenhouseBlueprint.Placement> singles = new TreeMap<>();
-        for (GreenhouseBlueprint.Stand stand : loose) {
-            GreenhouseBlueprint.Placement host = bigAround(bigs, stand);
-            if (host != null) {
-                host.stands.add(stand.copy());
-                continue;
-            }
-            int x = (int) Math.floor(stand.x);
-            int z = (int) Math.floor(stand.z);
-            if (x < 0 || z < 0 || x >= n || z >= n || taken[z][x]) continue;
-            singles.computeIfAbsent(z * n + x, k -> new GreenhouseBlueprint.Placement("", x, z, 1))
-                    .stands.add(stand.copy());
-        }
         for (GreenhouseScan.BlockCell cell : scan.blocks()) {
             if (cell.x() < 0 || cell.z() < 0 || cell.x() >= n || cell.z() >= n || taken[cell.z()][cell.x()]) continue;
             singles.computeIfAbsent(cell.z() * n + cell.x(),
                     k -> new GreenhouseBlueprint.Placement("", cell.x(), cell.z(), 1)).block =
                     GreenhouseScan.stripAge(cell.state());
+        }
+        for (GreenhouseBlueprint.Stand stand : loose) {
+            int x = (int) Math.floor(stand.x);
+            int z = (int) Math.floor(stand.z);
+            if (x < 0 || z < 0 || x >= n || z >= n || taken[z][x]) continue;
+            GreenhouseCrops.Crop crop = GreenhouseCrops.fromPlantedName(stand.head);
+            boolean ownCrop = crop != null && crop.size() <= 1;
+            if (ownCrop || GreenhouseEvaluator.nextToBig(bigs, stand) == null) {
+                singles.computeIfAbsent(z * n + x, k -> new GreenhouseBlueprint.Placement("", x, z, 1));
+            }
+        }
+
+        // Then every stand goes to whoever owns it by the rule the evaluator uses, so what is copied
+        // is what gets compared
+        List<GreenhouseBlueprint.Placement> all = new ArrayList<>(bigs);
+        all.addAll(singles.values());
+        for (GreenhouseBlueprint.Stand stand : loose) {
+            GreenhouseBlueprint.Placement owner = GreenhouseEvaluator.ownerOf(all, stand);
+            if (owner != null) owner.stands.add(stand.copy());
         }
         for (GreenhouseBlueprint.Placement p : singles.values()) classify(p);
 
@@ -136,18 +145,6 @@ final class GreenhouseCapture {
             if (!parts.contains(stand.head)) parts.add(stand.head);
         }
         p.name = String.join(" + ", parts);
-    }
-
-    /** The big crop whose footprint (give or take a little) an armor stand is in, or null. */
-    private static GreenhouseBlueprint.Placement bigAround(List<GreenhouseBlueprint.Placement> bigs,
-                                                           GreenhouseBlueprint.Stand stand) {
-        for (GreenhouseBlueprint.Placement p : bigs) {
-            if (stand.x >= p.x - BIG_CROP_MARGIN && stand.x < p.x + p.size + BIG_CROP_MARGIN
-                    && stand.z >= p.z - BIG_CROP_MARGIN && stand.z < p.z + p.size + BIG_CROP_MARGIN) {
-                return p;
-            }
-        }
-        return null;
     }
 
     /** A new single-board blueprint for a copy of a plot's greenhouse. */

@@ -71,6 +71,8 @@ public class GreenhouseBlueprintRenderer {
     private static final float STAND_MAX_HEIGHT = 2.5f;
     /** The thin red slab that marks a cell where a different block than the planned one is. */
     private static final float WRONG_SLAB_HEIGHT = 0.08f;
+    /** The flat tile that marks soil that is missing or wrong when ghost blocks aren't drawn. */
+    private static final float FLOOR_TILE_HEIGHT = 0.05f;
 
     /** How far (in blocks) a ghost block is inflated so it doesn't flicker against a real block in its place. */
     private static final float GHOST_GROW = 0.004f;
@@ -528,6 +530,7 @@ public class GreenhouseBlueprintRenderer {
             renderCellBoxes(pose, buffer, snap, cell, done ? opacity * 0.5f : opacity,
                     models && ghostModelOf(cell.placement()) != null);
         }
+        if (!models && config.greenhouseBlueprint.showFloor) renderFloorBoxes(pose, buffer, snap, opacity);
         if (snap.copy()) renderCopyFrame(pose, buffer, snap);
 
         poseStack.popPose();
@@ -633,6 +636,20 @@ public class GreenhouseBlueprintRenderer {
             float sy = y0 + (float) stand.y;
             BlockHighlightRenderer.renderFilledBox(pose, buffer, cx - half, sy, cz - half, cx + half, sy + height,
                     cz + half, standColor[0], standColor[1], standColor[2], alpha);
+        }
+    }
+
+    /** Stands in for the soil ghost blocks when those aren't drawn: a flat tile where soil is missing or wrong. */
+    private static void renderFloorBoxes(Matrix4fc pose, VertexConsumer buffer, Snapshot snap, float alpha) {
+        float y0 = GreenhouseGeometry.CROP_Y;
+        for (FloorCell cell : snap.floor()) {
+            if (cell.status() == GreenhouseEvaluator.Status.DONE) continue;
+            float[] color = cell.status() == GreenhouseEvaluator.Status.WRONG
+                    ? COLOR_WRONG : rgb(GreenhouseScan.colorOf(cell.block()));
+            float x0 = snap.areaX() + cell.x() + BOX_INSET;
+            float z0 = snap.areaZ() + cell.z() + BOX_INSET;
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x0 + 1 - 2 * BOX_INSET,
+                    y0 + FLOOR_TILE_HEIGHT, z0 + 1 - 2 * BOX_INSET, color[0], color[1], color[2], alpha);
         }
     }
 
