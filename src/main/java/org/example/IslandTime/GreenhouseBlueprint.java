@@ -6,12 +6,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A greenhouse layout: for each of up to three boards, which crop goes in which cell of the 10x10
- * plot. Plain fields only, so Gson can store it as is.
+ * A greenhouse layout copied from the game: for each of up to three boards (one per greenhouse
+ * plot), which crop goes in which cell of the 10x10 plot. Plain fields only, so Gson can store it as is.
  *
- * <p>Cells are addressed as (x, z) in "board space": x grows east and z grows south with the board
- * unrotated. {@link #rotation} and {@link #mirrored} turn the board before it is laid on the plot,
- * because the layout sites don't agree with each other (or with the game) on which way is up.
+ * <p>Cells are addressed as (x, z) in "board space": x grows east and z grows south, the same way as
+ * in the world. {@link #rotation} and {@link #mirrored} turn the board before it is laid on the plot,
+ * for putting a copy over a greenhouse that is built the other way round.
  */
 final class GreenhouseBlueprint {
 
@@ -19,10 +19,8 @@ final class GreenhouseBlueprint {
 
     String id = "";
     String name = "";
-    /** Where it came from: "SkyLayouts", "SkyMutations" or "Manual". */
+    /** Where it came from; {@link GreenhouseCapture#SOURCE} for copies made in game. */
     String source = "";
-    /** The mutation this layout is for, if the site said so. */
-    String target = "";
     /** Clockwise quarter turns, 0-3. */
     int rotation = 0;
     boolean mirrored = false;
@@ -42,21 +40,18 @@ final class GreenhouseBlueprint {
         int z;
         /** Width and height in cells. */
         int size = 1;
-        /** True for a spot where the target mutation is expected to spawn rather than a crop to plant. */
-        boolean target = false;
 
         Placement() {}
 
-        Placement(String crop, int x, int z, int size, boolean target) {
+        Placement(String crop, int x, int z, int size) {
             this.crop = crop;
             this.x = x;
             this.z = z;
             this.size = size;
-            this.target = target;
         }
 
         Placement copy() {
-            return new Placement(crop, x, z, size, target);
+            return new Placement(crop, x, z, size);
         }
     }
 
@@ -105,15 +100,5 @@ final class GreenhouseBlueprint {
             result.add(p);
         }
         return result;
-    }
-
-    /** All crop keys that appear in the planted (non target) placements of a board, with how many. */
-    static Map<String, Integer> countCrops(Board board) {
-        Map<String, Integer> counts = new LinkedHashMap<>();
-        for (Placement p : board.placements) {
-            if (p.target) continue;
-            counts.merge(p.crop, 1, Integer::sum);
-        }
-        return counts;
     }
 }

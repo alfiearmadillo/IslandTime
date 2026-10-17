@@ -819,8 +819,9 @@ public class IslandTimeCommand {
                 {"/it settingscycle", "Cycle to the next loadout in the current group"},
                 {"/it composter", "Show composter tracking status and when it is estimated to run empty (configure alerts under Composter in /it GUI)"},
                 {"/it composter debug", "Copy the tab list and last Composter menu contents to the clipboard (for when the composter is not found)"},
-                {"/it blueprint import [link]", "Import a greenhouse layout from a skylayouts.io or skymutations.eu link (uses your clipboard if no link is given). It is drawn as a ghost over the greenhouse plot you stand in, in the Garden only"},
-                {"/it blueprint list|select <name>|delete <name>", "List, switch between and delete imported greenhouse blueprints"},
+                {"/it blueprint copy", "Preview the greenhouse area of the Garden plot you stand in: a frame around it and a box for every crop that would be copied"},
+                {"/it blueprint save [name]|addboard|cancel", "Save what the preview shows as a blueprint that is drawn as a ghost over greenhouse plots in the Garden (addboard adds it to the selected blueprint as another plot's board; cancel stops the preview)"},
+                {"/it blueprint list|select <name>|delete <name>", "List, switch between and delete copied greenhouse blueprints"},
                 {"/it blueprint board <n>|rotate [left|right]|mirror|align|toggle|status", "Pick the board for this plot, turn or mirror the layout (align fits it to crops you have already planted), switch the overlay on or off, or check why it isn't showing"},
         };
 

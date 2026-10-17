@@ -79,7 +79,7 @@ public class IslandTimeConfig extends Config {
     public CritterSafari critterSafari = new CritterSafari();
 
     @Expose
-    @Category(name = "Greenhouse Blueprint", desc = "Litematica-style ghost preview of a greenhouse layout over your Garden greenhouse plots, imported from skylayouts.io or skymutations.eu with /it blueprint import")
+    @Category(name = "Greenhouse Blueprint", desc = "Litematica-style ghost preview of a greenhouse layout over your Garden greenhouse plots, copied from a greenhouse you have planted with /it blueprint copy and /it blueprint save")
     public GreenhouseBlueprintSettings greenhouseBlueprint = new GreenhouseBlueprintSettings();
 
     @Expose
@@ -794,7 +794,7 @@ public class IslandTimeConfig extends Config {
 
     public static class GreenhouseBlueprintSettings {
         @Expose
-        @ConfigOption(name = "Enabled", desc = "Draw the selected greenhouse blueprint over the greenhouse plot you are standing in. Import a layout with /it blueprint import <skylayouts.io or skymutations.eu link>, or with no link to read it from your clipboard. /it blueprint toggle switches this on and off")
+        @ConfigOption(name = "Enabled", desc = "Draw the selected greenhouse blueprint over the greenhouse plot you are standing in. Make one by planting a greenhouse, then /it blueprint copy to preview the area and /it blueprint save <name> to keep it. /it blueprint toggle switches this on and off")
         @ConfigEditorBoolean
         public boolean enabled = true;
 
@@ -804,7 +804,7 @@ public class IslandTimeConfig extends Config {
         public boolean onlyInGarden = true;
 
         @Expose
-        @ConfigOption(name = "Show In Any Plot", desc = "Show the blueprint in whatever garden plot you are standing in, without checking that it has a greenhouse. A greenhouse plot is recognised by the Carpenter NPC; turn this on if your greenhouse isn't picked up (see /it blueprint status)")
+        @ConfigOption(name = "Show In Any Plot", desc = "Show or copy the blueprint in whatever garden plot you are standing in, without checking that it has a greenhouse. A greenhouse plot is recognised by the Carpenter NPC; turn this on if your greenhouse isn't picked up (see /it blueprint status)")
         @ConfigEditorBoolean
         public boolean ignoreGreenhouseCheck = false;
 

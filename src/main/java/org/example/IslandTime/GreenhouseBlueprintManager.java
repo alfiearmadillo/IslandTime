@@ -14,7 +14,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * Keeps the imported greenhouse blueprints, and which one is on show, in
+ * Keeps the copied greenhouse blueprints, and which one is on show, in
  * {@code config/IslandTime/greenhouse_blueprints.json}.
  */
 public class GreenhouseBlueprintManager {
@@ -75,7 +75,7 @@ public class GreenhouseBlueprintManager {
     }
 
     /**
-     * Stores a newly imported blueprint and makes it the active one.
+     * Stores a newly copied blueprint and makes it the active one.
      *
      * @return false if there is no room for another blueprint
      */
@@ -148,6 +148,20 @@ public class GreenhouseBlueprintManager {
         blueprint.rotation = Math.floorMod(rotation, 4);
         blueprint.mirrored = mirrored;
         save();
+    }
+
+    /**
+     * Adds a board to a blueprint, for another plot's greenhouse, and uses it for that plot.
+     *
+     * @return false if the blueprint already has the most boards it can hold
+     */
+    static synchronized boolean addBoard(GreenhouseBlueprint blueprint, GreenhouseBlueprint.Board board,
+                                         int plotX, int plotZ) {
+        if (blueprint.boards.size() >= GreenhouseBlueprint.MAX_BOARDS) return false;
+        blueprint.boards.add(board);
+        blueprint.plotBoards.put(GreenhouseGeometry.plotKey(plotX, plotZ), blueprint.boards.size() - 1);
+        save();
+        return true;
     }
 
     /** Uses a board (0 based) for a plot. */

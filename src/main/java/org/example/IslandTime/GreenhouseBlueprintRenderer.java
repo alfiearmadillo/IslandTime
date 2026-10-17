@@ -58,7 +58,13 @@ public class GreenhouseBlueprintRenderer {
     // Ghost box geometry, in blocks
     private static final float BOX_INSET = 0.12f;
     private static final float BOX_HEIGHT = 0.6f;
-    private static final float TARGET_HEIGHT = 0.12f;
+
+    // The frame drawn around the greenhouse area while copying
+    private static final float FRAME_WIDTH = 0.1f;
+    private static final float FRAME_EDGE_HEIGHT = 0.06f;
+    private static final float FRAME_POST_HEIGHT = 1.5f;
+    private static final float[] COLOR_FRAME = {1.0f, 0.75f, 0.1f};
+    private static final float FRAME_ALPHA = 0.85f;
 
     private static final float LABEL_SCALE = 0.03f;
     private static final double LABEL_OFFSET = 0.3;
@@ -67,10 +73,8 @@ public class GreenhouseBlueprintRenderer {
 
     private static final int LABEL_COLOR = 0xFFFFFFFF;
     private static final int LABEL_COLOR_WRONG = 0xFFFF5555;
-    private static final int LABEL_COLOR_TARGET = 0xFF55FF55;
 
     private static final float[] COLOR_WRONG = {1.0f, 0.2f, 0.2f};
-    private static final float[] COLOR_TARGET = {0.2f, 1.0f, 0.3f};
 
     private static final int HUD_PADDING = 4;
     private static final int HUD_LINE_HEIGHT = 10;
@@ -87,12 +91,24 @@ public class GreenhouseBlueprintRenderer {
     /** One line of the legend: how many of a crop are planted out of how many the board needs. */
     record LegendRow(GreenhouseCrops.Crop crop, int done, int total) {}
 
-    /** Everything the renderer needs for the current plot; built by {@link #tick(Minecraft)}. */
-    record Snapshot(String name, String target, PlotRef plot, int boardNumber, int boardCount,
+    /**
+     * Everything the renderer needs for the current plot; built by {@link #tick(Minecraft)}. For a copy
+     * preview ({@code copy}) the cells are the crops that would be saved and the board fields are unused.
+     */
+    record Snapshot(String name, PlotRef plot, int boardNumber, int boardCount,
                     int rotation, boolean mirrored, int areaX, int areaZ,
-                    List<Cell> cells, List<LegendRow> legend, int done, int total) {}
+                    List<Cell> cells, List<LegendRow> legend, int done, int total, boolean copy) {}
+
+    /** What {@link #captureNow(Minecraft)} found: a board to save, or why there isn't one. */
+    record Capture(PlotRef plot, GreenhouseBlueprint.Board board, String error) {
+        boolean ok() {
+            return error == null;
+        }
+    }
 
     private static volatile Snapshot snapshot = null;
+    /** True while the copy preview is on: the area that would be saved is shown instead of a blueprint. */
+    private static volatile boolean copyMode = false;
     private static int ticksSinceScan = SCAN_INTERVAL_TICKS;
 
     private GreenhouseBlueprintRenderer() {}
@@ -108,6 +124,64 @@ public class GreenhouseBlueprintRenderer {
     /** Makes the next tick rescan, so a command's effect shows up straight away. */
     static void requestRefresh() {
         ticksSinceScan = SCAN_INTERVAL_TICKS;
+    }
+
+    // -------------------------------------------------------------------------
+    // Copying a greenhouse
+    // -------------------------------------------------------------------------
+
+    /**
+     * Turns the copy preview on for the plot the player stands in.
+     *
+     * @return why it can't be, or null if the preview is now on
+     */
+    static String startCopy(Minecraft client) {
+        String blocker = copyBlocker(client);
+        if (blocker != null) return blocker;
+        copyMode = true;
+        requestRefresh();
+        return null;
+    }
+
+    static void stopCopy() {
+        copyMode = false;
+        requestRefresh();
+    }
+
+    static boolean isCopying() {
+        return copyMode;
+    }
+
+    /** Scans the greenhouse area of the plot the player stands in, ready to be saved as a blueprint. */
+    static Capture captureNow(Minecraft client) {
+        String blocker = copyBlocker(client);
+        if (blocker != null) return new Capture(null, null, blocker);
+
+        PlotRef plot = currentPlot(client);
+        GreenhouseBlueprint.Board board = GreenhouseCapture.toBoard(detectPlanted(client.level, plot));
+        if (board.placements.isEmpty()) {
+            return new Capture(plot, null, "Nothing is planted in this plot's greenhouse area yet, so there is "
+                    + "nothing to copy.");
+        }
+        return new Capture(plot, board, null);
+    }
+
+    /** Why the plot the player stands in can't be copied right now, or null if it can. */
+    private static String copyBlocker(Minecraft client) {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (config == null || client.level == null || client.player == null) {
+            return "You need to be in a world to copy a greenhouse.";
+        }
+        if (config.greenhouseBlueprint.onlyInGarden && !isInGarden()) {
+            return "Greenhouse blueprints only work in the Garden.";
+        }
+        PlotRef plot = currentPlot(client);
+        if (plot == null) return "Stand inside the garden plot whose greenhouse you want to copy.";
+        if (!config.greenhouseBlueprint.ignoreGreenhouseCheck && !hasGreenhouse(client.level, plot)) {
+            return "No greenhouse found in this plot. Stand in a greenhouse plot, or turn on \"Show In Any Plot\" "
+                    + "in the Greenhouse Blueprint settings.";
+        }
+        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -206,8 +280,9 @@ public class GreenhouseBlueprintRenderer {
     // -------------------------------------------------------------------------
 
     public static void tick(Minecraft client) {
+        if (client.level == null || client.player == null) copyMode = false;
         IslandTimeConfig config = ConfigManager.getConfig();
-        if (config == null || !config.greenhouseBlueprint.enabled
+        if (config == null || !(config.greenhouseBlueprint.enabled || copyMode)
                 || client.level == null || client.player == null) {
             snapshot = null;
             ticksSinceScan = SCAN_INTERVAL_TICKS;
@@ -225,14 +300,17 @@ public class GreenhouseBlueprintRenderer {
     }
 
     private static Snapshot buildSnapshot(Minecraft client, IslandTimeConfig config) {
-        GreenhouseBlueprint blueprint = GreenhouseBlueprintManager.getActive();
-        if (blueprint == null || blueprint.boards.isEmpty()) return null;
+        boolean copying = copyMode;
+        GreenhouseBlueprint blueprint = copying ? null : GreenhouseBlueprintManager.getActive();
+        if (!copying && (blueprint == null || blueprint.boards.isEmpty())) return null;
         if (config.greenhouseBlueprint.onlyInGarden && !isInGarden()) return null;
 
         PlotRef plot = currentPlot(client);
         if (plot == null) return null;
         ClientLevel level = client.level;
         if (!config.greenhouseBlueprint.ignoreGreenhouseCheck && !hasGreenhouse(level, plot)) return null;
+
+        if (copying) return buildCopySnapshot(level, plot);
 
         GreenhouseBlueprint.Board board = blueprint.boardForPlot(plot.x(), plot.z());
         List<GreenhouseBlueprint.Placement> oriented = blueprint.orientedPlacements(board);
@@ -246,7 +324,6 @@ public class GreenhouseBlueprintRenderer {
         for (GreenhouseEvaluator.Result result : results) {
             GreenhouseBlueprint.Placement p = result.placement();
             cells.add(new Cell(p, result.status()));
-            if (p.target) continue;
             int[] count = counts.computeIfAbsent(p.crop, k -> new int[2]);
             count[1]++;
             total++;
@@ -262,11 +339,33 @@ public class GreenhouseBlueprintRenderer {
             if (crop != null) legend.add(new LegendRow(crop, entry.getValue()[0], entry.getValue()[1]));
         }
 
-        return new Snapshot(blueprint.name, blueprint.target, plot,
+        return new Snapshot(blueprint.name, plot,
                 blueprint.boardIndexForPlot(plot.x(), plot.z()) + 1, blueprint.boards.size(),
                 blueprint.rotation, blueprint.mirrored,
                 GreenhouseGeometry.areaMin(plot.x()), GreenhouseGeometry.areaMin(plot.z()),
-                cells, legend, done, total);
+                cells, legend, done, total, false);
+    }
+
+    /** What saving right now would copy: every crop planted in the plot's greenhouse area. */
+    private static Snapshot buildCopySnapshot(ClientLevel level, PlotRef plot) {
+        GreenhouseBlueprint.Board board = GreenhouseCapture.toBoard(detectPlanted(level, plot));
+
+        List<Cell> cells = new ArrayList<>(board.placements.size());
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (GreenhouseBlueprint.Placement p : board.placements) {
+            cells.add(new Cell(p, GreenhouseEvaluator.Status.MISSING));
+            counts.merge(p.crop, 1, Integer::sum);
+        }
+
+        List<LegendRow> legend = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            GreenhouseCrops.Crop crop = GreenhouseCrops.byKey(entry.getKey());
+            if (crop != null) legend.add(new LegendRow(crop, entry.getValue(), entry.getValue()));
+        }
+
+        return new Snapshot("Copying greenhouse", plot, 0, 0, 0, false,
+                GreenhouseGeometry.areaMin(plot.x()), GreenhouseGeometry.areaMin(plot.z()),
+                cells, legend, cells.size(), cells.size(), true);
     }
 
     /** Lines describing what the overlay currently sees, for {@code /it blueprint status}. */
@@ -277,10 +376,11 @@ public class GreenhouseBlueprintRenderer {
 
         GreenhouseBlueprint active = GreenhouseBlueprintManager.getActive();
         lines.add("Overlay: " + (config.greenhouseBlueprint.enabled ? "on" : "off"));
-        lines.add("Active blueprint: " + (active == null ? "none (import one with /it blueprint import)"
+        lines.add("Active blueprint: " + (active == null ? "none (copy one with /it blueprint copy)"
                 : active.name + " (" + active.source + ", " + active.boards.size() + " board"
                 + (active.boards.size() == 1 ? "" : "s") + ", rotated " + active.rotation * 90 + "°"
                 + (active.mirrored ? ", mirrored" : "") + ")"));
+        if (copyMode) lines.add("Copy preview: on (/it blueprint save <name> to keep it, /it blueprint cancel to stop)");
         boolean garden = isInGarden();
         lines.add("In the Garden: " + (garden ? "yes" : "no")
                 + (!garden && config.greenhouseBlueprint.onlyInGarden ? " (the overlay only shows in the Garden)" : ""));
@@ -297,7 +397,9 @@ public class GreenhouseBlueprintRenderer {
         lines.add("Crops planted in the greenhouse area: " + detectPlanted(client.level, plot).size());
 
         Snapshot snap = snapshot;
-        if (snap != null) {
+        if (snap != null && snap.copy()) {
+            lines.add("Copy preview: " + snap.total() + " crop" + (snap.total() == 1 ? "" : "s") + " would be saved");
+        } else if (snap != null) {
             lines.add("Board " + snap.boardNumber() + " of " + snap.boardCount() + ": "
                     + snap.done() + " of " + snap.total() + " crops planted");
         }
@@ -314,10 +416,11 @@ public class GreenhouseBlueprintRenderer {
 
     private static void render(LevelRenderContext context) {
         Snapshot snap = snapshot;
-        if (snap == null || snap.cells().isEmpty()) return;
+        if (snap == null || snap.copy() != copyMode) return;
+        if (snap.cells().isEmpty() && !snap.copy()) return;
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        if (config == null || !config.greenhouseBlueprint.enabled) return;
+        if (config == null || !(config.greenhouseBlueprint.enabled || snap.copy())) return;
         Minecraft client = Minecraft.getInstance();
         if (client.player == null) return;
 
@@ -342,7 +445,7 @@ public class GreenhouseBlueprintRenderer {
 
             float[] color = boxColor(cell);
             float alpha = done ? opacity * 0.5f : opacity;
-            float height = p.target ? TARGET_HEIGHT : BOX_HEIGHT + 0.2f * (p.size - 1);
+            float height = BOX_HEIGHT + 0.2f * (p.size - 1);
 
             float x0 = snap.areaX() + p.x + BOX_INSET;
             float x1 = snap.areaX() + p.x + p.size - BOX_INSET;
@@ -352,6 +455,7 @@ public class GreenhouseBlueprintRenderer {
             BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x1, y0 + height, z1,
                     color[0], color[1], color[2], alpha);
         }
+        if (snap.copy()) renderCopyFrame(pose, buffer, snap);
 
         poseStack.popPose();
         bufferSource.endBatch();
@@ -361,9 +465,31 @@ public class GreenhouseBlueprintRenderer {
         }
     }
 
+    /** Outlines the greenhouse area that a copy would cover: a thin border on the soil and a post at each corner. */
+    private static void renderCopyFrame(Matrix4fc pose, VertexConsumer buffer, Snapshot snap) {
+        float x0 = snap.areaX();
+        float z0 = snap.areaZ();
+        float x1 = x0 + GreenhouseGeometry.AREA_SIZE;
+        float z1 = z0 + GreenhouseGeometry.AREA_SIZE;
+        float y0 = GreenhouseGeometry.CROP_Y;
+        float edgeTop = y0 + FRAME_EDGE_HEIGHT;
+        float postTop = y0 + FRAME_POST_HEIGHT;
+        float w = FRAME_WIDTH;
+        float[] c = COLOR_FRAME;
+
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x1, edgeTop, z0 + w, c[0], c[1], c[2], FRAME_ALPHA);
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z1 - w, x1, edgeTop, z1, c[0], c[1], c[2], FRAME_ALPHA);
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0 + w, x0 + w, edgeTop, z1 - w, c[0], c[1], c[2], FRAME_ALPHA);
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x1 - w, y0, z0 + w, x1, edgeTop, z1 - w, c[0], c[1], c[2], FRAME_ALPHA);
+
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x0 + w, postTop, z0 + w, c[0], c[1], c[2], FRAME_ALPHA);
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x1 - w, y0, z0, x1, postTop, z0 + w, c[0], c[1], c[2], FRAME_ALPHA);
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z1 - w, x0 + w, postTop, z1, c[0], c[1], c[2], FRAME_ALPHA);
+        BlockHighlightRenderer.renderFilledBox(pose, buffer, x1 - w, y0, z1 - w, x1, postTop, z1, c[0], c[1], c[2], FRAME_ALPHA);
+    }
+
     private static float[] boxColor(Cell cell) {
         if (cell.status() == GreenhouseEvaluator.Status.WRONG) return COLOR_WRONG;
-        if (cell.placement().target) return COLOR_TARGET;
         GreenhouseCrops.Crop crop = GreenhouseCrops.byKey(cell.placement().crop);
         return crop == null ? COLOR_WRONG : rgb(crop.color());
     }
@@ -396,14 +522,11 @@ public class GreenhouseBlueprintRenderer {
             if (cell.status() == GreenhouseEvaluator.Status.WRONG) {
                 name = name + " (wrong here)";
                 color = LABEL_COLOR_WRONG;
-            } else if (p.target) {
-                name = name + " spawns here";
-                color = LABEL_COLOR_TARGET;
             }
 
             Component label = Component.literal(name);
             float halfWidth = font.width(label) / 2.0f;
-            double top = GreenhouseGeometry.CROP_Y + (p.target ? TARGET_HEIGHT : BOX_HEIGHT + 0.2f * (p.size - 1));
+            double top = GreenhouseGeometry.CROP_Y + BOX_HEIGHT + 0.2f * (p.size - 1);
 
             poseStack.pushPose();
             poseStack.translate(cx - cameraPos.x, top + LABEL_OFFSET - cameraPos.y, cz - cameraPos.z);
@@ -427,9 +550,11 @@ public class GreenhouseBlueprintRenderer {
 
     private static void renderHud(GuiGraphicsExtractor context) {
         Snapshot snap = snapshot;
-        if (snap == null) return;
         IslandTimeConfig config = ConfigManager.getConfig();
-        if (config == null || !config.greenhouseBlueprint.enabled || !config.greenhouseBlueprint.showLegend) return;
+        if (config == null) return;
+        boolean copying = copyMode;
+        if (snap == null ? !copying : snap.copy() != copying) return;
+        if (!copying && !(config.greenhouseBlueprint.enabled && config.greenhouseBlueprint.showLegend)) return;
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;
         if (client.options != null && client.options.hideGui) return;
@@ -438,28 +563,16 @@ public class GreenhouseBlueprintRenderer {
         List<Component> lines = new ArrayList<>();
         List<Integer> swatches = new ArrayList<>();
 
-        lines.add(Component.literal(snap.name()).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD));
-        swatches.add(0);
-        if (!snap.target().isEmpty()) {
-            lines.add(Component.literal("Target: " + snap.target()).withStyle(ChatFormatting.AQUA));
+        if (copying) {
+            copyHudLines(snap, lines, swatches);
+        } else {
+            lines.add(Component.literal(snap.name()).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD));
             swatches.add(0);
-        }
-        lines.add(Component.literal("Plot " + snap.plot().x() + "," + snap.plot().z()
-                + " - board " + snap.boardNumber() + "/" + snap.boardCount()
-                + " - " + snap.done() + "/" + snap.total() + " planted").withStyle(ChatFormatting.GRAY));
-        swatches.add(0);
-
-        int rows = 0;
-        for (LegendRow row : snap.legend()) {
-            if (rows++ >= MAX_LEGEND_ROWS) {
-                lines.add(Component.literal("...").withStyle(ChatFormatting.GRAY));
-                swatches.add(0);
-                break;
-            }
-            boolean complete = row.done() >= row.total();
-            lines.add(Component.literal(row.crop().name() + " " + row.done() + "/" + row.total())
-                    .withStyle(complete ? ChatFormatting.DARK_GRAY : ChatFormatting.WHITE));
-            swatches.add(0xFF000000 | row.crop().color());
+            lines.add(Component.literal("Plot " + snap.plot().x() + "," + snap.plot().z()
+                    + " - board " + snap.boardNumber() + "/" + snap.boardCount()
+                    + " - " + snap.done() + "/" + snap.total() + " planted").withStyle(ChatFormatting.GRAY));
+            swatches.add(0);
+            addLegendRows(snap, lines, swatches, false);
         }
 
         int textWidth = 0;
@@ -491,6 +604,47 @@ public class GreenhouseBlueprintRenderer {
             }
             context.text(font, lines.get(i), textX, textY, -1, true);
             textY += HUD_LINE_HEIGHT;
+        }
+    }
+
+    /** The legend while copying: what would be saved, and how to save or stop. */
+    private static void copyHudLines(Snapshot snap, List<Component> lines, List<Integer> swatches) {
+        lines.add(Component.literal("Copying greenhouse").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+        swatches.add(0);
+        if (snap == null) {
+            lines.add(Component.literal("Stand in a greenhouse plot in the Garden").withStyle(ChatFormatting.GRAY));
+            swatches.add(0);
+        } else if (snap.cells().isEmpty()) {
+            lines.add(Component.literal("Plot " + snap.plot().x() + "," + snap.plot().z()
+                    + " - nothing planted here yet").withStyle(ChatFormatting.GRAY));
+            swatches.add(0);
+        } else {
+            lines.add(Component.literal("Plot " + snap.plot().x() + "," + snap.plot().z() + " - "
+                    + snap.total() + " crop" + (snap.total() == 1 ? "" : "s") + " will be saved")
+                    .withStyle(ChatFormatting.GRAY));
+            swatches.add(0);
+            addLegendRows(snap, lines, swatches, true);
+        }
+        lines.add(Component.literal("/it blueprint save <name>").withStyle(ChatFormatting.GREEN));
+        swatches.add(0);
+        lines.add(Component.literal("/it blueprint cancel").withStyle(ChatFormatting.DARK_GRAY));
+        swatches.add(0);
+    }
+
+    /** One legend row per crop: "done/total" for a blueprint, or just the count for a copy preview. */
+    private static void addLegendRows(Snapshot snap, List<Component> lines, List<Integer> swatches, boolean copy) {
+        int rows = 0;
+        for (LegendRow row : snap.legend()) {
+            if (rows++ >= MAX_LEGEND_ROWS) {
+                lines.add(Component.literal("...").withStyle(ChatFormatting.GRAY));
+                swatches.add(0);
+                break;
+            }
+            boolean complete = !copy && row.done() >= row.total();
+            String count = copy ? "x" + row.total() : row.done() + "/" + row.total();
+            lines.add(Component.literal(row.crop().name() + " " + count)
+                    .withStyle(complete ? ChatFormatting.DARK_GRAY : ChatFormatting.WHITE));
+            swatches.add(0xFF000000 | row.crop().color());
         }
     }
 

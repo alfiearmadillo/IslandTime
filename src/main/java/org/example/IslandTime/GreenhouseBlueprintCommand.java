@@ -14,8 +14,8 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 /**
- * {@code /it blueprint ...}: imports greenhouse layouts from skylayouts.io or skymutations.eu and
- * adjusts how the overlay in {@link GreenhouseBlueprintRenderer} is laid on the plot.
+ * {@code /it blueprint ...}: copies a planted greenhouse into a blueprint (with a preview of the area
+ * first) and adjusts how the overlay in {@link GreenhouseBlueprintRenderer} is laid on the plot.
  */
 final class GreenhouseBlueprintCommand {
 
@@ -34,17 +34,31 @@ final class GreenhouseBlueprintCommand {
                             status(ctx.getSource().getClient());
                             return 1;
                         }))
-                .then(literal("import")
+                .then(literal("copy")
                         .executes(ctx -> {
-                            importLayout(ctx.getSource().getClient(), null);
+                            copy(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("save")
+                        .executes(ctx -> {
+                            save(ctx.getSource().getClient(), null);
                             return 1;
                         })
-                        .then(argument("link", StringArgumentType.greedyString())
+                        .then(argument("name", StringArgumentType.greedyString())
                                 .executes(ctx -> {
-                                    importLayout(ctx.getSource().getClient(),
-                                            StringArgumentType.getString(ctx, "link"));
+                                    save(ctx.getSource().getClient(), StringArgumentType.getString(ctx, "name"));
                                     return 1;
                                 })))
+                .then(literal("addboard")
+                        .executes(ctx -> {
+                            addBoard(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("cancel")
+                        .executes(ctx -> {
+                            cancel(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("list")
                         .executes(ctx -> {
                             list(ctx.getSource().getClient());
@@ -120,7 +134,8 @@ final class GreenhouseBlueprintCommand {
     private static GreenhouseBlueprint requireActive(Minecraft client) {
         GreenhouseBlueprint active = GreenhouseBlueprintManager.getActive();
         if (active == null) {
-            send(client, "No blueprint is selected. Import one with /it blueprint import <link>.", ChatFormatting.RED);
+            send(client, "No blueprint is selected. Copy a greenhouse first with /it blueprint copy, then "
+                    + "/it blueprint save <name>.", ChatFormatting.RED);
         }
         return active;
     }
@@ -135,49 +150,86 @@ final class GreenhouseBlueprintCommand {
         for (String line : GreenhouseBlueprintRenderer.describe(client)) {
             sendLine(client, line, ChatFormatting.GRAY);
         }
-        sendLine(client, "Commands: import [link], list, select <name>, delete <name>, board <n>, "
-                + "rotate [left|right], mirror, align, toggle", ChatFormatting.DARK_GRAY);
+        sendLine(client, "Commands: copy, save [name], addboard, cancel, list, select <name>, delete <name>, "
+                + "board <n>, rotate [left|right], mirror, align, toggle", ChatFormatting.DARK_GRAY);
     }
 
-    private static void importLayout(Minecraft client, String link) {
+    /** Starts the preview of the greenhouse area in the plot the player stands in. */
+    private static void copy(Minecraft client) {
         if (client.player == null) return;
-        String text = link;
-        if (text == null || text.isBlank()) {
-            text = client.keyboardHandler.getClipboard();
-        }
-
-        GreenhouseLayoutImporter.ImportResult result = GreenhouseLayoutImporter.parse(text);
-        if (!result.ok()) {
-            send(client, result.error(), ChatFormatting.RED);
+        String blocker = GreenhouseBlueprintRenderer.startCopy(client);
+        if (blocker != null) {
+            send(client, blocker, ChatFormatting.RED);
             return;
         }
-        GreenhouseBlueprint blueprint = result.blueprint();
+        send(client, "Copy preview on. The gold frame is the greenhouse area and the coloured boxes are the "
+                + "crops that would be saved.", ChatFormatting.GREEN);
+        sendLine(client, "Plant or change crops until it looks right, then /it blueprint save <name>. To add it "
+                + "to the selected blueprint as another plot's board, use /it blueprint addboard instead. "
+                + "/it blueprint cancel stops the preview.", ChatFormatting.GRAY);
+        sendLine(client, "Stay close to the greenhouse so all of it is loaded.", ChatFormatting.GRAY);
+    }
+
+    /** Saves the crops planted in the plot's greenhouse area as a new blueprint. */
+    private static void save(Minecraft client, String name) {
+        if (client.player == null) return;
+        GreenhouseBlueprintRenderer.Capture capture = GreenhouseBlueprintRenderer.captureNow(client);
+        if (!capture.ok()) {
+            send(client, capture.error(), ChatFormatting.RED);
+            return;
+        }
+        GreenhouseBlueprintRenderer.PlotRef plot = capture.plot();
+        GreenhouseBlueprint blueprint =
+                GreenhouseCapture.newBlueprint(name, capture.board(), plot.x(), plot.z());
         if (!GreenhouseBlueprintManager.add(blueprint)) {
             send(client, "You already have " + GreenhouseBlueprintManager.MAX_BLUEPRINTS
                     + " blueprints. Delete one with /it blueprint delete <name> first.", ChatFormatting.RED);
             return;
         }
-        GreenhouseBlueprintRenderer.requestRefresh();
+        GreenhouseBlueprintRenderer.stopCopy();
 
-        int boards = blueprint.boards.size();
-        send(client, "Imported \"" + blueprint.name + "\" from " + blueprint.source + " (" + boards + " board"
-                + (boards == 1 ? "" : "s") + ") and selected it.", ChatFormatting.GREEN);
-        for (String note : result.notes()) {
-            sendLine(client, note, ChatFormatting.YELLOW);
+        int crops = capture.board().placements.size();
+        send(client, "Saved \"" + blueprint.name + "\" (" + crops + " crop" + (crops == 1 ? "" : "s")
+                + " from plot " + plot.x() + "," + plot.z() + ") and selected it.", ChatFormatting.GREEN);
+        sendLine(client, "It is drawn over greenhouse plots in the Garden, and crops you plant correctly "
+                + "disappear from it. A greenhouse with more plots can have up to " + GreenhouseBlueprint.MAX_BOARDS
+                + " boards: copy another plot and use /it blueprint addboard.", ChatFormatting.GRAY);
+    }
+
+    /** Adds the plot's greenhouse area to the selected blueprint as another board. */
+    private static void addBoard(Minecraft client) {
+        GreenhouseBlueprint active = requireActive(client);
+        if (active == null) return;
+        GreenhouseBlueprintRenderer.Capture capture = GreenhouseBlueprintRenderer.captureNow(client);
+        if (!capture.ok()) {
+            send(client, capture.error(), ChatFormatting.RED);
+            return;
         }
-        sendLine(client, "Stand in a greenhouse plot in the Garden to see it. If it is turned the wrong way, use "
-                + "/it blueprint align (after planting a few crops), rotate or mirror.", ChatFormatting.GRAY);
-        if (boards > 1) {
-            sendLine(client, "This layout has " + boards + " boards: stand in each plot and use "
-                    + "/it blueprint board <n> to pick which one it shows.", ChatFormatting.GRAY);
+        GreenhouseBlueprintRenderer.PlotRef plot = capture.plot();
+        if (!GreenhouseBlueprintManager.addBoard(active, capture.board(), plot.x(), plot.z())) {
+            send(client, "\"" + active.name + "\" already has " + GreenhouseBlueprint.MAX_BOARDS
+                    + " boards, the most it can hold.", ChatFormatting.RED);
+            return;
         }
+        GreenhouseBlueprintRenderer.stopCopy();
+        send(client, "Added board " + active.boards.size() + " to \"" + active.name + "\" and set it for plot "
+                + plot.x() + "," + plot.z() + ".", ChatFormatting.GREEN);
+    }
+
+    private static void cancel(Minecraft client) {
+        if (client.player == null) return;
+        boolean wasCopying = GreenhouseBlueprintRenderer.isCopying();
+        GreenhouseBlueprintRenderer.stopCopy();
+        send(client, wasCopying ? "Copy preview off." : "The copy preview wasn't on.",
+                wasCopying ? ChatFormatting.GREEN : ChatFormatting.YELLOW);
     }
 
     private static void list(Minecraft client) {
         if (client.player == null) return;
         List<GreenhouseBlueprint> all = GreenhouseBlueprintManager.getAll();
         if (all.isEmpty()) {
-            send(client, "No blueprints yet. Import one with /it blueprint import <link>.", ChatFormatting.YELLOW);
+            send(client, "No blueprints yet. Copy one from a planted greenhouse with /it blueprint copy.",
+                    ChatFormatting.YELLOW);
             return;
         }
         GreenhouseBlueprint active = GreenhouseBlueprintManager.getActive();

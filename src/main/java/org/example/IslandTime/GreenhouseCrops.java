@@ -8,8 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Every crop that can sit in a Garden greenhouse plot, with the names the layout sites and the game
- * use for it.
+ * Every crop that can sit in a Garden greenhouse plot, with the names the game uses for it.
  *
  * <p>A greenhouse plot is a 10x10 area of soil. Most crops cover a single cell; the Garden mutations
  * Snoozling and Godseed are 3x3, and Noctilume, Glasscorn and PlantBoy Advance are 2x2.
@@ -19,7 +18,7 @@ final class GreenhouseCrops {
     /**
      * One plantable crop.
      *
-     * @param key      stable upper case id, the one skylayouts.io uses (for example "VEILSHROOM")
+     * @param key      stable upper case id (for example "VEILSHROOM")
      * @param name     display name
      * @param size     width and height in cells
      * @param color    packed 0xRRGGBB colour of the ghost box
@@ -27,20 +26,6 @@ final class GreenhouseCrops {
      * @param mutation true for crops that are grown as a mutation, false for plain crops
      */
     record Crop(String key, String name, int size, int color, List<String> aliases, boolean mutation) {}
-
-    /**
-     * The ids skylayouts.io numbers its crops by. A link refers to a crop by its position in this
-     * list, so it must stay in exactly this order.
-     */
-    static final List<String> SKY_LAYOUTS_IDS = List.of(
-            "ALL_IN_ALOE", "ASHWREATH", "BLASTBERRY", "BROWN_MUSHROOM", "CACTUS", "CARROT", "CHEESEBITE",
-            "CHLORONITE", "CHOCOBERRY", "CHOCONUT", "CHORUS_FRUIT", "CINDERSHADE", "COALROOT", "COCOA_BEANS",
-            "CREAMBLOOM", "DEAD_PLANT", "DEVOURER", "DO_NOT_EAT_SHROOM", "DUSKBLOOM", "DUSTGRAIN", "FERMENTO",
-            "FIRE", "FLESHTRAP", "GLASSCORN", "GLOOMGOURD", "GODSEED", "LONELILY", "MAGIC_JELLYBEAN", "MELON",
-            "MOONFLOWER", "NETHER_WART", "NOCTILUME", "PHANTOMLEAF", "PLANTBOY_ADVANCE", "POTATO", "PUFFERCLOUD",
-            "PUMPKIN", "RED_MUSHROOM", "SCOURROOT", "SHADEVINE", "SHELLFRUIT", "SNOOZLING", "SOGGYBUD",
-            "STARTLEVINE", "STOPLIGHT_PETAL", "SUGAR_CANE", "SUNFLOWER", "THORNSHADE", "THUNDERLING", "TIMESTALK",
-            "TURTLELLINI", "VEILSHROOM", "WHEAT", "WILD_ROSE", "WITHERBLOOM", "ZOMBUD");
 
     private static final List<Crop> ALL;
     private static final Map<String, Crop> BY_KEY = new HashMap<>();
@@ -51,7 +36,7 @@ final class GreenhouseCrops {
 
     static {
         List<Crop> crops = new ArrayList<>();
-        // Plain crops. "Seeds"/"Plants" variants are the names skymutations.eu uses
+        // Plain crops, with the other names the game uses for some of them
         add(crops, "WHEAT", "Wheat", 1, false, "wheatseeds");
         add(crops, "POTATO", "Potato", 1, false);
         add(crops, "CARROT", "Carrot", 1, false);
@@ -155,12 +140,6 @@ final class GreenhouseCrops {
         if (name == null) return null;
         String normalized = normalize(name);
         return normalized.isEmpty() ? null : BY_ALIAS.get(normalized);
-    }
-
-    /** The crop skylayouts.io means by the id at this position, or null if the position is unknown. */
-    static Crop bySkyLayoutsIndex(int index) {
-        if (index < 0 || index >= SKY_LAYOUTS_IDS.size()) return null;
-        return BY_KEY.get(SKY_LAYOUTS_IDS.get(index));
     }
 
     /**
