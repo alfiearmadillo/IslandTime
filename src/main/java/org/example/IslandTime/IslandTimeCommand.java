@@ -747,7 +747,7 @@ public class IslandTimeCommand {
                 {"/it trackedIslandTime <DD-MM-YY>", "Show specific date (e.g., /it trackedIslandTime 1-1-26)"},
                 {"/it fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
                 {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
-                {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate"},
+                {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate (or only Gabagool Distillate if that setting is on)"},
 
                 // Page 2 - Discord webhook & pings
                 {"/it webhook", "Show current webhook URL"},
@@ -1113,8 +1113,10 @@ public class IslandTimeCommand {
 
         new Thread(() -> {
             try {
+                IslandTimeConfig config = ConfigManager.getConfig();
+                boolean gabagoolOnly = config != null && config.fuelCycles.gabagoolDistillateOnly;
                 PriceCache.FuelCostBreakdown breakdown =
-                        PriceCache.getInfernoFuelCostBreakdown(PriceCache.refreshBazaar(), fuelCount);
+                        PriceCache.getInfernoFuelCostBreakdown(PriceCache.refreshBazaar(), fuelCount, gabagoolOnly);
                 if (breakdown == null) {
                     sendFuelCostError(client, "Could not fetch all required Bazaar buy-order prices.");
                     return;
@@ -1130,10 +1132,10 @@ public class IslandTimeCommand {
                     sendFuelCostLine(client, "3x Very Crude Gabagool",
                             breakdown.veryCrudeGabagoolPrice, 3, breakdown.fuelCount);
                     for (Map.Entry<String, Double> entry : breakdown.distillatePrices.entrySet()) {
-                        boolean cheapest = entry.getKey().equals(breakdown.cheapestDistillateId);
+                        boolean selected = entry.getKey().equals(breakdown.selectedDistillateId);
                         sendFuelCostLine(client,
                                 "6x " + fuelCostDisplayName(entry.getKey())
-                                        + (cheapest ? " (CHEAPEST)" : ""),
+                                        + (selected ? (breakdown.gabagoolOnly ? " (GABAGOOL ONLY)" : " (CHEAPEST)") : ""),
                                 entry.getValue(), 6, breakdown.fuelCount);
                     }
                     sendFuelCostLine(client, "2x Inferno Fuel Block",

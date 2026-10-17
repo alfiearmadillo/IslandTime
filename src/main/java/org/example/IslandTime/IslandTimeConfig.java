@@ -151,6 +151,17 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(
+                name = "Gabagool Distillate Only",
+                desc = "Price the 6 distillates in a fuel's recipe as Crude Gabagool Distillate only, instead of " +
+                        "whichever of the five distillates is cheapest. Turn this on if you aren't AFKing, as " +
+                        "Gabagool is the only one that is viable then. Also applies to /it fuelcost. Each fuel " +
+                        "cohort keeps the price it was first costed at, so this takes effect from the next cohort."
+        )
+        @ConfigEditorBoolean
+        public boolean gabagoolDistillateOnly = false;
+
+        @Expose
+        @ConfigOption(
                 name = "Default Gabagool Price",
                 desc = "Sell price for one Crude Gabagool. Applied to the active and queued days (and any day " +
                         "without a price) and marked 'temp auto price' until you set that day's price manually. " +
@@ -390,9 +401,30 @@ public class IslandTimeConfig extends Config {
         public int disconnectSpeed = 2; // NORMAL
 
         @Expose
-        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until you empty your sacks\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until you empty your sacks (see Repeat Fuel Alert Until Sacks Emptied)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int fuelExpiredSpeed = 2; // NORMAL
+
+        @Expose
+        @ConfigOption(
+                name = "Fuel Alert Only When All Fuel Expires",
+                desc = "Send the fuel alert once, when the whole stack of fuel has run out, instead of each time " +
+                        "a single fuel-day runs out. Fuel added before that postpones the alert to when all of " +
+                        "it has actually run out. Off keeps one alert per fuel-day."
+        )
+        @ConfigEditorBoolean
+        public boolean fuelAlertOnlyWhenAllExpired = false;
+
+        @Expose
+        @ConfigOption(
+                name = "Repeat Fuel Alert Until Sacks Emptied",
+                desc = "Keep repeating the fuel alert at the speed above until you take Crude Gabagool out of " +
+                        "your sacks, as AFKing past full sacks gains nothing. Turn this off if you aren't AFKing, " +
+                        "as the gabagool goes into your minions rather than your sacks: the alert is then sent " +
+                        "once and does not repeat."
+        )
+        @ConfigEditorBoolean
+        public boolean fuelAlertRepeatUntilSacksEmptied = true;
     }
 
     public static class ChatRelay {

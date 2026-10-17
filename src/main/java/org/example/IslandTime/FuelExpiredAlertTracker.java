@@ -17,6 +17,14 @@ import java.nio.file.StandardCopyOption;
  * i.e. as soon as you take gabagool out of your sacks to sell, the pings stop, since that
  * indicates you've emptied them. Removing gabagool never subtracts from the day's tracked
  * total (see FuelCycleTracker.addAutoGabagoolAmount) — this is purely about stopping the alert.
+ *
+ * Two settings (Alert Speeds category) change that for setups that don't AFK, both leaving the
+ * behaviour above untouched while they are left at their defaults:
+ *  - "Fuel Alert Only When All Fuel Expires": a fuel-day that ends while more fuel is still queued
+ *    sends nothing. The alert goes out when the last queued fuel-day ends, so fuel added before then
+ *    postpones it. See {@link #onFuelDayUp(int, boolean)}.
+ *  - "Repeat Fuel Alert Until Sacks Emptied": when off, the alert is sent once and never repeats
+ *    (without AFKing the gabagool goes into minions, not sacks, so there is nothing to empty).
  */
 public class FuelExpiredAlertTracker {
 
@@ -40,23 +48,49 @@ public class FuelExpiredAlertTracker {
     private static long    lastAlertSentTime = 0;
     private static int     lastMinionCount   = 0;
 
+    /** The most minions any fuel-day of the current stack had, for the "all fuel expired" alert. */
+    private static int     stackMinionCount  = 0;
+
     public static AlertSpeed getAlertSpeed() { return fuelExpiredAlertSpeed; }
 
     public static void setAlertSpeed(AlertSpeed speed) {
         fuelExpiredAlertSpeed = speed;
         if (speed == AlertSpeed.OFF) {
             alertActive = false;
+            stackMinionCount = 0;
         }
         save();
     }
 
+    private static boolean onlyWhenAllExpired() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        return config != null && config.alertSpeeds.fuelAlertOnlyWhenAllExpired;
+    }
+
+    private static boolean repeatUntilSacksEmptied() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        return config == null || config.alertSpeeds.fuelAlertRepeatUntilSacksEmptied;
+    }
+
     /**
-     * Called by FuelCycleTracker when the active fuel cycle expires (all queued fuel-days have
-     * been burned through). Sends the first alert immediately, then repeats on tick().
+     * Called by FuelCycleTracker each time a fuel-day runs out. Sends the first alert immediately,
+     * then repeats on tick() unless repeating is turned off.
+     *
+     * @param moreFuelQueued whether fuel is still queued after this fuel-day, in which case the
+     *                       alert is skipped when "Only When All Fuel Expires" is on. The next
+     *                       fuel-day to run out asks again, so it is sent once the last one has.
      */
-    public static void onFuelDayUp(int minionCount) {
+    public static void onFuelDayUp(int minionCount, boolean moreFuelQueued) {
         if (fuelExpiredAlertSpeed == AlertSpeed.OFF) return;
-        alertActive     = true;
+
+        if (onlyWhenAllExpired()) {
+            stackMinionCount = Math.max(stackMinionCount, minionCount);
+            if (moreFuelQueued) return;
+            minionCount = stackMinionCount;
+        }
+        stackMinionCount = 0;
+
+        alertActive     = repeatUntilSacksEmptied();
         lastMinionCount = minionCount;
         DiscordWebhookManager.sendFuelExpiredAlert(minionCount);
         lastAlertSentTime = System.currentTimeMillis();
@@ -72,6 +106,10 @@ public class FuelExpiredAlertTracker {
 
     public static void tick() {
         if (!alertActive || fuelExpiredAlertSpeed == AlertSpeed.OFF) return;
+        if (!repeatUntilSacksEmptied()) {
+            alertActive = false;
+            return;
+        }
 
         long now = System.currentTimeMillis();
         if (now - lastAlertSentTime >= fuelExpiredAlertSpeed.repeatAlertMs) {

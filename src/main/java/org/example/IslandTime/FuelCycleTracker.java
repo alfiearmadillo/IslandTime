@@ -802,12 +802,13 @@ public class FuelCycleTracker {
 
         String activeSlot = daySlotKey(cohortStartMs, activeDaySlotIndex);
         DayRecord activeRecord = dayRecords.get(activeSlot);
+        boolean closedActiveDay = false;
         if (activeRecord != null && !activeRecord.cycleClosed) {
             activeRecord.cycleEndMs = Math.max(activeRecord.cycleStartMs + 1, now);
             activeRecord.manualCycleTimes = true;
             activeRecord.cycleClosed = true;
             minionsCountedByDaySlot.remove(activeSlot);
-            FuelExpiredAlertTracker.onFuelDayUp(activeRecord.minionsRefueledAuto);
+            closedActiveDay = true;
         }
 
         long firstFutureSlotStart = cohortStartMs + (long) (activeDaySlotIndex + 1) * DAY_MS;
@@ -816,6 +817,11 @@ public class FuelCycleTracker {
             return record.cycleStartMs >= firstFutureSlotStart
                     && record.cycleStartMs <= maxExpiryForCurrentCohort();
         });
+
+        // Sent once the queued days are discarded, so "only when all fuel expires" counts this as the end
+        if (closedActiveDay) {
+            FuelExpiredAlertTracker.onFuelDayUp(activeRecord.minionsRefueledAuto, hasFuelQueuedAfter(activeRecord));
+        }
 
         minionsCountedByDaySlot.clear();
         minionExpiries.clear();
@@ -1378,7 +1384,9 @@ public class FuelCycleTracker {
         if (cachedFuelUnitCostCohortStart == cohortStart && cachedFuelUnitCost > 0) {
             return cachedFuelUnitCost;
         }
-        double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar());
+        IslandTimeConfig config = ConfigManager.getConfig();
+        boolean gabagoolOnly = config != null && config.fuelCycles.gabagoolDistillateOnly;
+        double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar(), gabagoolOnly);
         if (unitCost > 0) {
             cachedFuelUnitCost = unitCost;
             cachedFuelUnitCostCohortStart = cohortStart;
@@ -1489,7 +1497,31 @@ public class FuelCycleTracker {
         }
         record.cycleClosed = true;
         minionsCountedByDaySlot.remove(daySlot);
-        FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto);
+        FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto, hasFuelQueuedAfter(record));
+    }
+
+    private static boolean isClosed(DayRecord record) {
+        return record.manualCycleTimes ? record.cycleClosed : record.cycleEndMs > 0;
+    }
+
+    /** When a fuel-day ends: its set end time, or 24h after it started. */
+    private static long effectiveEndMs(DayRecord record) {
+        return record.cycleEndMs > record.cycleStartMs ? record.cycleEndMs : record.cycleStartMs + DAY_MS;
+    }
+
+    /**
+     * Whether another fuel-day that hasn't been closed yet ends at or after the end of {@code ending},
+     * i.e. whether fuel is still queued once that day is over. This is what the "only alert when all
+     * fuel expires" setting asks: fuel added later queues another day, which postpones the alert.
+     * Of several days with the same end, the one closed last is the one that counts as the end.
+     */
+    private static boolean hasFuelQueuedAfter(DayRecord ending) {
+        long end = effectiveEndMs(ending);
+        for (DayRecord other : dayRecords.values()) {
+            if (other == ending || other.cycleStartMs <= 0 || isClosed(other)) continue;
+            if (effectiveEndMs(other) >= end) return true;
+        }
+        return false;
     }
 
     /**
@@ -1516,23 +1548,29 @@ public class FuelCycleTracker {
      * client tick after the game/mod is running again.
      */
     public static void checkDueDayRecords(long now) {
-        boolean anyClosed = false;
+        List<DayRecord> due = new ArrayList<>();
         for (DayRecord record : dayRecords.values()) {
             if (record.cycleStartMs <= 0) continue; // hasn't started / unknown legacy record
-
-            boolean alreadyClosed = record.manualCycleTimes ? record.cycleClosed : record.cycleEndMs > 0;
-            if (alreadyClosed) continue;
+            if (isClosed(record)) continue;
 
             boolean manuallyTimed = record.manualCycleTimes && record.cycleEndMs > record.cycleStartMs;
             long effectiveEnd = manuallyTimed ? record.cycleEndMs : record.cycleStartMs + DAY_MS;
             if (now < effectiveEnd) continue;
+            due.add(record);
+        }
 
+        // Oldest first, so when several days are due at once (e.g. after being offline) it is
+        // only the last of them that counts as the end of the queued fuel
+        due.sort(Comparator.comparingLong(FuelCycleTracker::effectiveEndMs));
+
+        boolean anyClosed = false;
+        for (DayRecord record : due) {
             if (!record.manualCycleTimes) {
-                record.cycleEndMs = effectiveEnd;
+                record.cycleEndMs = effectiveEndMs(record);
             }
             record.cycleClosed = true;
             minionsCountedByDaySlot.remove(record.date);
-            FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto);
+            FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto, hasFuelQueuedAfter(record));
             anyClosed = true;
         }
 
