@@ -408,9 +408,10 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
                 name = "Fuel Alert Only When All Fuel Expires",
-                desc = "Send the fuel alert once, when the whole stack of fuel has run out, instead of each time " +
+                desc = "Send the fuel alert when the whole stack of fuel has run out, instead of each time " +
                         "a single fuel-day runs out. Fuel added before that postpones the alert to when all of " +
-                        "it has actually run out. Off keeps one alert per fuel-day."
+                        "it has actually run out. Off sends an alert per fuel-day. This only changes when the " +
+                        "alert is first sent; whether it then repeats is set by Repeat Fuel Alert Until."
         )
         @ConfigEditorBoolean
         public boolean fuelAlertOnlyWhenAllExpired = false;
