@@ -96,9 +96,60 @@ final class GreenhouseBlueprint {
         }
     }
 
-    /** An armor stand that wears a head, positioned relative to the greenhouse area. */
+    /**
+     * One thing an armor stand wears or holds.
+     *
+     * <p>{@link #key} is what two items are compared by; {@link #data} is the whole item (with a skull's
+     * texture and everything else), kept so a ghost of the stand can be drawn with it.
+     */
+    static final class Gear {
+        /** One of {@link #SLOTS}. */
+        String slot = "";
+        /** What identifies the item: its id and its name, for example {@code minecraft:player_head|Veilshroom}. */
+        String key = "";
+        /** The item's name, for example "Veilshroom". */
+        String name = "";
+        /** The item as Base64 of its compressed NBT, or "" if it wasn't kept (blueprints from before gear was copied). */
+        String data = "";
+
+        Gear() {}
+
+        Gear(String slot, String key, String name, String data) {
+            this.slot = slot;
+            this.key = key;
+            this.name = name;
+            this.data = data;
+        }
+
+        Gear copy() {
+            return new Gear(slot, key, name, data);
+        }
+    }
+
+    /** The equipment slots of an armor stand, as the game names them. */
+    static final String SLOT_HEAD = "head";
+    static final String[] SLOTS = {"head", "chest", "legs", "feet", "mainhand", "offhand"};
+
+    /** The flag bits of an armor stand, as the game stores them. */
+    static final int FLAG_SMALL = 1;
+    static final int FLAG_ARMS = 4;
+    static final int FLAG_NO_BASE_PLATE = 8;
+    static final int FLAG_MARKER = 16;
+
+    /** How many numbers {@link Stand#pose} holds: x, y and z rotation of head, body, left arm, right arm, left leg, right leg. */
+    static final int POSE_VALUES = 18;
+    private static final int POSE_LEFT_ARM = 6;
+    private static final int POSE_RIGHT_ARM = 9;
+    private static final int POSE_LEFT_LEG = 12;
+    private static final int POSE_RIGHT_LEG = 15;
+
+    /** The size of a standing armor stand, in blocks; small ones are half of it. */
+    static final double STAND_WIDTH = 0.5;
+    static final double STAND_HEIGHT = 1.975;
+
+    /** An armor stand and what it wears, positioned relative to the greenhouse area. */
     static final class Stand {
-        /** The name of the head item, for example "Veilshroom". */
+        /** The name of the head item, for example "Veilshroom". Empty if it wears none. */
         String head = "";
         /** Where the stand is, x and z in cells from the north west corner of the area, y from the top of the soil. */
         double x;
@@ -107,6 +158,16 @@ final class GreenhouseBlueprint {
         /** The stand's hitbox, in blocks (0 for a marker stand, which has none). */
         double width;
         double height;
+        /** Everything it wears or holds. Empty in blueprints from before gear was copied, which only check the head. */
+        List<Gear> gear = new ArrayList<>();
+        /** Which way it faces, in degrees: 0 is south, 90 west, 180 north, 270 east. */
+        float yaw;
+        /** The armor stand's flag bits: {@link #FLAG_SMALL}, {@link #FLAG_ARMS}, {@link #FLAG_NO_BASE_PLATE}, {@link #FLAG_MARKER}. */
+        int flags;
+        /** Whether the stand itself is invisible (so only what it wears is seen). */
+        boolean invisible;
+        /** Its pose: {@link #POSE_VALUES} rotations in degrees, or empty for the default pose. */
+        float[] pose = new float[0];
 
         Stand() {}
 
@@ -120,8 +181,115 @@ final class GreenhouseBlueprint {
         }
 
         Stand copy() {
-            return new Stand(head, x, y, z, width, height);
+            Stand s = new Stand(head, x, y, z, width, height);
+            for (Gear g : gear) s.gear.add(g.copy());
+            s.yaw = yaw;
+            s.flags = flags;
+            s.invisible = invisible;
+            s.pose = pose == null ? new float[0] : pose.clone();
+            return s;
         }
+
+        /** What to call this stand: its head, else the first thing it wears, else "Armor stand". */
+        String label() {
+            if (head != null && !head.isBlank()) return head;
+            for (Gear g : gear) {
+                if (g.name != null && !g.name.isBlank()) return g.name;
+            }
+            return "Armor stand";
+        }
+
+        boolean small() {
+            return (flags & FLAG_SMALL) != 0;
+        }
+
+        /** How wide it looks, which for a marker stand (no hitbox) is still the size of the model. */
+        double visualWidth() {
+            return width > 0 ? width : STAND_WIDTH * (small() ? 0.5 : 1.0);
+        }
+
+        /** How tall it looks, see {@link #visualWidth()}. */
+        double visualHeight() {
+            return height > 0 ? height : STAND_HEIGHT * (small() ? 0.5 : 1.0);
+        }
+
+        /** Whether the item for every piece of gear was kept, so the stand can be drawn as itself. */
+        boolean drawable() {
+            if (gear.isEmpty()) return false;
+            for (Gear g : gear) {
+                if (g.data == null || g.data.isEmpty()) return false;
+            }
+            return true;
+        }
+
+        /** The gear in a slot, or null. */
+        Gear gearIn(String slot) {
+            for (Gear g : gear) {
+                if (slot.equals(g.slot)) return g;
+            }
+            return null;
+        }
+
+        /** Repairs anything missing in a stand loaded from an older or hand edited file. */
+        void upgrade() {
+            if (head == null) head = "";
+            if (gear == null) gear = new ArrayList<>();
+            gear.removeIf(g -> g == null || g.slot == null || g.slot.isEmpty());
+            for (Gear g : gear) {
+                if (g.key == null) g.key = "";
+                if (g.name == null) g.name = "";
+                if (g.data == null) g.data = "";
+            }
+            if (pose == null || pose.length != POSE_VALUES) pose = new float[0];
+            for (float value : pose) {
+                if (!Float.isFinite(value)) {
+                    pose = new float[0];
+                    break;
+                }
+            }
+            yaw = Float.isFinite(yaw) ? normalizeYaw(yaw) : 0.0f;
+        }
+
+        /** Mirrors it west to east in a board that is {@code n} cells across. */
+        void mirror(int n) {
+            x = n - x;
+            yaw = normalizeYaw(-yaw);
+            if (pose != null && pose.length == POSE_VALUES) {
+                // A mirrored rotation turns the other way round the y and z axes, and the left limbs become the right ones
+                float[] mirrored = pose.clone();
+                for (int i = 0; i < POSE_VALUES; i += 3) {
+                    mirrored[i + 1] = -mirrored[i + 1];
+                    mirrored[i + 2] = -mirrored[i + 2];
+                }
+                swap(mirrored, POSE_LEFT_ARM, POSE_RIGHT_ARM);
+                swap(mirrored, POSE_LEFT_LEG, POSE_RIGHT_LEG);
+                pose = mirrored;
+            }
+        }
+
+        /** Turns it a quarter clockwise in a board that is {@code n} cells across. */
+        void turnClockwise(int n) {
+            double sx = x;
+            x = n - z;
+            z = sx;
+            yaw = normalizeYaw(yaw + 90.0f);
+        }
+
+        private static void swap(float[] a, int from, int to) {
+            for (int i = 0; i < 3; i++) {
+                float t = a[from + i];
+                a[from + i] = a[to + i];
+                a[to + i] = t;
+            }
+        }
+    }
+
+    /** An angle in degrees, brought into [-180, 180). */
+    static float normalizeYaw(float degrees) {
+        float wrapped = degrees % 360.0f;
+        if (wrapped >= 180.0f) wrapped -= 360.0f;
+        if (wrapped < -180.0f) wrapped += 360.0f;
+        return wrapped;
     }
 
     /**
@@ -186,7 +354,8 @@ final class GreenhouseBlueprint {
             if (name == null) name = "";
             if (block == null) block = "";
             if (stands == null) stands = new ArrayList<>();
-            stands.removeIf(s -> s == null || s.head == null);
+            stands.removeIf(s -> s == null);
+            for (Stand s : stands) s.upgrade();
             if (size < 1) size = 1;
             if (!block.isEmpty() || !stands.isEmpty()) return;
 
@@ -275,8 +444,8 @@ final class GreenhouseBlueprint {
     }
 
     /**
-     * Mirrors a board west to east, then turns it clockwise by quarter turns. Crops, armor stands and
-     * the floor all move together.
+     * Mirrors a board west to east, then turns it clockwise by quarter turns. Crops, armor stands (and
+     * the way they face and are posed) and the floor all move together.
      *
      * @return a new board; the one passed in is not changed
      */
@@ -291,7 +460,7 @@ final class GreenhouseBlueprint {
             if (mirror) {
                 p.x = n - p.x - p.size;
                 p.block = turnFacing(p.block, true, 0);
-                for (Stand s : p.stands) s.x = n - s.x;
+                for (Stand s : p.stands) s.mirror(n);
             }
             for (int i = 0; i < turns; i++) {
                 int x = p.x;
@@ -299,11 +468,7 @@ final class GreenhouseBlueprint {
                 p.x = n - z - p.size;
                 p.z = x;
                 p.block = turnFacing(p.block, false, 1);
-                for (Stand s : p.stands) {
-                    double sx = s.x;
-                    s.x = n - s.z;
-                    s.z = sx;
-                }
+                for (Stand s : p.stands) s.turnClockwise(n);
             }
             result.placements.add(p);
         }

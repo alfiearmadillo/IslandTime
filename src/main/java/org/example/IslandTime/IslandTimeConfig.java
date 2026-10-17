@@ -814,9 +814,19 @@ public class IslandTimeConfig extends Config {
         public boolean hideCompleted = true;
 
         @Expose
-        @ConfigOption(name = "Ghost Block Models", desc = "Draw the ghosts as see-through copies of the real blocks (crops and soil), so they look like what you have to place. Turn this off to use plain coloured boxes instead, for example if the ghosts ever look wrong. Armor stands are always drawn as boxes, because a stand's head can't be drawn see-through")
+        @ConfigOption(name = "Ghost Block Models", desc = "Draw the ghosts as see-through copies of the real blocks (crops and soil), so they look like what you have to place. Turn this off to use plain coloured boxes instead, for example if the ghosts ever look wrong. Armor stands have their own setting")
         @ConfigEditorBoolean
         public boolean ghostBlocks = true;
+
+        @Expose
+        @ConfigOption(name = "Ghost Armor Stands", desc = "Draw the layout's armor stands as see-through copies of the real ones, with the armor and items they wear or hold and their skull textures, so a custom crop looks like what you have to build. Turn this off to use plain coloured boxes instead, for example if the ghosts ever look wrong. Layouts copied before this existed only have the stand's head name, so they stay boxes until you copy them again")
+        @ConfigEditorBoolean
+        public boolean ghostStands = true;
+
+        @Expose
+        @ConfigOption(name = "Outline Incorrect", desc = "Draw a red outline around every block (air included), soil block and armor stand that the layout wants and that isn't right, and around anything in the area that the layout doesn't have. The outline is also drawn over a ghost, so you can still see that a different block than the planned one is in its space")
+        @ConfigEditorBoolean
+        public boolean incorrectOutline = true;
 
         @Expose
         @ConfigOption(name = "Check Floor", desc = "Also copy and compare the soil under the crops: a ghost block shows where a soil block is missing or the wrong type, and the legend lists the soil the layout needs. Turn this off to ignore the floor. Layouts always store the floor when you copy them")
@@ -829,7 +839,7 @@ public class IslandTimeConfig extends Config {
         public int opacity = 40;
 
         @Expose
-        @ConfigOption(name = "Show Through Walls", desc = "Draw the ghost boxes on top of everything, including blocks and crops in front of them. Ghost block models are always hidden behind blocks in front of them")
+        @ConfigOption(name = "Show Through Walls", desc = "Draw the ghost boxes and red outlines on top of everything, including blocks and crops in front of them. Ghost block models and armor stands are always hidden behind blocks in front of them")
         @ConfigEditorBoolean
         public boolean throughWalls = false;
 

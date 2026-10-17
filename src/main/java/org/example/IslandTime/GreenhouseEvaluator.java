@@ -31,8 +31,17 @@ final class GreenhouseEvaluator {
      *
      * @param blockOk  the block part is right (or there is none to check)
      * @param standsOk the armor stand part is right (or there is none to check)
+     * @param standOk  for each of the placement's armor stands, in order, whether a matching one is there
+     * @param unwanted the armor stands in the way: there when none (or a different one) is wanted
      */
-    record Result(GreenhouseBlueprint.Placement placement, Status status, boolean blockOk, boolean standsOk) {}
+    record Result(GreenhouseBlueprint.Placement placement, Status status, boolean blockOk, boolean standsOk,
+                  boolean[] standOk, List<GreenhouseBlueprint.Stand> unwanted) {}
+
+    /**
+     * Something in the greenhouse area that no placement accounts for: a block in the crop layer
+     * ({@code stand} is null) or an armor stand. {@code x} and {@code z} are the cell it is in.
+     */
+    record Extra(int x, int z, GreenhouseBlueprint.Stand stand) {}
 
     /** How one cell of the soil stands, for cells the blueprint has a floor block for. */
     record FloorResult(int x, int z, String block, Status status) {}
@@ -40,9 +49,10 @@ final class GreenhouseEvaluator {
     /**
      * Everything about a greenhouse measured against one oriented board.
      *
-     * @param extras how many cells outside every placement have a block or an armor stand on them
+     * @param extras     how many cells outside every placement have a block or an armor stand on them
+     * @param extraSpots what is on them (a cell with a block and a stand is listed twice)
      */
-    record Evaluation(List<Result> cells, List<FloorResult> floor, int extras) {
+    record Evaluation(List<Result> cells, List<FloorResult> floor, int extras, List<Extra> extraSpots) {
         int done() {
             return count(Status.DONE);
         }
@@ -110,7 +120,9 @@ final class GreenhouseEvaluator {
                 }
             }
         }
-        return new Evaluation(cells, floor, countExtras(board, scan, unowned));
+        List<Extra> extraSpots = new ArrayList<>();
+        int extras = findExtras(board, scan, unowned, extraSpots);
+        return new Evaluation(cells, floor, extras, extraSpots);
     }
 
     private static Result evaluatePlacement(GreenhouseBlueprint.Placement p, GreenhouseScan.Scan scan,
@@ -133,29 +145,39 @@ final class GreenhouseEvaluator {
         // The armor stands that belong to this placement (see ownerOf)
         boolean standsOk;
         boolean standsWrong;
+        boolean[] standOk = new boolean[p.stands.size()];
+        List<GreenhouseBlueprint.Stand> unwanted = new ArrayList<>();
         if (p.stands.isEmpty()) {
             standsOk = near.isEmpty();
             standsWrong = !standsOk;
+            unwanted.addAll(near);
         } else {
             boolean[] used = new boolean[near.size()];
             int unmatched = 0;
-            for (GreenhouseBlueprint.Stand wanted : p.stands) {
+            for (int w = 0; w < p.stands.size(); w++) {
+                GreenhouseBlueprint.Stand wanted = p.stands.get(w);
                 int hit = -1;
                 for (int i = 0; i < near.size() && hit < 0; i++) {
-                    if (!used[i] && GreenhouseScan.sameStand(wanted.head, near.get(i).head)) hit = i;
+                    if (!used[i] && GreenhouseScan.sameStand(wanted, near.get(i))) hit = i;
                 }
                 if (hit < 0) unmatched++;
                 else used[hit] = true;
+                standOk[w] = hit >= 0;
             }
             int leftover = 0;
             for (boolean u : used) if (!u) leftover++;
             standsOk = unmatched == 0;
             // Missing one isn't wrong, but having a different one instead is. Spare ones are put up with.
             standsWrong = unmatched > 0 && leftover > 0;
+            if (standsWrong) {
+                for (int i = 0; i < near.size(); i++) {
+                    if (!used[i]) unwanted.add(near.get(i));
+                }
+            }
         }
 
         Status status = blockOk && standsOk ? Status.DONE : blockWrong || standsWrong ? Status.WRONG : Status.MISSING;
-        return new Result(p, status, blockOk, standsOk);
+        return new Result(p, status, blockOk, standsOk, standOk, unwanted);
     }
 
     /**
@@ -196,20 +218,29 @@ final class GreenhouseEvaluator {
         return best;
     }
 
-    /** Counts the cells no placement covers that have a block or an armor stand of nobody's on them anyway. */
-    private static int countExtras(GreenhouseBlueprint.Board board, GreenhouseScan.Scan scan,
-                                   List<GreenhouseBlueprint.Stand> unowned) {
+    /**
+     * Finds the cells no placement covers that have a block or an armor stand of nobody's on them anyway.
+     *
+     * @param spots receives what was found
+     * @return how many cells that is
+     */
+    private static int findExtras(GreenhouseBlueprint.Board board, GreenhouseScan.Scan scan,
+                                  List<GreenhouseBlueprint.Stand> unowned, List<Extra> spots) {
         int n = board.size;
         boolean[][] busy = new boolean[n][n];
         for (GreenhouseScan.BlockCell cell : scan.blocks()) {
             if (cell.x() >= 0 && cell.x() < n && cell.z() >= 0 && cell.z() < n && !covers(board, cell.x() + 0.5, cell.z() + 0.5)) {
                 busy[cell.z()][cell.x()] = true;
+                spots.add(new Extra(cell.x(), cell.z(), null));
             }
         }
         for (GreenhouseBlueprint.Stand stand : unowned) {
             int x = (int) Math.floor(stand.x);
             int z = (int) Math.floor(stand.z);
-            if (x >= 0 && x < n && z >= 0 && z < n) busy[z][x] = true;
+            if (x >= 0 && x < n && z >= 0 && z < n) {
+                busy[z][x] = true;
+                spots.add(new Extra(x, z, stand));
+            }
         }
         int extras = 0;
         for (boolean[] row : busy) {

@@ -163,8 +163,8 @@ final class GreenhouseBlueprintCommand {
             return;
         }
         send(client, "Copy preview on. The gold frame is the greenhouse area. Coloured boxes are the crops that "
-                + "would be saved: the blocks, and the armor stands (a custom crop is a block with an armor stand "
-                + "on it). The soil under them is saved too.", ChatFormatting.GREEN);
+                + "would be saved: the blocks, and the armor stands with what they wear and hold (a custom crop "
+                + "is a block with an armor stand on it). The soil under them is saved too.", ChatFormatting.GREEN);
         sendLine(client, "Plant or change things until it looks right, then /it blueprint save <name>. To add it "
                 + "to the selected blueprint as another plot's board, use /it blueprint addboard instead. "
                 + "/it blueprint cancel stops the preview.", ChatFormatting.GRAY);
@@ -191,10 +191,28 @@ final class GreenhouseBlueprintCommand {
 
         send(client, "Saved \"" + blueprint.name + "\" (" + summary(capture.board()) + " from plot "
                 + plot.x() + "," + plot.z() + ") and selected it.", ChatFormatting.GREEN);
-        sendLine(client, "It is drawn over greenhouse plots in the Garden as see-through blocks, and whatever "
-                + "you build correctly disappears from it. A greenhouse with more plots can have up to "
+        sendLine(client, "It is drawn over greenhouse plots in the Garden as see-through blocks and armor stands, "
+                + "with a red outline around what isn't right yet, and whatever you build correctly disappears "
+                + "from it. A greenhouse with more plots can have up to "
                 + GreenhouseBlueprint.MAX_BOARDS + " boards: copy another plot and use /it blueprint addboard.",
                 ChatFormatting.GRAY);
+        int boxes = standsWithoutItems(capture.board());
+        if (boxes > 0) {
+            sendLine(client, boxes + " armor stand" + (boxes == 1 ? "" : "s") + " couldn't be copied with "
+                    + (boxes == 1 ? "its" : "their") + " items, so " + (boxes == 1 ? "it is" : "they are")
+                    + " drawn as a box.", ChatFormatting.YELLOW);
+        }
+    }
+
+    /** How many of a copied board's armor stands have no items to draw them with. */
+    private static int standsWithoutItems(GreenhouseBlueprint.Board board) {
+        int n = 0;
+        for (GreenhouseBlueprint.Placement p : board.placements) {
+            for (GreenhouseBlueprint.Stand stand : p.stands) {
+                if (!stand.drawable()) n++;
+            }
+        }
+        return n;
     }
 
     /** Adds the plot's greenhouse area to the selected blueprint as another board. */

@@ -31,7 +31,7 @@ final class GreenhouseCapture {
      * What is left is grouped by cell: the block in the crop layer, plus any armor stands there. So a
      * custom crop that borrows nether wart is stored as a nether wart <em>with</em> its armor stand,
      * and a real nether wart as the block alone. Stands outside the area are ignored. Armor stands
-     * without a head are not scanned at all, which keeps holograms out.
+     * that wear and hold nothing are not scanned at all, which keeps holograms out.
      */
     static GreenhouseBlueprint.Board toBoard(GreenhouseScan.Scan scan) {
         int n = GreenhouseGeometry.AREA_SIZE;
@@ -142,7 +142,7 @@ final class GreenhouseCapture {
         List<String> parts = new ArrayList<>();
         if (!p.block.isEmpty()) parts.add(GreenhouseScan.prettyName(p.block));
         for (GreenhouseBlueprint.Stand stand : p.stands) {
-            if (!parts.contains(stand.head)) parts.add(stand.head);
+            if (!parts.contains(stand.label())) parts.add(stand.label());
         }
         p.name = String.join(" + ", parts);
     }

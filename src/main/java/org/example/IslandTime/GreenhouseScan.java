@@ -1,6 +1,7 @@
 package org.example.islandtime;
 
 import java.awt.Color;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -18,7 +19,7 @@ final class GreenhouseScan {
     /**
      * @param floor  the block id under each cell (z * size + x), "" where there is none
      * @param blocks every non-air block in the crop layer
-     * @param stands every armor stand wearing a head
+     * @param stands every armor stand that wears or holds something (stands with nothing on are holograms)
      */
     record Scan(List<String> floor, List<BlockCell> blocks, List<GreenhouseBlueprint.Stand> stands) {
 
@@ -89,6 +90,37 @@ final class GreenhouseScan {
     static boolean sameStand(String headA, String headB) {
         String a = standKey(headA);
         return !a.isEmpty() && a.equals(standKey(headB));
+    }
+
+    /**
+     * Whether an armor stand found in the greenhouse is the one the layout wants: the same head (by
+     * name, so a skull whose texture changed as the crop grew still counts), and the same armor and
+     * held items. A layout from before gear was copied only has its head to go by.
+     */
+    static boolean sameStand(GreenhouseBlueprint.Stand wanted, GreenhouseBlueprint.Stand actual) {
+        boolean wantedHead = wanted.head != null && !wanted.head.isBlank();
+        boolean actualHead = actual.head != null && !actual.head.isBlank();
+        if (wantedHead != actualHead) return false;
+        if (wantedHead && !sameStand(wanted.head, actual.head)) return false;
+        return wanted.gear.isEmpty() || differingSlots(wanted, actual).isEmpty();
+    }
+
+    /**
+     * The slots (other than the head, which {@link #sameStand(GreenhouseBlueprint.Stand, GreenhouseBlueprint.Stand)}
+     * compares by name) where two stands wear or hold different things, including a piece one of them has
+     * and the other hasn't.
+     */
+    static List<String> differingSlots(GreenhouseBlueprint.Stand wanted, GreenhouseBlueprint.Stand actual) {
+        List<String> slots = new ArrayList<>();
+        for (String slot : GreenhouseBlueprint.SLOTS) {
+            if (slot.equals(GreenhouseBlueprint.SLOT_HEAD)) continue;
+            GreenhouseBlueprint.Gear a = wanted.gearIn(slot);
+            GreenhouseBlueprint.Gear b = actual.gearIn(slot);
+            String keyA = a == null ? "" : a.key;
+            String keyB = b == null ? "" : b.key;
+            if (!keyA.equals(keyB)) slots.add(slot);
+        }
+        return slots;
     }
 
     /** {@code minecraft:soul_sand} becomes {@code Soul Sand}. */
