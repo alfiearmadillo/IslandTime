@@ -135,6 +135,7 @@ public class IslandTimeCommand {
                 .then(buildFuelcostCommand())
                 .then(buildMinionIdCommand())
                 .then(buildComposterCommand())
+                .then(GreenhouseBlueprintCommand.build())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -346,6 +347,7 @@ public class IslandTimeCommand {
                 .then(buildFuelcostCommand())
                 .then(buildMinionIdCommand())
                 .then(buildComposterCommand())
+                .then(GreenhouseBlueprintCommand.build())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -817,6 +819,9 @@ public class IslandTimeCommand {
                 {"/it settingscycle", "Cycle to the next loadout in the current group"},
                 {"/it composter", "Show composter tracking status and when it is estimated to run empty (configure alerts under Composter in /it GUI)"},
                 {"/it composter debug", "Copy the tab list and last Composter menu contents to the clipboard (for when the composter is not found)"},
+                {"/it blueprint import [link]", "Import a greenhouse layout from a skylayouts.io or skymutations.eu link (uses your clipboard if no link is given). It is drawn as a ghost over the greenhouse plot you stand in, in the Garden only"},
+                {"/it blueprint list|select <name>|delete <name>", "List, switch between and delete imported greenhouse blueprints"},
+                {"/it blueprint board <n>|rotate [left|right]|mirror|align|toggle|status", "Pick the board for this plot, turn or mirror the layout (align fits it to crops you have already planted), switch the overlay on or off, or check why it isn't showing"},
         };
 
         int commandsPerPage = 5;

@@ -29,6 +29,7 @@ public class IslandTimeMod implements ClientModInitializer {
         BlockHighlightManager.load();
         AgingItemsConfig.load();
         ComposterTracker.load();
+        GreenhouseBlueprintManager.load();
         IslandChatRelay.register();
         ChatMessageStore.register();
         NewYearCakeTracker.register();
@@ -57,6 +58,7 @@ public class IslandTimeMod implements ClientModInitializer {
             NewYearCakeTracker.tick();
             BackpackHoverHandler.tick(client);
             SparklingAlert.tick(client);
+            GreenhouseBlueprintRenderer.tick(client);
             ComposterTracker.tick(client);
             WailaHandler.tickKeybind(client);
         });
@@ -81,6 +83,9 @@ public class IslandTimeMod implements ClientModInitializer {
 
         // Register block highlight renderer
         BlockHighlightRenderer.register();
+
+        // Register the Garden greenhouse blueprint overlay and its legend
+        GreenhouseBlueprintRenderer.register();
 
         // Register the Critter Safari widget, its chat listener, and the sparkling tracer
         CritterSafariHud.register();
@@ -108,6 +113,7 @@ public class IslandTimeMod implements ClientModInitializer {
             ResourcePackConfig.save();       // Save resource pack config
             BlockHighlightManager.save();    // Save block highlight entries
             ComposterTracker.save();
+            GreenhouseBlueprintManager.save(); // Save greenhouse blueprints
 
             DiscordWebhookManager.shutdown();
             IslandChatRelay.shutdown();      // stops poller + webhook thread

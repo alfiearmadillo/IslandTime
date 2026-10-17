@@ -79,6 +79,10 @@ public class IslandTimeConfig extends Config {
     public CritterSafari critterSafari = new CritterSafari();
 
     @Expose
+    @Category(name = "Greenhouse Blueprint", desc = "Litematica-style ghost preview of a greenhouse layout over your Garden greenhouse plots, imported from skylayouts.io or skymutations.eu with /it blueprint import")
+    public GreenhouseBlueprintSettings greenhouseBlueprint = new GreenhouseBlueprintSettings();
+
+    @Expose
     @Category(name = "Player List", desc = "Manage a list of players for quick party/invite actions")
     public PlayerList playerList = new PlayerList();
 
@@ -786,6 +790,63 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Default Min Size Box", desc = "Default for new entries: give entities that have no hitbox (marker armor stands, markers, display entities) a 1 block highlight box so they can be seen. Can be changed per entry in the highlights GUI")
         @ConfigEditorBoolean
         public boolean minSizeBox = false;
+    }
+
+    public static class GreenhouseBlueprintSettings {
+        @Expose
+        @ConfigOption(name = "Enabled", desc = "Draw the selected greenhouse blueprint over the greenhouse plot you are standing in. Import a layout with /it blueprint import <skylayouts.io or skymutations.eu link>, or with no link to read it from your clipboard. /it blueprint toggle switches this on and off")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(name = "Only Show In Garden", desc = "Only show the blueprint while the tab list reports that you are in the Garden. Turn this off if the overlay stays hidden in the Garden")
+        @ConfigEditorBoolean
+        public boolean onlyInGarden = true;
+
+        @Expose
+        @ConfigOption(name = "Show In Any Plot", desc = "Show the blueprint in whatever garden plot you are standing in, without checking that it has a greenhouse. A greenhouse plot is recognised by the Carpenter NPC; turn this on if your greenhouse isn't picked up (see /it blueprint status)")
+        @ConfigEditorBoolean
+        public boolean ignoreGreenhouseCheck = false;
+
+        @Expose
+        @ConfigOption(name = "Hide Completed", desc = "Stop drawing a ghost once the right crop has been planted in its spot, so only what is left to plant stays on screen")
+        @ConfigEditorBoolean
+        public boolean hideCompleted = true;
+
+        @Expose
+        @ConfigOption(name = "Ghost Opacity", desc = "How solid the ghost boxes are, in percent")
+        @ConfigEditorSlider(minValue = 5, maxValue = 100, minStep = 5)
+        public int opacity = 40;
+
+        @Expose
+        @ConfigOption(name = "Show Through Walls", desc = "Draw the ghosts on top of everything, including blocks and crops in front of them")
+        @ConfigEditorBoolean
+        public boolean throughWalls = false;
+
+        @Expose
+        @ConfigOption(name = "Show Crop Names", desc = "Write the crop's name above its ghost while you are close to it")
+        @ConfigEditorBoolean
+        public boolean showLabels = true;
+
+        @Expose
+        @ConfigOption(name = "Crop Name Range", desc = "How close (in blocks) you have to be to a ghost to see its name")
+        @ConfigEditorSlider(minValue = 2, maxValue = 20, minStep = 1)
+        public int labelRange = 6;
+
+        @Expose
+        @ConfigOption(name = "Show Legend", desc = "Show a list of the layout's crops with how many of each are planted")
+        @ConfigEditorBoolean
+        public boolean showLegend = true;
+
+        @Expose
+        @ConfigOption(name = "Legend X", desc = "Horizontal legend position as a percentage of the screen (0 = left, 100 = right)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int legendX = 0;
+
+        @Expose
+        @ConfigOption(name = "Legend Y", desc = "Vertical legend position as a percentage of the screen (0 = top, 100 = bottom)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int legendY = 30;
     }
 
     public static class Waila {
