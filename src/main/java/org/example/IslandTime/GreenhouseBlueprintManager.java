@@ -151,14 +151,16 @@ public class GreenhouseBlueprintManager {
     }
 
     /**
-     * Adds a board to a blueprint, for another plot's greenhouse, and uses it for that plot.
+     * Adds a board copied from the world to a blueprint, for another plot's greenhouse, and uses it for
+     * that plot. The board is stored turned back by the blueprint's rotation and mirroring, so it is
+     * drawn the way it was copied.
      *
      * @return false if the blueprint already has the most boards it can hold
      */
     static synchronized boolean addBoard(GreenhouseBlueprint blueprint, GreenhouseBlueprint.Board board,
                                          int plotX, int plotZ) {
         if (blueprint.boards.size() >= GreenhouseBlueprint.MAX_BOARDS) return false;
-        blueprint.boards.add(board);
+        blueprint.boards.add(blueprint.toStoredBoard(board));
         blueprint.plotBoards.put(GreenhouseGeometry.plotKey(plotX, plotZ), blueprint.boards.size() - 1);
         save();
         return true;

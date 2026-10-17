@@ -78,6 +78,23 @@ final class GreenhouseBlueprint {
     }
 
     /**
+     * Turns a board as it looks in the world into the form this blueprint stores, so that once
+     * {@link #rotation} and {@link #mirrored} are applied again it looks the same as it did. A board
+     * copied from the game has to go through this before it joins a blueprint that has been turned.
+     */
+    Board toStoredBoard(Board board) {
+        Board turned = new Board();
+        turned.size = board.size;
+        turned.placements = transform(board, -rotation, false);
+        if (!mirrored) return turned;
+
+        Board stored = new Board();
+        stored.size = board.size;
+        stored.placements = transform(turned, 0, true);
+        return stored;
+    }
+
+    /**
      * Mirrors a board west to east, then turns it clockwise by quarter turns.
      *
      * @return new placements; the board itself is not changed
