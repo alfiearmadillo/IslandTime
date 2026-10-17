@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -42,9 +41,7 @@ public class GreenhouseBlueprintManager {
                     if (loaded.blueprints == null) loaded.blueprints = new ArrayList<>();
                     if (loaded.active == null) loaded.active = "";
                     loaded.blueprints.removeIf(b -> b == null || b.boards == null || b.id == null);
-                    for (GreenhouseBlueprint b : loaded.blueprints) {
-                        if (b.plotBoards == null) b.plotBoards = new LinkedHashMap<>();
-                    }
+                    for (GreenhouseBlueprint b : loaded.blueprints) b.upgrade();
                     data = loaded;
                 }
             }

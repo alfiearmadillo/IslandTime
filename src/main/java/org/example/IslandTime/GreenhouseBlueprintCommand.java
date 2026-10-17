@@ -162,9 +162,10 @@ final class GreenhouseBlueprintCommand {
             send(client, blocker, ChatFormatting.RED);
             return;
         }
-        send(client, "Copy preview on. The gold frame is the greenhouse area and the coloured boxes are the "
-                + "crops that would be saved.", ChatFormatting.GREEN);
-        sendLine(client, "Plant or change crops until it looks right, then /it blueprint save <name>. To add it "
+        send(client, "Copy preview on. The gold frame is the greenhouse area. Coloured boxes are the crops that "
+                + "would be saved: the blocks, and the armor stands (a custom crop is a block with an armor stand "
+                + "on it). The soil under them is saved too.", ChatFormatting.GREEN);
+        sendLine(client, "Plant or change things until it looks right, then /it blueprint save <name>. To add it "
                 + "to the selected blueprint as another plot's board, use /it blueprint addboard instead. "
                 + "/it blueprint cancel stops the preview.", ChatFormatting.GRAY);
         sendLine(client, "Stay close to the greenhouse so all of it is loaded.", ChatFormatting.GRAY);
@@ -188,12 +189,12 @@ final class GreenhouseBlueprintCommand {
         }
         GreenhouseBlueprintRenderer.stopCopy();
 
-        int crops = capture.board().placements.size();
-        send(client, "Saved \"" + blueprint.name + "\" (" + crops + " crop" + (crops == 1 ? "" : "s")
-                + " from plot " + plot.x() + "," + plot.z() + ") and selected it.", ChatFormatting.GREEN);
-        sendLine(client, "It is drawn over greenhouse plots in the Garden, and crops you plant correctly "
-                + "disappear from it. A greenhouse with more plots can have up to " + GreenhouseBlueprint.MAX_BOARDS
-                + " boards: copy another plot and use /it blueprint addboard.", ChatFormatting.GRAY);
+        send(client, "Saved \"" + blueprint.name + "\" (" + summary(capture.board()) + " from plot "
+                + plot.x() + "," + plot.z() + ") and selected it.", ChatFormatting.GREEN);
+        sendLine(client, "It is drawn over greenhouse plots in the Garden as see-through blocks, and whatever "
+                + "you build correctly disappears from it. A greenhouse with more plots can have up to "
+                + GreenhouseBlueprint.MAX_BOARDS + " boards: copy another plot and use /it blueprint addboard.",
+                ChatFormatting.GRAY);
     }
 
     /** Adds the plot's greenhouse area to the selected blueprint as another board. */
@@ -212,8 +213,31 @@ final class GreenhouseBlueprintCommand {
             return;
         }
         GreenhouseBlueprintRenderer.stopCopy();
-        send(client, "Added board " + active.boards.size() + " to \"" + active.name + "\" and set it for plot "
-                + plot.x() + "," + plot.z() + ".", ChatFormatting.GREEN);
+        send(client, "Added board " + active.boards.size() + " (" + summary(capture.board()) + ") to \""
+                + active.name + "\" and set it for plot " + plot.x() + "," + plot.z() + ".", ChatFormatting.GREEN);
+    }
+
+    /** "12 crops (3 with armor stands), 100 soil blocks of 2 kinds" for a copied board. */
+    private static String summary(GreenhouseBlueprint.Board board) {
+        int crops = board.placements.size();
+        int withStands = 0;
+        for (GreenhouseBlueprint.Placement p : board.placements) {
+            if (!p.stands.isEmpty()) withStands++;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(crops).append(" crop").append(crops == 1 ? "" : "s");
+        if (withStands > 0) sb.append(" (").append(withStands).append(" with armor stands)");
+        if (board.hasFloor()) {
+            int soil = 0;
+            for (int z = 0; z < board.size; z++) {
+                for (int x = 0; x < board.size; x++) {
+                    if (!board.floorAt(x, z).isEmpty()) soil++;
+                }
+            }
+            sb.append(", ").append(soil).append(" soil block").append(soil == 1 ? "" : "s").append(" of ")
+                    .append(board.floorPalette.size()).append(" kind").append(board.floorPalette.size() == 1 ? "" : "s");
+        }
+        return sb.toString();
     }
 
     private static void cancel(Minecraft client) {
@@ -300,7 +324,7 @@ final class GreenhouseBlueprintCommand {
         send(client, "Mirroring " + (active.mirrored ? "on" : "off") + ".", ChatFormatting.GREEN);
     }
 
-    /** Picks the rotation and mirroring that best fits the crops already planted in this plot. */
+    /** Picks the rotation and mirroring that best fits what is already built in this plot. */
     private static void align(Minecraft client) {
         GreenhouseBlueprint active = requireActive(client);
         if (active == null) return;
@@ -311,24 +335,31 @@ final class GreenhouseBlueprintCommand {
         }
         GreenhouseBlueprint.Board board = active.boardForPlot(plot.x(), plot.z());
         if (board == null) return;
+        if (!GreenhouseBlueprintRenderer.areaLoaded(client.level, plot)) {
+            send(client, "Part of this plot's greenhouse area isn't loaded. Move closer to it and try again.",
+                    ChatFormatting.RED);
+            return;
+        }
 
-        List<GreenhouseEvaluator.Detected> planted = GreenhouseBlueprintRenderer.detectPlanted(client.level, plot);
-        if (planted.isEmpty()) {
+        GreenhouseScan.Scan scan = GreenhouseBlueprintRenderer.scan(client.level, plot);
+        if (!scan.hasCrops() && !board.hasFloor()) {
             send(client, "Nothing is planted in this plot's greenhouse area. Plant a few crops from the "
                     + "layout first, then run this again.", ChatFormatting.RED);
             return;
         }
         GreenhouseEvaluator.Orientation best =
-                GreenhouseEvaluator.bestOrientation(board, planted, active.rotation, active.mirrored);
-        if (best.done() == 0) {
-            send(client, "None of the planted crops match the layout in any direction, so the direction "
-                    + "was left as it is.", ChatFormatting.RED);
+                GreenhouseEvaluator.bestOrientation(board, scan, active.rotation, active.mirrored);
+        boolean changed = best.rotation() != Math.floorMod(active.rotation, 4) || best.mirrored() != active.mirrored;
+        if (best.done() == 0 && !changed) {
+            send(client, "Couldn't tell which way the layout is turned: nothing planted matches it, and the soil "
+                    + "fits every direction equally. The direction was left as it is.", ChatFormatting.RED);
             return;
         }
         GreenhouseBlueprintManager.setOrientation(active, best.rotation(), best.mirrored());
         GreenhouseBlueprintRenderer.requestRefresh();
         send(client, "Aligned: rotated " + active.rotation * 90 + "°" + (active.mirrored ? ", mirrored" : "")
-                + " (" + best.done() + " planted crops match).", ChatFormatting.GREEN);
+                + " (" + best.done() + " crop" + (best.done() == 1 ? "" : "s") + " and " + best.floorDone()
+                + " soil block" + (best.floorDone() == 1 ? "" : "s") + " match).", ChatFormatting.GREEN);
     }
 
     private static void toggle(Minecraft client) {

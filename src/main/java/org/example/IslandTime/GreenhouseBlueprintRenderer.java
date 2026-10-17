@@ -28,16 +28,23 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 /**
  * Draws a greenhouse blueprint over the greenhouse plot the player is standing in, in the style of
- * Litematica: a translucent coloured ghost for every crop that still has to be planted, labelled with
- * the crop's name when you are close. Crops that are already planted correctly disappear from the
- * overlay; a different crop in the wrong place is flagged in red. A small legend shows how many of
- * each crop are still to go.
+ * Litematica: a see-through ghost of every block that still has to be placed.
+ *
+ * <ul>
+ *   <li>Crops that are blocks are drawn as translucent copies of the real block model (see
+ *       {@link GreenhouseGhostBlocks}), and so is any soil block that is missing or wrong.</li>
+ *   <li>Armor stands (custom crops, and big crops like Godseed) are drawn as translucent boxes the
+ *       size of the stand, since a stand's head can't be drawn see-through. A custom crop that borrows
+ *       a plain crop's block shows the block's ghost and the stand's box, so you can tell a real nether
+ *       wart from a nether wart with an armor stand on it.</li>
+ *   <li>Things that are already right disappear from the overlay; a wrong block or stand is flagged in
+ *       red. A small legend (the guide) shows what is left, and can hide itself once everything is right.</li>
+ * </ul>
  *
  * <p>Everything is gated to the Garden using the same tab-list area detection as the block
  * highlights ({@link BlockHighlightRenderer#detectCurrentArea()}). The world is only scanned a couple
@@ -54,10 +61,19 @@ public class GreenhouseBlueprintRenderer {
     private static final String GREENHOUSE_MARKER = "Carpenter";
 
     private static final int MAX_LEGEND_ROWS = 14;
+    private static final int MAX_FLOOR_LEGEND_ROWS = 6;
 
     // Ghost box geometry, in blocks
     private static final float BOX_INSET = 0.12f;
     private static final float BOX_HEIGHT = 0.6f;
+    /** Armor stands with no hitbox (marker stands) are drawn at least this big, and no taller than the max. */
+    private static final float STAND_MIN_SIZE = 0.25f;
+    private static final float STAND_MAX_HEIGHT = 2.5f;
+    /** The thin red slab that marks a cell where a different block than the planned one is. */
+    private static final float WRONG_SLAB_HEIGHT = 0.08f;
+
+    /** How far (in blocks) a ghost block is inflated so it doesn't flicker against a real block in its place. */
+    private static final float GHOST_GROW = 0.004f;
 
     // The frame drawn around the greenhouse area while copying
     private static final float FRAME_WIDTH = 0.1f;
@@ -85,19 +101,28 @@ public class GreenhouseBlueprintRenderer {
     /** The plot the player is standing in, in garden plot coordinates (0-4 on each axis). */
     record PlotRef(int x, int z) {}
 
-    /** One placement together with how it stands. */
-    record Cell(GreenhouseBlueprint.Placement placement, GreenhouseEvaluator.Status status) {}
+    /** One placement together with how it stands: whether its block and its armor stands are right. */
+    record Cell(GreenhouseBlueprint.Placement placement, GreenhouseEvaluator.Status status,
+                boolean blockOk, boolean standsOk) {}
 
-    /** One line of the legend: how many of a crop are planted out of how many the board needs. */
-    record LegendRow(GreenhouseCrops.Crop crop, int done, int total) {}
+    /** One cell of the soil that the blueprint has a block for. */
+    record FloorCell(int x, int z, String block, GreenhouseEvaluator.Status status) {}
+
+    /** One line of the legend: how many of something are right out of how many the board needs. */
+    record LegendRow(String name, int color, int done, int total) {}
 
     /**
      * Everything the renderer needs for the current plot; built by {@link #tick(Minecraft)}. For a copy
-     * preview ({@code copy}) the cells are the crops that would be saved and the board fields are unused.
+     * preview ({@code copy}) the cells are what would be saved and the board fields are unused.
+     *
+     * @param perfect everything matches the blueprint and nothing else is in the way
      */
     record Snapshot(String name, PlotRef plot, int boardNumber, int boardCount,
                     int rotation, boolean mirrored, int areaX, int areaZ,
-                    List<Cell> cells, List<LegendRow> legend, int done, int total, boolean copy) {}
+                    List<Cell> cells, List<FloorCell> floor,
+                    List<LegendRow> legend, List<LegendRow> floorLegend,
+                    int done, int total, int floorDone, int floorTotal, int extras,
+                    boolean perfect, boolean copy) {}
 
     /** What {@link #captureNow(Minecraft)} found: a board to save, or why there isn't one. */
     record Capture(PlotRef plot, GreenhouseBlueprint.Board board, String error) {
@@ -109,6 +134,8 @@ public class GreenhouseBlueprintRenderer {
     private static volatile Snapshot snapshot = null;
     /** True while the copy preview is on: the area that would be saved is shown instead of a blueprint. */
     private static volatile boolean copyMode = false;
+    /** Set if drawing real block models ever throws, so the overlay falls back to coloured boxes for the session. */
+    private static volatile boolean modelRenderingFailed = false;
     private static int ticksSinceScan = SCAN_INTERVAL_TICKS;
 
     private GreenhouseBlueprintRenderer() {}
@@ -152,15 +179,22 @@ public class GreenhouseBlueprintRenderer {
         return copyMode;
     }
 
-    /** Scans the greenhouse area of the plot the player stands in, ready to be saved as a blueprint. */
+    /**
+     * Scans the greenhouse area of the plot the player stands in, ready to be saved as a blueprint:
+     * the crops (blocks and armor stands) and the soil under them.
+     */
     static Capture captureNow(Minecraft client) {
         String blocker = copyBlocker(client);
         if (blocker != null) return new Capture(null, null, blocker);
 
         PlotRef plot = currentPlot(client);
-        GreenhouseBlueprint.Board board = GreenhouseCapture.toBoard(detectPlanted(client.level, plot));
-        if (board.placements.isEmpty()) {
-            return new Capture(plot, null, "Nothing is planted in this plot's greenhouse area yet, so there is "
+        if (!areaLoaded(client.level, plot)) {
+            return new Capture(plot, null, "Part of this plot's greenhouse area isn't loaded. Move closer to it "
+                    + "and try again.");
+        }
+        GreenhouseBlueprint.Board board = GreenhouseCapture.toBoard(scan(client.level, plot));
+        if (board.placements.isEmpty() && !board.hasFloor()) {
+            return new Capture(plot, null, "There is nothing in this plot's greenhouse area yet, so there is "
                     + "nothing to copy.");
         }
         return new Capture(plot, board, null);
@@ -221,27 +255,44 @@ public class GreenhouseBlueprintRenderer {
     }
 
     // -------------------------------------------------------------------------
-    // Detecting what is planted
+    // Reading the greenhouse
     // -------------------------------------------------------------------------
 
+    /** Whether all four corners of the plot's greenhouse area are in loaded chunks. */
+    static boolean areaLoaded(ClientLevel level, PlotRef plot) {
+        int last = GreenhouseGeometry.AREA_SIZE - 1;
+        int areaX = GreenhouseGeometry.areaMin(plot.x());
+        int areaZ = GreenhouseGeometry.areaMin(plot.z());
+        int y = GreenhouseGeometry.CROP_Y;
+        return level.hasChunkAt(new BlockPos(areaX, y, areaZ))
+                && level.hasChunkAt(new BlockPos(areaX + last, y, areaZ))
+                && level.hasChunkAt(new BlockPos(areaX, y, areaZ + last))
+                && level.hasChunkAt(new BlockPos(areaX + last, y, areaZ + last));
+    }
+
     /**
-     * Finds the crops planted in the plot's greenhouse area. Plain crops are blocks; the Garden's
-     * special crops are armor stands wearing a player head named after the crop.
+     * Reads everything in the plot's greenhouse area: the soil block under each cell, every block in
+     * the layer the crops grow in, and every armor stand wearing a head (the Garden's special crops
+     * are armor stands, and many custom crops put one on top of a plain crop's block).
      */
-    static List<GreenhouseEvaluator.Detected> detectPlanted(ClientLevel level, PlotRef plot) {
+    static GreenhouseScan.Scan scan(ClientLevel level, PlotRef plot) {
         int areaX = GreenhouseGeometry.areaMin(plot.x());
         int areaZ = GreenhouseGeometry.areaMin(plot.z());
         int size = GreenhouseGeometry.AREA_SIZE;
-        List<GreenhouseEvaluator.Detected> found = new ArrayList<>();
+        List<String> floor = new ArrayList<>(size * size);
+        List<GreenhouseScan.BlockCell> blocks = new ArrayList<>();
 
         for (int dz = 0; dz < size; dz++) {
             for (int dx = 0; dx < size; dx++) {
-                BlockPos pos = new BlockPos(areaX + dx, GreenhouseGeometry.CROP_Y, areaZ + dz);
-                String key = cropKeyOfBlock(level.getBlockState(pos).getBlock());
-                if (key != null) found.add(new GreenhouseEvaluator.Detected(key, dx + 0.5, dz + 0.5));
+                BlockState soil = level.getBlockState(new BlockPos(areaX + dx, GreenhouseGeometry.SOIL_Y, areaZ + dz));
+                floor.add(soil.isAir() ? "" : GreenhouseGhostBlocks.blockId(soil.getBlock()));
+
+                BlockState crop = level.getBlockState(new BlockPos(areaX + dx, GreenhouseGeometry.CROP_Y, areaZ + dz));
+                if (!crop.isAir()) blocks.add(new GreenhouseScan.BlockCell(dx, dz, GreenhouseGhostBlocks.stateString(crop)));
             }
         }
 
+        List<GreenhouseBlueprint.Stand> stands = new ArrayList<>();
         for (Entity entity : level.entitiesForRendering()) {
             if (!(entity instanceof ArmorStand stand) || stand.isRemoved()) continue;
             Vec3 pos = stand.position();
@@ -252,27 +303,10 @@ public class GreenhouseBlueprintRenderer {
 
             ItemStack head = stand.getItemBySlot(EquipmentSlot.HEAD);
             if (head.isEmpty()) continue;
-            GreenhouseCrops.Crop crop = GreenhouseCrops.fromPlantedName(head.getHoverName().getString());
-            if (crop != null) found.add(new GreenhouseEvaluator.Detected(crop.key(), dx, dz));
+            stands.add(new GreenhouseBlueprint.Stand(head.getHoverName().getString(), dx,
+                    pos.y - GreenhouseGeometry.CROP_Y, dz, stand.getBbWidth(), stand.getBbHeight()));
         }
-        return found;
-    }
-
-    private static String cropKeyOfBlock(Block block) {
-        if (block == Blocks.WHEAT) return "WHEAT";
-        if (block == Blocks.CARROTS) return "CARROT";
-        if (block == Blocks.POTATOES) return "POTATO";
-        if (block == Blocks.NETHER_WART) return "NETHER_WART";
-        if (block == Blocks.SUGAR_CANE) return "SUGAR_CANE";
-        if (block == Blocks.FIRE) return "FIRE";
-        if (block == Blocks.DEAD_BUSH) return "DEAD_PLANT";
-        if (block == Blocks.CACTUS) return "CACTUS";
-        if (block == Blocks.PUMPKIN) return "PUMPKIN";
-        if (block == Blocks.MELON) return "MELON";
-        if (block == Blocks.COCOA) return "COCOA_BEANS";
-        if (block == Blocks.RED_MUSHROOM) return "RED_MUSHROOM";
-        if (block == Blocks.BROWN_MUSHROOM) return "BROWN_MUSHROOM";
-        return null;
+        return new GreenhouseScan.Scan(floor, blocks, stands);
     }
 
     // -------------------------------------------------------------------------
@@ -309,63 +343,98 @@ public class GreenhouseBlueprintRenderer {
         if (plot == null) return null;
         ClientLevel level = client.level;
         if (!config.greenhouseBlueprint.ignoreGreenhouseCheck && !hasGreenhouse(level, plot)) return null;
+        // An area that isn't loaded reads as empty, which would show everything as still to do
+        if (!areaLoaded(level, plot)) return null;
 
-        if (copying) return buildCopySnapshot(level, plot);
+        GreenhouseScan.Scan scan = scan(level, plot);
+        if (copying) return buildCopySnapshot(plot, scan);
 
-        GreenhouseBlueprint.Board board = blueprint.boardForPlot(plot.x(), plot.z());
-        List<GreenhouseBlueprint.Placement> oriented = blueprint.orientedPlacements(board);
-        List<GreenhouseEvaluator.Result> results =
-                GreenhouseEvaluator.evaluate(oriented, detectPlanted(level, plot));
+        GreenhouseBlueprint.Board board = blueprint.orientedBoard(blueprint.boardForPlot(plot.x(), plot.z()));
+        GreenhouseEvaluator.Evaluation evaluation =
+                GreenhouseEvaluator.evaluate(board, scan, config.greenhouseBlueprint.showFloor);
 
-        List<Cell> cells = new ArrayList<>(results.size());
+        List<Cell> cells = new ArrayList<>(evaluation.cells().size());
         Map<String, int[]> counts = new LinkedHashMap<>();
-        int done = 0;
-        int total = 0;
-        for (GreenhouseEvaluator.Result result : results) {
+        Map<String, Integer> colors = new LinkedHashMap<>();
+        for (GreenhouseEvaluator.Result result : evaluation.cells()) {
             GreenhouseBlueprint.Placement p = result.placement();
-            cells.add(new Cell(p, result.status()));
-            int[] count = counts.computeIfAbsent(p.crop, k -> new int[2]);
+            cells.add(new Cell(p, result.status(), result.blockOk(), result.standsOk()));
+            int[] count = counts.computeIfAbsent(p.displayName(), k -> new int[2]);
+            colors.putIfAbsent(p.displayName(), p.color());
             count[1]++;
-            total++;
-            if (result.status() == GreenhouseEvaluator.Status.DONE) {
-                count[0]++;
-                done++;
-            }
+            if (result.status() == GreenhouseEvaluator.Status.DONE) count[0]++;
         }
 
-        List<LegendRow> legend = new ArrayList<>();
-        for (Map.Entry<String, int[]> entry : counts.entrySet()) {
-            GreenhouseCrops.Crop crop = GreenhouseCrops.byKey(entry.getKey());
-            if (crop != null) legend.add(new LegendRow(crop, entry.getValue()[0], entry.getValue()[1]));
+        List<FloorCell> floor = new ArrayList<>(evaluation.floor().size());
+        Map<String, int[]> floorCounts = new LinkedHashMap<>();
+        for (GreenhouseEvaluator.FloorResult result : evaluation.floor()) {
+            floor.add(new FloorCell(result.x(), result.z(), result.block(), result.status()));
+            int[] count = floorCounts.computeIfAbsent(result.block(), k -> new int[2]);
+            count[1]++;
+            if (result.status() == GreenhouseEvaluator.Status.DONE) count[0]++;
         }
 
         return new Snapshot(blueprint.name, plot,
                 blueprint.boardIndexForPlot(plot.x(), plot.z()) + 1, blueprint.boards.size(),
                 blueprint.rotation, blueprint.mirrored,
                 GreenhouseGeometry.areaMin(plot.x()), GreenhouseGeometry.areaMin(plot.z()),
-                cells, legend, done, total, false);
+                cells, floor, legendRows(counts, colors), floorLegendRows(floorCounts),
+                evaluation.done(), evaluation.cells().size(), evaluation.floorDone(), evaluation.floor().size(),
+                evaluation.extras(), evaluation.perfect(), false);
     }
 
-    /** What saving right now would copy: every crop planted in the plot's greenhouse area. */
-    private static Snapshot buildCopySnapshot(ClientLevel level, PlotRef plot) {
-        GreenhouseBlueprint.Board board = GreenhouseCapture.toBoard(detectPlanted(level, plot));
+    /** What saving right now would copy: every crop in the plot's greenhouse area, and the soil under it. */
+    private static Snapshot buildCopySnapshot(PlotRef plot, GreenhouseScan.Scan scan) {
+        GreenhouseBlueprint.Board board = GreenhouseCapture.toBoard(scan);
 
         List<Cell> cells = new ArrayList<>(board.placements.size());
-        Map<String, Integer> counts = new LinkedHashMap<>();
+        Map<String, int[]> counts = new LinkedHashMap<>();
+        Map<String, Integer> colors = new LinkedHashMap<>();
         for (GreenhouseBlueprint.Placement p : board.placements) {
-            cells.add(new Cell(p, GreenhouseEvaluator.Status.MISSING));
-            counts.merge(p.crop, 1, Integer::sum);
+            cells.add(new Cell(p, GreenhouseEvaluator.Status.MISSING, false, false));
+            int[] count = counts.computeIfAbsent(p.displayName(), k -> new int[2]);
+            colors.putIfAbsent(p.displayName(), p.color());
+            count[0]++;
+            count[1]++;
         }
 
-        List<LegendRow> legend = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            GreenhouseCrops.Crop crop = GreenhouseCrops.byKey(entry.getKey());
-            if (crop != null) legend.add(new LegendRow(crop, entry.getValue(), entry.getValue()));
+        Map<String, int[]> floorCounts = new LinkedHashMap<>();
+        int floorTotal = 0;
+        for (int z = 0; z < board.size; z++) {
+            for (int x = 0; x < board.size; x++) {
+                String block = board.floorAt(x, z);
+                if (block.isEmpty()) continue;
+                int[] count = floorCounts.computeIfAbsent(block, k -> new int[2]);
+                count[0]++;
+                count[1]++;
+                floorTotal++;
+            }
         }
 
         return new Snapshot("Copying greenhouse", plot, 0, 0, 0, false,
                 GreenhouseGeometry.areaMin(plot.x()), GreenhouseGeometry.areaMin(plot.z()),
-                cells, legend, cells.size(), cells.size(), true);
+                cells, List.of(), legendRows(counts, colors), floorLegendRows(floorCounts),
+                cells.size(), cells.size(), floorTotal, floorTotal, 0, false, true);
+    }
+
+    private static List<LegendRow> legendRows(Map<String, int[]> counts, Map<String, Integer> colors) {
+        List<LegendRow> rows = new ArrayList<>(counts.size());
+        for (Map.Entry<String, int[]> entry : counts.entrySet()) {
+            rows.add(new LegendRow(entry.getKey(), colors.get(entry.getKey()),
+                    entry.getValue()[0], entry.getValue()[1]));
+        }
+        return rows;
+    }
+
+    /** The floor legend, most used block first. */
+    private static List<LegendRow> floorLegendRows(Map<String, int[]> counts) {
+        List<LegendRow> rows = new ArrayList<>(counts.size());
+        for (Map.Entry<String, int[]> entry : counts.entrySet()) {
+            rows.add(new LegendRow(GreenhouseScan.prettyName(entry.getKey()), GreenhouseScan.colorOf(entry.getKey()),
+                    entry.getValue()[0], entry.getValue()[1]));
+        }
+        rows.sort((a, b) -> Integer.compare(b.total(), a.total()));
+        return rows;
     }
 
     /** Lines describing what the overlay currently sees, for {@code /it blueprint status}. */
@@ -394,14 +463,27 @@ public class GreenhouseBlueprintRenderer {
         lines.add("Plot: " + plot.x() + "," + plot.z() + " - greenhouse "
                 + (greenhouse ? "found" : "not found"
                 + (config.greenhouseBlueprint.ignoreGreenhouseCheck ? " (ignored by your settings)" : "")));
-        lines.add("Crops planted in the greenhouse area: " + detectPlanted(client.level, plot).size());
+        if (!areaLoaded(client.level, plot)) {
+            lines.add("The greenhouse area isn't fully loaded - move closer to it");
+            return lines;
+        }
+
+        GreenhouseScan.Scan scan = scan(client.level, plot);
+        long floorTypes = scan.floor().stream().filter(id -> !id.isEmpty()).distinct().count();
+        lines.add("In the greenhouse area: " + scan.blocks().size() + " block" + (scan.blocks().size() == 1 ? "" : "s")
+                + " in the crop layer, " + scan.stands().size() + " armor stand" + (scan.stands().size() == 1 ? "" : "s")
+                + ", " + floorTypes + " kind" + (floorTypes == 1 ? "" : "s") + " of soil");
 
         Snapshot snap = snapshot;
         if (snap != null && snap.copy()) {
-            lines.add("Copy preview: " + snap.total() + " crop" + (snap.total() == 1 ? "" : "s") + " would be saved");
+            lines.add("Copy preview: " + snap.total() + " crop" + (snap.total() == 1 ? "" : "s") + " and "
+                    + snap.floorTotal() + " soil block" + (snap.floorTotal() == 1 ? "" : "s") + " would be saved");
         } else if (snap != null) {
             lines.add("Board " + snap.boardNumber() + " of " + snap.boardCount() + ": "
-                    + snap.done() + " of " + snap.total() + " crops planted");
+                    + snap.done() + " of " + snap.total() + " crops right"
+                    + (snap.floorTotal() > 0 ? ", " + snap.floorDone() + " of " + snap.floorTotal() + " soil blocks right" : "")
+                    + (snap.extras() > 0 ? ", " + snap.extras() + " extra not in the layout" : "")
+                    + (snap.perfect() ? " - the greenhouse matches the layout" : ""));
         }
         return lines;
     }
@@ -417,20 +499,22 @@ public class GreenhouseBlueprintRenderer {
     private static void render(LevelRenderContext context) {
         Snapshot snap = snapshot;
         if (snap == null || snap.copy() != copyMode) return;
-        if (snap.cells().isEmpty() && !snap.copy()) return;
+        if (snap.cells().isEmpty() && snap.floor().isEmpty() && !snap.copy()) return;
 
         IslandTimeConfig config = ConfigManager.getConfig();
         if (config == null || !(config.greenhouseBlueprint.enabled || snap.copy())) return;
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) return;
+        if (client.player == null || client.level == null) return;
 
         boolean hideCompleted = config.greenhouseBlueprint.hideCompleted;
         float opacity = Math.max(0.05f, Math.min(1.0f, config.greenhouseBlueprint.opacity / 100.0f));
+        boolean models = !snap.copy() && config.greenhouseBlueprint.ghostBlocks && !modelRenderingFailed;
 
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
         Vec3 cameraPos = context.levelState().cameraRenderState.pos;
 
+        // Boxes first: they stand in for whatever can't be drawn as a block model
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         Matrix4fc pose = poseStack.last().pose();
@@ -439,29 +523,116 @@ public class GreenhouseBlueprintRenderer {
                 : RenderTypes.debugFilledBox());
 
         for (Cell cell : snap.cells()) {
-            GreenhouseBlueprint.Placement p = cell.placement();
             boolean done = cell.status() == GreenhouseEvaluator.Status.DONE;
             if (done && hideCompleted) continue;
-
-            float[] color = boxColor(cell);
-            float alpha = done ? opacity * 0.5f : opacity;
-            float height = BOX_HEIGHT + 0.2f * (p.size - 1);
-
-            float x0 = snap.areaX() + p.x + BOX_INSET;
-            float x1 = snap.areaX() + p.x + p.size - BOX_INSET;
-            float z0 = snap.areaZ() + p.z + BOX_INSET;
-            float z1 = snap.areaZ() + p.z + p.size - BOX_INSET;
-            float y0 = GreenhouseGeometry.CROP_Y;
-            BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x1, y0 + height, z1,
-                    color[0], color[1], color[2], alpha);
+            renderCellBoxes(pose, buffer, snap, cell, done ? opacity * 0.5f : opacity,
+                    models && ghostModelOf(cell.placement()) != null);
         }
         if (snap.copy()) renderCopyFrame(pose, buffer, snap);
 
         poseStack.popPose();
         bufferSource.endBatch();
 
+        if (models) {
+            try {
+                renderGhostBlocks(poseStack, bufferSource, client.level, snap, config, opacity, cameraPos);
+                bufferSource.endBatch();
+            } catch (RuntimeException e) {
+                modelRenderingFailed = true;
+                System.err.println("[IslandTime] Drawing greenhouse ghost blocks failed, using boxes instead: " + e);
+            }
+        }
+
         if (config.greenhouseBlueprint.showLabels) {
             renderLabels(context, client, snap, config, hideCompleted, cameraPos);
+        }
+    }
+
+    /** The block a single cell placement is drawn as a ghost of, or null if it has none to draw. */
+    private static BlockState ghostModelOf(GreenhouseBlueprint.Placement p) {
+        return p.size == 1 ? GreenhouseGhostBlocks.parseState(p.block) : null;
+    }
+
+    /**
+     * Draws the ghost blocks: crops that still have to be planted, and soil that is missing or wrong.
+     * Anything that is already right is skipped, since a copy of a block drawn over itself is pointless.
+     */
+    private static void renderGhostBlocks(PoseStack poseStack, MultiBufferSource.BufferSource bufferSource,
+                                          ClientLevel level, Snapshot snap, IslandTimeConfig config,
+                                          float opacity, Vec3 cameraPos) {
+        for (Cell cell : snap.cells()) {
+            GreenhouseBlueprint.Placement p = cell.placement();
+            if (cell.status() == GreenhouseEvaluator.Status.DONE || cell.blockOk()) continue;
+            BlockState state = ghostModelOf(p);
+            if (state == null) continue;
+            GreenhouseGhostBlocks.render(poseStack, bufferSource, level, state,
+                    new BlockPos(snap.areaX() + p.x, GreenhouseGeometry.CROP_Y, snap.areaZ() + p.z),
+                    cameraPos.x, cameraPos.y, cameraPos.z, opacity, GHOST_GROW);
+        }
+
+        if (!config.greenhouseBlueprint.showFloor) return;
+        for (FloorCell cell : snap.floor()) {
+            if (cell.status() == GreenhouseEvaluator.Status.DONE) continue;
+            BlockState state = GreenhouseGhostBlocks.parseState(cell.block());
+            if (state == null) continue;
+            GreenhouseGhostBlocks.render(poseStack, bufferSource, level, state,
+                    new BlockPos(snap.areaX() + cell.x(), GreenhouseGeometry.SOIL_Y, snap.areaZ() + cell.z()),
+                    cameraPos.x, cameraPos.y, cameraPos.z, opacity, GHOST_GROW);
+        }
+    }
+
+    /**
+     * Draws the boxes for one placement: a box over the whole footprint of a big crop, a box in the
+     * cell of a block that has no model to show (or that is being previewed for a copy), a thin red
+     * slab where a different block than planned is, and a box the size of each armor stand that is
+     * still to be put there.
+     *
+     * @param blockIsModel the block part is drawn as a block model elsewhere
+     */
+    private static void renderCellBoxes(Matrix4fc pose, VertexConsumer buffer, Snapshot snap, Cell cell,
+                                        float alpha, boolean blockIsModel) {
+        GreenhouseBlueprint.Placement p = cell.placement();
+        boolean done = cell.status() == GreenhouseEvaluator.Status.DONE;
+        boolean wrong = cell.status() == GreenhouseEvaluator.Status.WRONG;
+        float[] color = wrong ? COLOR_WRONG : rgb(p.color());
+        float y0 = GreenhouseGeometry.CROP_Y;
+
+        if (p.size > 1) {
+            float x0 = snap.areaX() + p.x + BOX_INSET;
+            float x1 = snap.areaX() + p.x + p.size - BOX_INSET;
+            float z0 = snap.areaZ() + p.z + BOX_INSET;
+            float z1 = snap.areaZ() + p.z + p.size - BOX_INSET;
+            float height = BOX_HEIGHT + 0.2f * (p.size - 1);
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x1, y0 + height, z1,
+                    color[0], color[1], color[2], alpha);
+            return;
+        }
+
+        float x0 = snap.areaX() + p.x + BOX_INSET;
+        float x1 = snap.areaX() + p.x + 1 - BOX_INSET;
+        float z0 = snap.areaZ() + p.z + BOX_INSET;
+        float z1 = snap.areaZ() + p.z + 1 - BOX_INSET;
+        boolean blockPending = !p.block.isEmpty() && (done || !cell.blockOk());
+        if (blockPending && (!blockIsModel || done)) {
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x1, y0 + BOX_HEIGHT, z1,
+                    color[0], color[1], color[2], alpha);
+        } else if (wrong && !cell.blockOk()) {
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, x0, y0, z0, x1, y0 + WRONG_SLAB_HEIGHT, z1,
+                    COLOR_WRONG[0], COLOR_WRONG[1], COLOR_WRONG[2], alpha);
+        }
+
+        if (p.stands.isEmpty() || (!done && cell.standsOk())) return;
+        boolean known = GreenhouseCrops.byKey(p.crop) != null;
+        for (GreenhouseBlueprint.Stand stand : p.stands) {
+            float[] standColor = wrong && !cell.standsOk() ? COLOR_WRONG
+                    : known ? rgb(p.color()) : rgb(GreenhouseScan.colorOf(stand.head));
+            float half = Math.max((float) stand.width, STAND_MIN_SIZE) / 2.0f;
+            float height = Math.max(STAND_MIN_SIZE, Math.min(STAND_MAX_HEIGHT, (float) stand.height));
+            float cx = snap.areaX() + (float) stand.x;
+            float cz = snap.areaZ() + (float) stand.z;
+            float sy = y0 + (float) stand.y;
+            BlockHighlightRenderer.renderFilledBox(pose, buffer, cx - half, sy, cz - half, cx + half, sy + height,
+                    cz + half, standColor[0], standColor[1], standColor[2], alpha);
         }
     }
 
@@ -488,12 +659,6 @@ public class GreenhouseBlueprintRenderer {
         BlockHighlightRenderer.renderFilledBox(pose, buffer, x1 - w, y0, z1 - w, x1, postTop, z1, c[0], c[1], c[2], FRAME_ALPHA);
     }
 
-    private static float[] boxColor(Cell cell) {
-        if (cell.status() == GreenhouseEvaluator.Status.WRONG) return COLOR_WRONG;
-        GreenhouseCrops.Crop crop = GreenhouseCrops.byKey(cell.placement().crop);
-        return crop == null ? COLOR_WRONG : rgb(crop.color());
-    }
-
     /** Billboarded crop names above the ghosts near the player, in the way vanilla draws name tags. */
     private static void renderLabels(LevelRenderContext context, Minecraft client, Snapshot snap,
                                      IslandTimeConfig config, boolean hideCompleted, Vec3 cameraPos) {
@@ -516,8 +681,7 @@ public class GreenhouseBlueprintRenderer {
             double dz = cz - playerPos.z;
             if (dx * dx + dz * dz > rangeSq) continue;
 
-            GreenhouseCrops.Crop crop = GreenhouseCrops.byKey(p.crop);
-            String name = crop == null ? p.crop : crop.name();
+            String name = p.displayName();
             int color = LABEL_COLOR;
             if (cell.status() == GreenhouseEvaluator.Status.WRONG) {
                 name = name + " (wrong here)";
@@ -526,7 +690,7 @@ public class GreenhouseBlueprintRenderer {
 
             Component label = Component.literal(name);
             float halfWidth = font.width(label) / 2.0f;
-            double top = GreenhouseGeometry.CROP_Y + BOX_HEIGHT + 0.2f * (p.size - 1);
+            double top = GreenhouseGeometry.CROP_Y + labelHeight(p);
 
             poseStack.pushPose();
             poseStack.translate(cx - cameraPos.x, top + LABEL_OFFSET - cameraPos.y, cz - cameraPos.z);
@@ -544,6 +708,17 @@ public class GreenhouseBlueprintRenderer {
         if (any) bufferSource.endBatch();
     }
 
+    /** How far above the soil a placement's label floats: above its ghost box, or its tallest armor stand. */
+    private static double labelHeight(GreenhouseBlueprint.Placement p) {
+        double height = BOX_HEIGHT + 0.2f * (p.size - 1);
+        if (p.size > 1) return height;
+        for (GreenhouseBlueprint.Stand stand : p.stands) {
+            double top = stand.y + Math.max(STAND_MIN_SIZE, Math.min(STAND_MAX_HEIGHT, stand.height));
+            height = Math.max(height, top);
+        }
+        return height;
+    }
+
     // -------------------------------------------------------------------------
     // HUD legend
     // -------------------------------------------------------------------------
@@ -558,6 +733,8 @@ public class GreenhouseBlueprintRenderer {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.player == null) return;
         if (client.options != null && client.options.hideGui) return;
+        // Nothing left to guide you through once the greenhouse is exactly as the layout says
+        if (!copying && snap.perfect() && config.greenhouseBlueprint.hideLegendWhenComplete) return;
 
         Font font = client.font;
         List<Component> lines = new ArrayList<>();
@@ -570,9 +747,18 @@ public class GreenhouseBlueprintRenderer {
             swatches.add(0);
             lines.add(Component.literal("Plot " + snap.plot().x() + "," + snap.plot().z()
                     + " - board " + snap.boardNumber() + "/" + snap.boardCount()
-                    + " - " + snap.done() + "/" + snap.total() + " planted").withStyle(ChatFormatting.GRAY));
+                    + " - " + snap.done() + "/" + snap.total() + " crops"
+                    + (snap.floorTotal() > 0 ? ", " + snap.floorDone() + "/" + snap.floorTotal() + " soil" : ""))
+                    .withStyle(ChatFormatting.GRAY));
             swatches.add(0);
+            if (snap.extras() > 0) {
+                lines.add(Component.literal(snap.extras() + " extra block" + (snap.extras() == 1 ? "" : "s")
+                        + " or armor stand" + (snap.extras() == 1 ? "" : "s") + " not in the layout")
+                        .withStyle(ChatFormatting.RED));
+                swatches.add(0);
+            }
             addLegendRows(snap, lines, swatches, false);
+            addFloorRows(snap, lines, swatches, false);
         }
 
         int textWidth = 0;
@@ -614,16 +800,23 @@ public class GreenhouseBlueprintRenderer {
         if (snap == null) {
             lines.add(Component.literal("Stand in a greenhouse plot in the Garden").withStyle(ChatFormatting.GRAY));
             swatches.add(0);
-        } else if (snap.cells().isEmpty()) {
+        } else if (snap.cells().isEmpty() && snap.floorTotal() == 0) {
             lines.add(Component.literal("Plot " + snap.plot().x() + "," + snap.plot().z()
-                    + " - nothing planted here yet").withStyle(ChatFormatting.GRAY));
+                    + " - nothing here yet").withStyle(ChatFormatting.GRAY));
             swatches.add(0);
         } else {
+            int withStands = 0;
+            for (Cell cell : snap.cells()) {
+                if (!cell.placement().stands.isEmpty()) withStands++;
+            }
             lines.add(Component.literal("Plot " + snap.plot().x() + "," + snap.plot().z() + " - "
-                    + snap.total() + " crop" + (snap.total() == 1 ? "" : "s") + " will be saved")
-                    .withStyle(ChatFormatting.GRAY));
+                    + snap.total() + " crop" + (snap.total() == 1 ? "" : "s")
+                    + (withStands > 0 ? " (" + withStands + " with armor stands)" : "")
+                    + ", " + snap.floorTotal() + " soil block" + (snap.floorTotal() == 1 ? "" : "s")
+                    + " will be saved").withStyle(ChatFormatting.GRAY));
             swatches.add(0);
             addLegendRows(snap, lines, swatches, true);
+            addFloorRows(snap, lines, swatches, true);
         }
         lines.add(Component.literal("/it blueprint save <name>").withStyle(ChatFormatting.GREEN));
         swatches.add(0);
@@ -633,18 +826,32 @@ public class GreenhouseBlueprintRenderer {
 
     /** One legend row per crop: "done/total" for a blueprint, or just the count for a copy preview. */
     private static void addLegendRows(Snapshot snap, List<Component> lines, List<Integer> swatches, boolean copy) {
+        addRows(snap.legend(), MAX_LEGEND_ROWS, lines, swatches, copy);
+    }
+
+    /** The soil blocks the layout needs, under a "Floor" heading. Only drawn when the floor is shown. */
+    private static void addFloorRows(Snapshot snap, List<Component> lines, List<Integer> swatches, boolean copy) {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (snap.floorLegend().isEmpty() || (!copy && config != null && !config.greenhouseBlueprint.showFloor)) return;
+        lines.add(Component.literal("Floor").withStyle(ChatFormatting.GRAY, ChatFormatting.UNDERLINE));
+        swatches.add(0);
+        addRows(snap.floorLegend(), MAX_FLOOR_LEGEND_ROWS, lines, swatches, copy);
+    }
+
+    private static void addRows(List<LegendRow> legend, int maxRows, List<Component> lines,
+                                List<Integer> swatches, boolean copy) {
         int rows = 0;
-        for (LegendRow row : snap.legend()) {
-            if (rows++ >= MAX_LEGEND_ROWS) {
+        for (LegendRow row : legend) {
+            if (rows++ >= maxRows) {
                 lines.add(Component.literal("...").withStyle(ChatFormatting.GRAY));
                 swatches.add(0);
                 break;
             }
             boolean complete = !copy && row.done() >= row.total();
             String count = copy ? "x" + row.total() : row.done() + "/" + row.total();
-            lines.add(Component.literal(row.crop().name() + " " + count)
+            lines.add(Component.literal(row.name() + " " + count)
                     .withStyle(complete ? ChatFormatting.DARK_GRAY : ChatFormatting.WHITE));
-            swatches.add(0xFF000000 | row.crop().color());
+            swatches.add(0xFF000000 | row.color());
         }
     }
 

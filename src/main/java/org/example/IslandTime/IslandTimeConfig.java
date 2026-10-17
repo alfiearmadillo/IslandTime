@@ -814,17 +814,27 @@ public class IslandTimeConfig extends Config {
         public boolean hideCompleted = true;
 
         @Expose
-        @ConfigOption(name = "Ghost Opacity", desc = "How solid the ghost boxes are, in percent")
+        @ConfigOption(name = "Ghost Block Models", desc = "Draw the ghosts as see-through copies of the real blocks (crops and soil), so they look like what you have to place. Turn this off to use plain coloured boxes instead, for example if the ghosts ever look wrong. Armor stands are always drawn as boxes, because a stand's head can't be drawn see-through")
+        @ConfigEditorBoolean
+        public boolean ghostBlocks = true;
+
+        @Expose
+        @ConfigOption(name = "Check Floor", desc = "Also copy and compare the soil under the crops: a ghost block shows where a soil block is missing or the wrong type, and the legend lists the soil the layout needs. Turn this off to ignore the floor. Layouts always store the floor when you copy them")
+        @ConfigEditorBoolean
+        public boolean showFloor = true;
+
+        @Expose
+        @ConfigOption(name = "Ghost Opacity", desc = "How solid the ghosts are, in percent")
         @ConfigEditorSlider(minValue = 5, maxValue = 100, minStep = 5)
         public int opacity = 40;
 
         @Expose
-        @ConfigOption(name = "Show Through Walls", desc = "Draw the ghosts on top of everything, including blocks and crops in front of them")
+        @ConfigOption(name = "Show Through Walls", desc = "Draw the ghost boxes on top of everything, including blocks and crops in front of them. Ghost block models are always hidden behind blocks in front of them")
         @ConfigEditorBoolean
         public boolean throughWalls = false;
 
         @Expose
-        @ConfigOption(name = "Show Crop Names", desc = "Write the crop's name above its ghost while you are close to it")
+        @ConfigOption(name = "Show Crop Names", desc = "Write the crop's name above its ghost while you are close to it (for a custom crop, its block and armor stand)")
         @ConfigEditorBoolean
         public boolean showLabels = true;
 
@@ -834,9 +844,14 @@ public class IslandTimeConfig extends Config {
         public int labelRange = 6;
 
         @Expose
-        @ConfigOption(name = "Show Legend", desc = "Show a list of the layout's crops with how many of each are planted")
+        @ConfigOption(name = "Show Legend", desc = "Show a list of the layout's crops and soil with how many of each are right")
         @ConfigEditorBoolean
         public boolean showLegend = true;
+
+        @Expose
+        @ConfigOption(name = "Hide Legend When Complete", desc = "Hide the legend while the greenhouse matches the saved layout perfectly: every crop, armor stand and soil block is right and there is nothing else in the area. It comes back as soon as something is off")
+        @ConfigEditorBoolean
+        public boolean hideLegendWhenComplete = true;
 
         @Expose
         @ConfigOption(name = "Legend X", desc = "Horizontal legend position as a percentage of the screen (0 = left, 100 = right)")

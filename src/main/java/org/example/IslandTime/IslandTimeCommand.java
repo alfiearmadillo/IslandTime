@@ -819,10 +819,10 @@ public class IslandTimeCommand {
                 {"/it settingscycle", "Cycle to the next loadout in the current group"},
                 {"/it composter", "Show composter tracking status and when it is estimated to run empty (configure alerts under Composter in /it GUI)"},
                 {"/it composter debug", "Copy the tab list and last Composter menu contents to the clipboard (for when the composter is not found)"},
-                {"/it blueprint copy", "Preview the greenhouse area of the Garden plot you stand in: a frame around it and a box for every crop that would be copied"},
-                {"/it blueprint save [name]|addboard|cancel", "Save what the preview shows as a blueprint that is drawn as a ghost over greenhouse plots in the Garden (addboard adds it to the selected blueprint as another plot's board; cancel stops the preview)"},
+                {"/it blueprint copy", "Preview the greenhouse area of the Garden plot you stand in: a frame around it and a box for every crop (block and armor stand) that would be copied, plus the soil under them"},
+                {"/it blueprint save [name]|addboard|cancel", "Save what the preview shows (crops, armor stands and soil) as a blueprint that is drawn as see-through blocks over greenhouse plots in the Garden (addboard adds it to the selected blueprint as another plot's board; cancel stops the preview)"},
                 {"/it blueprint list|select <name>|delete <name>", "List, switch between and delete copied greenhouse blueprints"},
-                {"/it blueprint board <n>|rotate [left|right]|mirror|align|toggle|status", "Pick the board for this plot, turn or mirror the layout (align fits it to crops you have already planted), switch the overlay on or off, or check why it isn't showing"},
+                {"/it blueprint board <n>|rotate [left|right]|mirror|align|toggle|status", "Pick the board for this plot, turn or mirror the layout (align fits it to what you have already built), switch the overlay on or off, or check why it isn't showing"},
         };
 
         int commandsPerPage = 5;

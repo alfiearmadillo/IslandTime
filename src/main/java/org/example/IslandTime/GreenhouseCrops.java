@@ -24,12 +24,31 @@ final class GreenhouseCrops {
      * @param color    packed 0xRRGGBB colour of the ghost box
      * @param aliases  normalized (see {@link #normalize(String)}) names it is also known by
      * @param mutation true for crops that are grown as a mutation, false for plain crops
+     * @param block    id of the block a plain crop is planted as ("minecraft:wheat"), "" for crops that
+     *                 are armor stands
      */
-    record Crop(String key, String name, int size, int color, List<String> aliases, boolean mutation) {}
+    record Crop(String key, String name, int size, int color, List<String> aliases, boolean mutation, String block) {}
+
+    /** The block each plain crop is planted as. The special crops are armor stands, so have no block. */
+    private static final Map<String, String> BLOCK_IDS = Map.ofEntries(
+            Map.entry("WHEAT", "minecraft:wheat"),
+            Map.entry("POTATO", "minecraft:potatoes"),
+            Map.entry("CARROT", "minecraft:carrots"),
+            Map.entry("PUMPKIN", "minecraft:pumpkin"),
+            Map.entry("MELON", "minecraft:melon"),
+            Map.entry("COCOA_BEANS", "minecraft:cocoa"),
+            Map.entry("SUGAR_CANE", "minecraft:sugar_cane"),
+            Map.entry("CACTUS", "minecraft:cactus"),
+            Map.entry("NETHER_WART", "minecraft:nether_wart"),
+            Map.entry("RED_MUSHROOM", "minecraft:red_mushroom"),
+            Map.entry("BROWN_MUSHROOM", "minecraft:brown_mushroom"),
+            Map.entry("FIRE", "minecraft:fire"),
+            Map.entry("DEAD_PLANT", "minecraft:dead_bush"));
 
     private static final List<Crop> ALL;
     private static final Map<String, Crop> BY_KEY = new HashMap<>();
     private static final Map<String, Crop> BY_ALIAS = new HashMap<>();
+    private static final Map<String, Crop> BY_BLOCK = new HashMap<>();
 
     /** Aliases of at most this many letters only match a whole name, so "fire" doesn't match "fireworks". */
     private static final int MIN_PARTIAL_ALIAS_LENGTH = 5;
@@ -103,6 +122,7 @@ final class GreenhouseCrops {
         ALL = Collections.unmodifiableList(crops);
         for (Crop crop : crops) {
             BY_KEY.put(crop.key(), crop);
+            if (!crop.block().isEmpty()) BY_BLOCK.put(crop.block(), crop);
             for (String alias : crop.aliases()) {
                 BY_ALIAS.putIfAbsent(alias, crop);
             }
@@ -120,7 +140,8 @@ final class GreenhouseCrops {
         // Spread the hues with the golden ratio so neighbouring crops in the list look different
         float hue = (float) ((crops.size() * 0.618033988749895) % 1.0);
         int color = Color.HSBtoRGB(hue, 0.7f, 1.0f) & 0xFFFFFF;
-        crops.add(new Crop(key, name, size, color, List.copyOf(aliases.stream().distinct().toList()), mutation));
+        crops.add(new Crop(key, name, size, color, List.copyOf(aliases.stream().distinct().toList()), mutation,
+                BLOCK_IDS.getOrDefault(key, "")));
     }
 
     static List<Crop> all() {
@@ -130,6 +151,11 @@ final class GreenhouseCrops {
     /** Looks a crop up by its upper case key. */
     static Crop byKey(String key) {
         return key == null ? null : BY_KEY.get(key);
+    }
+
+    /** The plain crop that is planted as this block (an id like "minecraft:wheat"), or null. */
+    static Crop byBlockId(String blockId) {
+        return blockId == null ? null : BY_BLOCK.get(blockId);
     }
 
     /**
