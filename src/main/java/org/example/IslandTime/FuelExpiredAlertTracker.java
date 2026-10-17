@@ -88,16 +88,21 @@ public class FuelExpiredAlertTracker {
     public static void onFuelDayUp(int minionCount, boolean moreFuelQueued) {
         if (fuelExpiredAlertSpeed == AlertSpeed.OFF) return;
 
+        boolean wasHeldBack = alertHeldBack;
         if (onlyWhenAllExpired()) {
+            int previousCount = stackMinionCount;
             stackMinionCount = Math.max(stackMinionCount, minionCount);
             if (moreFuelQueued) {
                 alertHeldBack = true;
+                // Saved, so a restart before the last fuel runs out doesn't lose the alert
+                if (!wasHeldBack || stackMinionCount != previousCount) save();
                 return;
             }
             minionCount = stackMinionCount;
         }
         stackMinionCount = 0;
         alertHeldBack    = false;
+        if (wasHeldBack) save();
 
         alertActive     = repeatUntilSacksEmptied();
         lastMinionCount = minionCount;
@@ -150,6 +155,10 @@ public class FuelExpiredAlertTracker {
             try (BufferedWriter writer = Files.newBufferedWriter(CONFIG_TMP)) {
                 writer.write("FUEL_EXPIRED_ALERT_SPEED\n");
                 writer.write(fuelExpiredAlertSpeed.name() + "\n");
+                if (alertHeldBack) {
+                    writer.write("FUEL_ALERT_HELD_BACK\n");
+                    writer.write(stackMinionCount + "\n");
+                }
             }
             Files.move(CONFIG_TMP, CONFIG_FILE,
                     StandardCopyOption.REPLACE_EXISTING,
@@ -182,6 +191,19 @@ public class FuelExpiredAlertTracker {
                     try { fuelExpiredAlertSpeed = AlertSpeed.valueOf(line); } catch (IllegalArgumentException ignored) {}
                     section = "";
                 }
+                if (line.equals("FUEL_ALERT_HELD_BACK")) { section = "FUEL_ALERT_HELD_BACK"; continue; }
+                if (section.equals("FUEL_ALERT_HELD_BACK") && !line.isEmpty()) {
+                    try {
+                        stackMinionCount = Integer.parseInt(line.trim());
+                        alertHeldBack = true;
+                    } catch (NumberFormatException ignored) {}
+                    section = "";
+                }
+            }
+            // An alert held back before a restart is sent by FuelCycleTracker once the fuel has run out
+            if (fuelExpiredAlertSpeed == AlertSpeed.OFF) {
+                alertHeldBack = false;
+                stackMinionCount = 0;
             }
         } catch (IOException e) {
             System.err.println("[FuelExpiredAlertTracker] Load failed: " + e.getMessage());
