@@ -561,7 +561,8 @@ public class MinionFuelTracker {
         // Note when this particular container appeared. Every menu the server opens is a
         // new object, so a change here means a genuinely new GUI (and therefore newly
         // generated GUI items, see inspectUpgradeSlot()).
-        if (lastSeenMenu.get() != handler) {
+        boolean newMenu = lastSeenMenu.get() != handler;
+        if (newMenu) {
             lastSeenMenu = new java.lang.ref.WeakReference<>(handler);
             menuOpenedAtMs = System.currentTimeMillis();
         }
@@ -583,6 +584,7 @@ public class MinionFuelTracker {
 
         // We're in a minion GUI
         wasInMinionGui = true;
+        if (newMenu) FuelExpiredAlertTracker.onMinionGuiOpened();
 
         // Check if we just opened a new minion or switched to a different one. A plain
         // title comparison alone isn't enough: many physical minions share the exact same

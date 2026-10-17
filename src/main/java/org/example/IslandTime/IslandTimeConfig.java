@@ -401,7 +401,7 @@ public class IslandTimeConfig extends Config {
         public int disconnectSpeed = 2; // NORMAL
 
         @Expose
-        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until you empty your sacks (see Repeat Fuel Alert Until Sacks Emptied)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until the one set in Repeat Fuel Alert Until (by default, until you empty your sacks)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int fuelExpiredSpeed = 2; // NORMAL
 
@@ -417,14 +417,16 @@ public class IslandTimeConfig extends Config {
 
         @Expose
         @ConfigOption(
-                name = "Repeat Fuel Alert Until Sacks Emptied",
-                desc = "Keep repeating the fuel alert at the speed above until you take Crude Gabagool out of " +
-                        "your sacks, as AFKing past full sacks gains nothing. Turn this off if you aren't AFKing, " +
-                        "as the gabagool goes into your minions rather than your sacks: the alert is then sent " +
-                        "once and does not repeat."
+                name = "Repeat Fuel Alert Until",
+                desc = "What stops the fuel alert repeating at the speed above.\n" +
+                        "Until Sacks Emptied: until you take Crude Gabagool out of your sacks, as AFKing past " +
+                        "full sacks gains nothing.\n" +
+                        "Until Minion GUI Opened: until you open a minion's menu, for when the gabagool goes " +
+                        "into your minions rather than your sacks and you only need to get back and refuel.\n" +
+                        "Don't Repeat: send it once only."
         )
-        @ConfigEditorBoolean
-        public boolean fuelAlertRepeatUntilSacksEmptied = true;
+        @ConfigEditorDropdown(values = {"Until Sacks Emptied", "Until Minion GUI Opened", "Don't Repeat"})
+        public int fuelAlertRepeatMode = 0; // Until Sacks Emptied
     }
 
     public static class ChatRelay {

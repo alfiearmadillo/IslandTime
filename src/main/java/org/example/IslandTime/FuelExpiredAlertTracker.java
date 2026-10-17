@@ -23,8 +23,9 @@ import java.nio.file.StandardCopyOption;
  *  - "Fuel Alert Only When All Fuel Expires": a fuel-day that ends while more fuel is still queued
  *    sends nothing. The alert goes out when the last queued fuel-day ends and no minion's fuel is still
  *    burning, so fuel added before then postpones it. See {@link #onFuelDayUp(int, boolean)}.
- *  - "Repeat Fuel Alert Until Sacks Emptied": when off, the alert is sent once and never repeats
- *    (without AFKing the gabagool goes into minions, not sacks, so there is nothing to empty).
+ *  - "Repeat Fuel Alert Until" (a {@link RepeatMode}): what stops the repeating. Without AFKing the
+ *    gabagool goes into minions, not sacks, so there is nothing to empty; the alert can instead stop
+ *    when a minion's menu is opened ({@link #onMinionGuiOpened()}), or not repeat at all.
  */
 public class FuelExpiredAlertTracker {
 
@@ -41,9 +42,19 @@ public class FuelExpiredAlertTracker {
         AlertSpeed(long repeatAlertMs) { this.repeatAlertMs = repeatAlertMs; }
     }
 
+    /** What ends the repeating alert. The order matches the "Repeat Fuel Alert Until" dropdown. */
+    public enum RepeatMode {
+        /** Until Crude Gabagool is taken out of the sacks (the original behaviour). */
+        SACKS_EMPTIED,
+        /** Until a minion's menu is opened. */
+        MINION_GUI_OPENED,
+        /** The alert is sent once and doesn't repeat. */
+        NONE
+    }
+
     private static AlertSpeed fuelExpiredAlertSpeed = AlertSpeed.NORMAL;
 
-    /** True from the moment fuel runs out until the sacks are emptied (or alerts are turned off). */
+    /** True from the moment fuel runs out until the repeat mode's stop event (or alerts are turned off). */
     private static boolean alertActive     = false;
     private static long    lastAlertSentTime = 0;
     private static int     lastMinionCount   = 0;
@@ -71,9 +82,13 @@ public class FuelExpiredAlertTracker {
         return config != null && config.alertSpeeds.fuelAlertOnlyWhenAllExpired;
     }
 
-    private static boolean repeatUntilSacksEmptied() {
+    /** The configured repeat mode; a missing config or an unknown value is the original behaviour. */
+    static RepeatMode repeatMode() {
         IslandTimeConfig config = ConfigManager.getConfig();
-        return config == null || config.alertSpeeds.fuelAlertRepeatUntilSacksEmptied;
+        if (config == null) return RepeatMode.SACKS_EMPTIED;
+        RepeatMode[] modes = RepeatMode.values();
+        int index = config.alertSpeeds.fuelAlertRepeatMode;
+        return index >= 0 && index < modes.length ? modes[index] : RepeatMode.SACKS_EMPTIED;
     }
 
     /**
@@ -104,7 +119,7 @@ public class FuelExpiredAlertTracker {
         alertHeldBack    = false;
         if (wasHeldBack) save();
 
-        alertActive     = repeatUntilSacksEmptied();
+        alertActive     = repeatMode() != RepeatMode.NONE;
         lastMinionCount = minionCount;
         DiscordWebhookManager.sendFuelExpiredAlert(minionCount);
         lastAlertSentTime = System.currentTimeMillis();
@@ -125,15 +140,24 @@ public class FuelExpiredAlertTracker {
 
     /**
      * Called by SackIncomeTracker whenever a negative Crude Gabagool sack-change is detected
-     * (i.e. you've taken gabagool out to sell). Stops the repeating alert.
+     * (i.e. you've taken gabagool out to sell). Stops the repeating alert, if that is what the
+     * repeat mode waits for.
      */
     public static void onSackEmptied() {
-        alertActive = false;
+        if (repeatMode() == RepeatMode.SACKS_EMPTIED) alertActive = false;
+    }
+
+    /**
+     * Called by MinionFuelTracker whenever a minion's menu is opened. Stops the repeating alert, if
+     * that is what the repeat mode waits for.
+     */
+    public static void onMinionGuiOpened() {
+        if (repeatMode() == RepeatMode.MINION_GUI_OPENED) alertActive = false;
     }
 
     public static void tick() {
         if (!alertActive || fuelExpiredAlertSpeed == AlertSpeed.OFF) return;
-        if (!repeatUntilSacksEmptied()) {
+        if (repeatMode() == RepeatMode.NONE) {
             alertActive = false;
             return;
         }
