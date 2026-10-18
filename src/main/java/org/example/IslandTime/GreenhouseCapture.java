@@ -30,8 +30,10 @@ final class GreenhouseCapture {
      * themselves, together with the other stands around them (Godseed's pillar, PlantBoy's roots).
      * What is left is grouped by cell: the block in the crop layer, plus any armor stands there. So a
      * custom crop that borrows nether wart is stored as a nether wart <em>with</em> its armor stand,
-     * and a real nether wart as the block alone. Stands outside the area are ignored. Armor stands
-     * that wear and hold nothing are not scanned at all, which keeps holograms out.
+     * and a real nether wart as the block alone. A crop that changes block as it grows (a Wild Rose
+     * is wheat seeds until it becomes a rose bush) is stored as the block it ends up as, whatever stage
+     * it was copied at. Stands outside the area are ignored. Armor stands that wear and hold nothing
+     * are not scanned at all, which keeps holograms out.
      */
     static GreenhouseBlueprint.Board toBoard(GreenhouseScan.Scan scan) {
         int n = GreenhouseGeometry.AREA_SIZE;
@@ -136,6 +138,8 @@ final class GreenhouseCapture {
 
         if (crop != null) {
             p.crop = crop.key();
+            // The stand says what the crop is, so a block it only shows while growing is its grown block
+            p.settleGrowth();
             return;
         }
         p.crop = "";

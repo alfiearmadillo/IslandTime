@@ -20,7 +20,36 @@ final class GreenhouseGeometry {
     static final int SOIL_Y = 73;
     static final int CROP_Y = SOIL_Y + 1;
 
+    /** How high above a full size armor stand's feet its head sits, in blocks. */
+    static final double STAND_HEAD_BASE = 1.4375;
+    /**
+     * How big a skull is drawn on a full size armor stand, in blocks: its 8 pixels at the 1.1875 scale
+     * the game draws skulls at, plus its hat layer. That is wider than the stand's 0.5 wide hitbox, and
+     * it sticks out of the top of it.
+     */
+    static final double STAND_HEAD_SIZE = 0.64;
+
     private GreenhouseGeometry() {}
+
+    /**
+     * The box around the head an armor stand wears, as the head is drawn rather than as the stand's
+     * hitbox is, so that something drawn on it isn't hidden inside the head.
+     *
+     * @param x          the stand's x, which is also the middle of its head
+     * @param y          the stand's y, the height of its feet
+     * @param z          the stand's z
+     * @param scale      how big the stand is compared to a full size one: 0.5 for a small stand
+     * @param yawDegrees which way the head is turned. A turned head's corners reach further than its sides
+     * @param margin     how far to keep outside the head, in blocks
+     * @return minX, minY, minZ, maxX, maxY and maxZ
+     */
+    static double[] headBox(double x, double y, double z, double scale, double yawDegrees, double margin) {
+        double yaw = Math.toRadians(yawDegrees);
+        double reach = STAND_HEAD_SIZE * scale * (Math.abs(Math.cos(yaw)) + Math.abs(Math.sin(yaw))) / 2.0 + margin;
+        double bottom = y + STAND_HEAD_BASE * scale - margin;
+        double top = y + (STAND_HEAD_BASE + STAND_HEAD_SIZE) * scale + margin;
+        return new double[]{x - reach, bottom, z - reach, x + reach, top, z + reach};
+    }
 
     /** The plot index (0-4 for a coordinate inside the garden) a world X or Z coordinate falls in. */
     static int plotIndex(double coord) {

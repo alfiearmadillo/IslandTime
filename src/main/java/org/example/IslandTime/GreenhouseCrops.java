@@ -24,12 +24,23 @@ final class GreenhouseCrops {
      * @param color    packed 0xRRGGBB colour of the ghost box
      * @param aliases  normalized (see {@link #normalize(String)}) names it is also known by
      * @param mutation true for crops that are grown as a mutation, false for plain crops
-     * @param block    id of the block a plain crop is planted as ("minecraft:wheat"), "" for crops that
-     *                 are armor stands
+     * @param block    id of the block the crop is once it has grown ("minecraft:wheat"), "" for crops that
+     *                 are armor stands only
+     * @param growthBlocks ids of the blocks the crop is shown as while it is still growing, before it turns
+     *                 into {@code block}, for crops that don't grow by the vanilla growth stages of their
+     *                 own block: a Wild Rose starts out as wheat seeds and only then becomes a rose bush.
+     *                 Empty for crops whose block simply grows in place
      */
-    record Crop(String key, String name, int size, int color, List<String> aliases, boolean mutation, String block) {}
+    record Crop(String key, String name, int size, int color, List<String> aliases, boolean mutation, String block,
+                List<String> growthBlocks) {
 
-    /** The block each plain crop is planted as. The special crops are armor stands, so have no block. */
+        /** Whether a block id is one this crop passes through while it grows into its block. */
+        boolean growsThrough(String blockId) {
+            return blockId != null && growthBlocks.contains(blockId);
+        }
+    }
+
+    /** The block each plain crop is once it has grown. The mutations are armor stands, so have no block. */
     private static final Map<String, String> BLOCK_IDS = Map.ofEntries(
             Map.entry("WHEAT", "minecraft:wheat"),
             Map.entry("POTATO", "minecraft:potatoes"),
@@ -42,8 +53,31 @@ final class GreenhouseCrops {
             Map.entry("NETHER_WART", "minecraft:nether_wart"),
             Map.entry("RED_MUSHROOM", "minecraft:red_mushroom"),
             Map.entry("BROWN_MUSHROOM", "minecraft:brown_mushroom"),
+            Map.entry("MOONFLOWER", "minecraft:blue_orchid"),
+            Map.entry("SUNFLOWER", "minecraft:sunflower"),
+            Map.entry("WILD_ROSE", "minecraft:rose_bush"),
             Map.entry("FIRE", "minecraft:fire"),
             Map.entry("DEAD_PLANT", "minecraft:dead_bush"));
+
+    /** What a crop that changes block as it grows looks like when it has just been planted: wheat seeds. */
+    private static final String SEEDS = "minecraft:wheat";
+
+    /**
+     * The blocks a crop is shown as before it is grown, for the crops that change their block as they grow
+     * instead of only advancing its growth stage. Crops that are not listed (wheat, carrots, potatoes, nether
+     * wart, sugar cane, ...) keep their block the whole time, so the stage doesn't matter. Melons and pumpkins
+     * also pass through their stems on the way to the fruit.
+     */
+    private static final Map<String, List<String>> GROWTH_BLOCKS = Map.ofEntries(
+            Map.entry("WILD_ROSE", List.of(SEEDS)),
+            Map.entry("SUNFLOWER", List.of(SEEDS)),
+            Map.entry("MOONFLOWER", List.of(SEEDS)),
+            Map.entry("CACTUS", List.of(SEEDS)),
+            Map.entry("COCOA_BEANS", List.of(SEEDS)),
+            Map.entry("RED_MUSHROOM", List.of(SEEDS)),
+            Map.entry("BROWN_MUSHROOM", List.of(SEEDS)),
+            Map.entry("MELON", List.of(SEEDS, "minecraft:melon_stem", "minecraft:attached_melon_stem")),
+            Map.entry("PUMPKIN", List.of(SEEDS, "minecraft:pumpkin_stem", "minecraft:attached_pumpkin_stem")));
 
     private static final List<Crop> ALL;
     private static final Map<String, Crop> BY_KEY = new HashMap<>();
@@ -141,7 +175,7 @@ final class GreenhouseCrops {
         float hue = (float) ((crops.size() * 0.618033988749895) % 1.0);
         int color = Color.HSBtoRGB(hue, 0.7f, 1.0f) & 0xFFFFFF;
         crops.add(new Crop(key, name, size, color, List.copyOf(aliases.stream().distinct().toList()), mutation,
-                BLOCK_IDS.getOrDefault(key, "")));
+                BLOCK_IDS.getOrDefault(key, ""), GROWTH_BLOCKS.getOrDefault(key, List.of())));
     }
 
     static List<Crop> all() {
@@ -153,7 +187,7 @@ final class GreenhouseCrops {
         return key == null ? null : BY_KEY.get(key);
     }
 
-    /** The plain crop that is planted as this block (an id like "minecraft:wheat"), or null. */
+    /** The plain crop that is this block once grown (an id like "minecraft:wheat"), or null. */
     static Crop byBlockId(String blockId) {
         return blockId == null ? null : BY_BLOCK.get(blockId);
     }

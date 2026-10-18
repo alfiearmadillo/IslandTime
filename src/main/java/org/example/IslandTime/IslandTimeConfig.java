@@ -695,6 +695,67 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorDropdown(values = {"Insta Sell", "Sell Offer"})
         public int enchantmentSellMode = 0; // Insta Sell
 
+        // ── Huntrap Profit ───────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 7)
+        @ConfigOption(name = "Huntrap Profit", desc = "Rank Huntrap locations by estimated shard profit per hour (5 Huntraps assumed)")
+        public boolean huntrapProfitAccordion = false;
+
+        @ConfigAccordionId(id = 7)
+        @ConfigOption(name = "Calculate Huntrap Profit", desc = "Fetch Bazaar prices and rank Huntrap locations by profit per hour")
+        @ConfigEditorButton(buttonText = " Calculate ")
+        public Runnable huntrapProfitButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                if (client.player != null) {
+                    client.player.connection.sendCommand("it huntrapProfit");
+                }
+            }
+        };
+
+        @ConfigAccordionId(id = 7)
+        @Expose
+        @ConfigOption(name = "Huntrap Type", desc = "The Huntrap you place. Higher tiers shorten the time per catch (Small 0%, Medium 10%, Large 20%, Greater 35%, Astral 50%)")
+        @ConfigEditorDropdown(values = {"Small Huntrap", "Medium Huntrap", "Large Huntrap", "Greater Huntrap", "Astral Huntrap"})
+        public int huntrapType = 4; // Astral Huntrap
+
+        @ConfigAccordionId(id = 7)
+        @Expose
+        @ConfigOption(name = "Hunter Fortune", desc = "Your Hunter Fortune. Every 100 gives one extra shard per catch on average (e.g. 150 = 2.5 shards)")
+        @ConfigEditorText
+        public String huntrapHunterFortune = "0";
+
+        @ConfigAccordionId(id = 7)
+        @Expose
+        @ConfigOption(name = "Desert Temple Buff", desc = "Enable while the Desert Temple buff is active (Huntraps catch 25% faster)")
+        @ConfigEditorBoolean
+        public boolean huntrapDesertTemple = false;
+
+        @ConfigAccordionId(id = 7)
+        @Expose
+        @ConfigOption(name = "Forest Trap Level", desc = "Forest Trap attribute level (+1% catch speed per level on Forest shards)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 10, minStep = 1)
+        public int huntrapForestTrapLevel = 0;
+
+        @ConfigAccordionId(id = 7)
+        @Expose
+        @ConfigOption(name = "Combat Trap Level", desc = "Combat Trap attribute level (+1% catch speed per level on Combat shards)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 10, minStep = 1)
+        public int huntrapCombatTrapLevel = 0;
+
+        @ConfigAccordionId(id = 7)
+        @Expose
+        @ConfigOption(name = "Use Sell Offer", desc = "When enabled, values shards at their sell offer (sell order) price instead of insta-sell")
+        @ConfigEditorBoolean
+        public boolean huntrapUseSellOffer = false;
+
+        @ConfigAccordionId(id = 7)
+        @Expose
+        @ConfigOption(name = "Show Top X Locations", desc = "Only show the top X most profitable locations (0 = show all)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 45, minStep = 1)
+        public int huntrapTopCount = 5;
+
         // ── Other ────────────────────────────────────────────────────────────
 
         @ConfigEditorAccordion(id = 3)
@@ -872,6 +933,11 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Outline Opacity", desc = "How solid the red outline is, in percent")
         @ConfigEditorSlider(minValue = 10, maxValue = 100, minStep = 5)
         public int outlineOpacity = 95;
+
+        @Expose
+        @ConfigOption(name = "Highlight Crop In Reach", desc = "Outline the crop head (an armor stand) you are aiming at while it is in hit range. A head has no block border to show it can be broken, like a block has. Works in any greenhouse, even with the layout off")
+        @ConfigEditorBoolean
+        public boolean highlightHeadInReach = true;
 
         @Expose
         @ConfigOption(name = "Check Floor", desc = "Also copy and compare the soil under the crops: a ghost block shows where a soil block is missing or the wrong type, and the legend lists the soil the layout needs. Turn this off to ignore the floor. Layouts always store the floor when you copy them")
