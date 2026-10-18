@@ -135,6 +135,7 @@ public class IslandTimeCommand {
                 .then(buildFuelcostCommand())
                 .then(buildMinionIdCommand())
                 .then(buildComposterCommand())
+                .then(GreenhouseBlueprintCommand.build())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -346,6 +347,7 @@ public class IslandTimeCommand {
                 .then(buildFuelcostCommand())
                 .then(buildMinionIdCommand())
                 .then(buildComposterCommand())
+                .then(GreenhouseBlueprintCommand.build())
                 .then(buildWebhookCommand())
                 .then(buildDiscordpingCommand())
                 .then(buildChatrelayCommand())
@@ -745,7 +747,7 @@ public class IslandTimeCommand {
                 {"/it trackedIslandTime <DD-MM-YY>", "Show specific date (e.g., /it trackedIslandTime 1-1-26)"},
                 {"/it fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
                 {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
-                {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate"},
+                {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate (or only Gabagool Distillate if that setting is on)"},
 
                 // Page 2 - Discord webhook & pings
                 {"/it webhook", "Show current webhook URL"},
@@ -817,6 +819,10 @@ public class IslandTimeCommand {
                 {"/it settingscycle", "Cycle to the next loadout in the current group"},
                 {"/it composter", "Show composter tracking status and when it is estimated to run empty (configure alerts under Composter in /it GUI)"},
                 {"/it composter debug", "Copy the tab list and last Composter menu contents to the clipboard (for when the composter is not found)"},
+                {"/it blueprint copy", "Preview the greenhouse area of the Garden plot you stand in: a frame around it and a box for every crop (block and armor stand, with what the stands wear and hold) that would be copied, plus the soil under them"},
+                {"/it blueprint save [name]|addboard|cancel", "Save what the preview shows (crops, armor stands and soil) as a blueprint that is drawn as see-through blocks and armor stands, with a red outline around what is wrong, over greenhouse plots in the Garden (addboard adds it to the selected blueprint as another plot's board; cancel stops the preview)"},
+                {"/it blueprint list|select <name>|delete <name>", "List, switch between and delete copied greenhouse blueprints"},
+                {"/it blueprint board <n>|rotate [left|right]|mirror|align|toggle|status", "Pick the board for this plot, turn or mirror the layout (align fits it to what you have already built), switch the overlay on or off, or check why it isn't showing"},
         };
 
         int commandsPerPage = 5;
@@ -1107,8 +1113,10 @@ public class IslandTimeCommand {
 
         new Thread(() -> {
             try {
+                IslandTimeConfig config = ConfigManager.getConfig();
+                boolean gabagoolOnly = config != null && config.fuelCycles.gabagoolDistillateOnly;
                 PriceCache.FuelCostBreakdown breakdown =
-                        PriceCache.getInfernoFuelCostBreakdown(PriceCache.refreshBazaar(), fuelCount);
+                        PriceCache.getInfernoFuelCostBreakdown(PriceCache.refreshBazaar(), fuelCount, gabagoolOnly);
                 if (breakdown == null) {
                     sendFuelCostError(client, "Could not fetch all required Bazaar buy-order prices.");
                     return;
@@ -1124,10 +1132,10 @@ public class IslandTimeCommand {
                     sendFuelCostLine(client, "3x Very Crude Gabagool",
                             breakdown.veryCrudeGabagoolPrice, 3, breakdown.fuelCount);
                     for (Map.Entry<String, Double> entry : breakdown.distillatePrices.entrySet()) {
-                        boolean cheapest = entry.getKey().equals(breakdown.cheapestDistillateId);
+                        boolean selected = entry.getKey().equals(breakdown.selectedDistillateId);
                         sendFuelCostLine(client,
                                 "6x " + fuelCostDisplayName(entry.getKey())
-                                        + (cheapest ? " (CHEAPEST)" : ""),
+                                        + (selected ? (breakdown.gabagoolOnly ? " (GABAGOOL ONLY)" : " (CHEAPEST)") : ""),
                                 entry.getValue(), 6, breakdown.fuelCount);
                     }
                     sendFuelCostLine(client, "2x Inferno Fuel Block",

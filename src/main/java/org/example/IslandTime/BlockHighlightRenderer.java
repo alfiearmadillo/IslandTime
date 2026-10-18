@@ -81,7 +81,7 @@ public class BlockHighlightRenderer {
                     .build()
     );
 
-    private static final RenderType NO_DEPTH_FILLED_BOX = RenderType.create(
+    static final RenderType NO_DEPTH_FILLED_BOX = RenderType.create(
             "islandtime_no_depth_filled_box",
             RenderSetup.builder(NO_DEPTH_FILLED_PIPELINE)
                     .sortOnUpload()

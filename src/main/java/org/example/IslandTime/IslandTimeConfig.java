@@ -79,6 +79,10 @@ public class IslandTimeConfig extends Config {
     public CritterSafari critterSafari = new CritterSafari();
 
     @Expose
+    @Category(name = "Greenhouse Blueprint", desc = "Litematica-style ghost preview of a greenhouse layout over your Garden greenhouse plots, copied from a greenhouse you have planted with /it blueprint copy and /it blueprint save")
+    public GreenhouseBlueprintSettings greenhouseBlueprint = new GreenhouseBlueprintSettings();
+
+    @Expose
     @Category(name = "Player List", desc = "Manage a list of players for quick party/invite actions")
     public PlayerList playerList = new PlayerList();
 
@@ -144,6 +148,17 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorText
         public String mobKillCoinsAt100PercentString = "0";
+
+        @Expose
+        @ConfigOption(
+                name = "Gabagool Distillate Only",
+                desc = "Price the 6 distillates in a fuel's recipe as Crude Gabagool Distillate only, instead of " +
+                        "whichever of the five distillates is cheapest. Turn this on if you aren't AFKing, as " +
+                        "Gabagool is the only one that is viable then. Also applies to /it fuelcost. Each fuel " +
+                        "cohort keeps the price it was first costed at, so this takes effect from the next cohort."
+        )
+        @ConfigEditorBoolean
+        public boolean gabagoolDistillateOnly = false;
 
         @Expose
         @ConfigOption(
@@ -386,9 +401,33 @@ public class IslandTimeConfig extends Config {
         public int disconnectSpeed = 2; // NORMAL
 
         @Expose
-        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until you empty your sacks\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until the one set in Repeat Fuel Alert Until (by default, until you empty your sacks)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int fuelExpiredSpeed = 2; // NORMAL
+
+        @Expose
+        @ConfigOption(
+                name = "Fuel Alert Only When All Fuel Expires",
+                desc = "Send the fuel alert when the whole stack of fuel has run out, instead of each time " +
+                        "a single fuel-day runs out. Fuel added before that postpones the alert to when all of " +
+                        "it has actually run out. Off sends an alert per fuel-day. This only changes when the " +
+                        "alert is first sent; whether it then repeats is set by Repeat Fuel Alert Until."
+        )
+        @ConfigEditorBoolean
+        public boolean fuelAlertOnlyWhenAllExpired = false;
+
+        @Expose
+        @ConfigOption(
+                name = "Repeat Fuel Alert Until",
+                desc = "What stops the fuel alert repeating at the speed above.\n" +
+                        "Until Sacks Emptied: until you take Crude Gabagool out of your sacks, as AFKing past " +
+                        "full sacks gains nothing.\n" +
+                        "Until Minion GUI Opened: until you open a minion's menu, for when the gabagool goes " +
+                        "into your minions rather than your sacks and you only need to get back and refuel.\n" +
+                        "Don't Repeat: send it once only."
+        )
+        @ConfigEditorDropdown(values = {"Until Sacks Emptied", "Until Minion GUI Opened", "Don't Repeat"})
+        public int fuelAlertRepeatMode = 0; // Until Sacks Emptied
     }
 
     public static class ChatRelay {
@@ -786,6 +825,103 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Default Min Size Box", desc = "Default for new entries: give entities that have no hitbox (marker armor stands, markers, display entities) a 1 block highlight box so they can be seen. Can be changed per entry in the highlights GUI")
         @ConfigEditorBoolean
         public boolean minSizeBox = false;
+    }
+
+    public static class GreenhouseBlueprintSettings {
+        @Expose
+        @ConfigOption(name = "Enabled", desc = "Draw the selected greenhouse blueprint over the greenhouse plot you are standing in. Make one by planting a greenhouse, then /it blueprint copy to preview the area and /it blueprint save <name> to keep it. /it blueprint toggle switches this on and off")
+        @ConfigEditorBoolean
+        public boolean enabled = true;
+
+        @Expose
+        @ConfigOption(name = "Only Show In Garden", desc = "Only show the blueprint while the tab list reports that you are in the Garden. Turn this off if the overlay stays hidden in the Garden")
+        @ConfigEditorBoolean
+        public boolean onlyInGarden = true;
+
+        @Expose
+        @ConfigOption(name = "Show In Any Plot", desc = "Show or copy the blueprint in whatever garden plot you are standing in, without checking that it has a greenhouse. A greenhouse plot is recognised by the Carpenter NPC; turn this on if your greenhouse isn't picked up (see /it blueprint status)")
+        @ConfigEditorBoolean
+        public boolean ignoreGreenhouseCheck = false;
+
+        @Expose
+        @ConfigOption(name = "Hide Completed", desc = "Stop drawing a ghost once the right crop has been planted in its spot, so only what is left to plant stays on screen")
+        @ConfigEditorBoolean
+        public boolean hideCompleted = true;
+
+        @Expose
+        @ConfigOption(name = "Ghost Block Models", desc = "Draw the ghosts as see-through copies of the real blocks (crops and soil), so they look like what you have to place. Turn this off to use plain coloured boxes instead, for example if the ghosts ever look wrong. Armor stands have their own setting")
+        @ConfigEditorBoolean
+        public boolean ghostBlocks = true;
+
+        @Expose
+        @ConfigOption(name = "Ghost Armor Stands", desc = "Draw the layout's armor stands as see-through copies of the real ones, with the armor and items they wear or hold and their skull textures, so a custom crop looks like what you have to build. Turn this off to use plain coloured boxes instead, for example if the ghosts ever look wrong. Layouts copied before this existed only have the stand's head name, so they stay boxes until you copy them again")
+        @ConfigEditorBoolean
+        public boolean ghostStands = true;
+
+        @Expose
+        @ConfigOption(name = "Outline Incorrect", desc = "Draw a red outline around every block (air included), soil block and armor stand that the layout wants and that isn't right, and around anything in the area that the layout doesn't have. The outline is also drawn over a ghost, so you can still see that a different block than the planned one is in its space")
+        @ConfigEditorBoolean
+        public boolean incorrectOutline = true;
+
+        @Expose
+        @ConfigOption(name = "Outline Thickness", desc = "How thick the red outline's lines are, in hundredths of a block (5 = a twentieth of a block)")
+        @ConfigEditorSlider(minValue = 1, maxValue = 25, minStep = 1)
+        public int outlineThickness = 5;
+
+        @Expose
+        @ConfigOption(name = "Outline Opacity", desc = "How solid the red outline is, in percent")
+        @ConfigEditorSlider(minValue = 10, maxValue = 100, minStep = 5)
+        public int outlineOpacity = 95;
+
+        @Expose
+        @ConfigOption(name = "Check Floor", desc = "Also copy and compare the soil under the crops: a ghost block shows where a soil block is missing or the wrong type, and the legend lists the soil the layout needs. Turn this off to ignore the floor. Layouts always store the floor when you copy them")
+        @ConfigEditorBoolean
+        public boolean showFloor = true;
+
+        @Expose
+        @ConfigOption(name = "Crops Only On Correct Floor", desc = "Only show a crop's preview (ghost, outline and name) once the soil under it is what the layout wants, so you can lay the floor first and then the crops. A crop that is bigger than one block waits for all the soil under it. Needs Check Floor, and crops over soil the layout has no block for are always shown")
+        @ConfigEditorBoolean
+        public boolean cropsOnlyOnCorrectFloor = false;
+
+        @Expose
+        @ConfigOption(name = "Ghost Opacity", desc = "How solid the ghosts are, in percent")
+        @ConfigEditorSlider(minValue = 5, maxValue = 100, minStep = 5)
+        public int opacity = 40;
+
+        @Expose
+        @ConfigOption(name = "Show Through Walls", desc = "Draw the ghost boxes and red outlines on top of everything, including blocks and crops in front of them. Ghost block models and armor stands are always hidden behind blocks in front of them")
+        @ConfigEditorBoolean
+        public boolean throughWalls = false;
+
+        @Expose
+        @ConfigOption(name = "Show Crop Names", desc = "Write the crop's name above its ghost while you are close to it (for a custom crop, its block and armor stand)")
+        @ConfigEditorBoolean
+        public boolean showLabels = true;
+
+        @Expose
+        @ConfigOption(name = "Crop Name Range", desc = "How close (in blocks) you have to be to a ghost to see its name")
+        @ConfigEditorSlider(minValue = 2, maxValue = 20, minStep = 1)
+        public int labelRange = 6;
+
+        @Expose
+        @ConfigOption(name = "Show Legend", desc = "Show a list of the layout's crops and soil with how many of each are right")
+        @ConfigEditorBoolean
+        public boolean showLegend = true;
+
+        @Expose
+        @ConfigOption(name = "Hide Legend When Complete", desc = "Hide the legend while the greenhouse matches the saved layout perfectly: every crop, armor stand and soil block is right and there is nothing else in the area. It comes back as soon as something is off")
+        @ConfigEditorBoolean
+        public boolean hideLegendWhenComplete = true;
+
+        @Expose
+        @ConfigOption(name = "Legend X", desc = "Horizontal legend position as a percentage of the screen (0 = left, 100 = right)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int legendX = 0;
+
+        @Expose
+        @ConfigOption(name = "Legend Y", desc = "Vertical legend position as a percentage of the screen (0 = top, 100 = bottom)")
+        @ConfigEditorSlider(minValue = 0, maxValue = 100, minStep = 1)
+        public int legendY = 30;
     }
 
     public static class Waila {

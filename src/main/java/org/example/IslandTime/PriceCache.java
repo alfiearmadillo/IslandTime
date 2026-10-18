@@ -67,22 +67,28 @@ public class PriceCache {
     private static final int    INFERNO_FUEL_BLOCK_QTY = 2;
     private static final int    INFERNO_FUEL_DISTILLATE_QTY = 6;
 
+    /** The distillate used when only Gabagool is wanted, because it's the only one viable without AFKing. */
+    public static final String GABAGOOL_DISTILLATE_ID = "CRUDE_GABAGOOL_DISTILLATE";
+
     /**
      * Returns the full buy-order crafting cost of one Epic (medium) Inferno Minion Fuel:
      * 25x Sulphuric Coal, 3x Very Crude Gabagool, 6x the cheapest of the 5 distillates,
      * and 2x Inferno Fuel Block. All five distillates are checked before selecting the
-     * cheapest one.
+     * cheapest one, unless {@code gabagoolOnly} asks for Crude Gabagool Distillate.
      */
-    public static double getInfernoFuelUnitCost(JsonObject products) {
-        FuelCostBreakdown breakdown = getInfernoFuelCostBreakdown(products, 1);
+    public static double getInfernoFuelUnitCost(JsonObject products, boolean gabagoolOnly) {
+        FuelCostBreakdown breakdown = getInfernoFuelCostBreakdown(products, 1, gabagoolOnly);
         return breakdown == null ? -1 : breakdown.totalCost;
     }
 
     /**
      * Calculates the full buy-order cost for one or more fuels, including every distillate
-     * price so the selected cheapest option is visible to the caller.
+     * price so the selected distillate is visible to the caller. That is the cheapest of the
+     * five, or only Crude Gabagool Distillate when {@code gabagoolOnly} is set (in which case
+     * there is no cost if Gabagool has no price, even if another distillate does).
      */
-    public static FuelCostBreakdown getInfernoFuelCostBreakdown(JsonObject products, int fuelCount) {
+    public static FuelCostBreakdown getInfernoFuelCostBreakdown(JsonObject products, int fuelCount,
+                                                                boolean gabagoolOnly) {
         if (products == null || fuelCount <= 0) return null;
 
         double sulphuricCoalPrice = getBuyOrderPrice(products, SULPHURIC_COAL_ID);
@@ -93,21 +99,22 @@ public class PriceCache {
         }
 
         Map<String, Double> distillatePrices = new LinkedHashMap<>();
-        double cheapestDistillatePrice = -1;
-        String cheapestDistillateId = null;
+        double selectedDistillatePrice = -1;
+        String selectedDistillateId = null;
         for (String id : INFERNO_FUEL_DISTILLATE_IDS) {
             double price = getBuyOrderPrice(products, id);
             distillatePrices.put(id, price);
-            if (price > 0 && (cheapestDistillatePrice < 0 || price < cheapestDistillatePrice)) {
-                cheapestDistillatePrice = price;
-                cheapestDistillateId = id;
+            if (gabagoolOnly && !id.equals(GABAGOOL_DISTILLATE_ID)) continue;
+            if (price > 0 && (selectedDistillatePrice < 0 || price < selectedDistillatePrice)) {
+                selectedDistillatePrice = price;
+                selectedDistillateId = id;
             }
         }
-        if (cheapestDistillatePrice <= 0) return null;
+        if (selectedDistillatePrice <= 0) return null;
 
         double unitCost = sulphuricCoalPrice * SULPHURIC_COAL_QTY
                 + veryCrudeGabagoolPrice * VERY_CRUDE_GABAGOOL_QTY
-                + cheapestDistillatePrice * INFERNO_FUEL_DISTILLATE_QTY
+                + selectedDistillatePrice * INFERNO_FUEL_DISTILLATE_QTY
                 + fuelBlockPrice * INFERNO_FUEL_BLOCK_QTY;
         return new FuelCostBreakdown(
                 fuelCount,
@@ -115,8 +122,9 @@ public class PriceCache {
                 veryCrudeGabagoolPrice,
                 fuelBlockPrice,
                 distillatePrices,
-                cheapestDistillateId,
-                cheapestDistillatePrice,
+                selectedDistillateId,
+                selectedDistillatePrice,
+                gabagoolOnly,
                 unitCost,
                 unitCost * fuelCount);
     }
@@ -127,23 +135,26 @@ public class PriceCache {
         public final double veryCrudeGabagoolPrice;
         public final double fuelBlockPrice;
         public final Map<String, Double> distillatePrices;
-        public final String cheapestDistillateId;
-        public final double cheapestDistillatePrice;
+        /** The distillate the cost uses: the cheapest one, or Gabagool when {@link #gabagoolOnly}. */
+        public final String selectedDistillateId;
+        public final double selectedDistillatePrice;
+        public final boolean gabagoolOnly;
         public final double unitCost;
         public final double totalCost;
 
         private FuelCostBreakdown(int fuelCount, double sulphuricCoalPrice,
                                   double veryCrudeGabagoolPrice, double fuelBlockPrice,
                                   Map<String, Double> distillatePrices,
-                                  String cheapestDistillateId, double cheapestDistillatePrice,
-                                  double unitCost, double totalCost) {
+                                  String selectedDistillateId, double selectedDistillatePrice,
+                                  boolean gabagoolOnly, double unitCost, double totalCost) {
             this.fuelCount = fuelCount;
             this.sulphuricCoalPrice = sulphuricCoalPrice;
             this.veryCrudeGabagoolPrice = veryCrudeGabagoolPrice;
             this.fuelBlockPrice = fuelBlockPrice;
             this.distillatePrices = Collections.unmodifiableMap(new LinkedHashMap<>(distillatePrices));
-            this.cheapestDistillateId = cheapestDistillateId;
-            this.cheapestDistillatePrice = cheapestDistillatePrice;
+            this.selectedDistillateId = selectedDistillateId;
+            this.selectedDistillatePrice = selectedDistillatePrice;
+            this.gabagoolOnly = gabagoolOnly;
             this.unitCost = unitCost;
             this.totalCost = totalCost;
         }

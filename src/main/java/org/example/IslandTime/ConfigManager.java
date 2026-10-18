@@ -2,6 +2,9 @@ package org.example.islandtime;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import io.github.notenoughupdates.moulconfig.processor.BuiltinMoulConfigGuis;
 import io.github.notenoughupdates.moulconfig.processor.ConfigProcessorDriver;
 import io.github.notenoughupdates.moulconfig.processor.MoulConfigProcessor;
@@ -58,11 +61,32 @@ public class ConfigManager {
         }
 
         try (FileReader reader = new FileReader(configFile)) {
-            IslandTimeConfig loaded = gson.fromJson(reader, IslandTimeConfig.class);
-            return loaded != null ? loaded : new IslandTimeConfig();
+            JsonElement root = JsonParser.parseReader(reader);
+            IslandTimeConfig loaded = gson.fromJson(root, IslandTimeConfig.class);
+            if (loaded == null) return new IslandTimeConfig();
+            migrateLegacyFuelAlertRepeat(root, loaded);
+            return loaded;
         } catch (Exception e) {
             System.err.println("Failed to load MoulConfig, using defaults: " + e.getMessage());
             return new IslandTimeConfig();
+        }
+    }
+
+    /**
+     * The "repeat until" fuel alert setting used to be an on/off toggle (fuelAlertRepeatUntilSacksEmptied).
+     * Carry an "off" over to the dropdown's "Don't Repeat", so it doesn't start repeating again.
+     */
+    private static void migrateLegacyFuelAlertRepeat(JsonElement root, IslandTimeConfig loaded) {
+        if (!root.isJsonObject()) return;
+        JsonElement speeds = root.getAsJsonObject().get("alertSpeeds");
+        if (speeds == null || !speeds.isJsonObject()) return;
+        JsonObject alertSpeeds = speeds.getAsJsonObject();
+        if (alertSpeeds.has("fuelAlertRepeatMode")) return;
+
+        JsonElement legacy = alertSpeeds.get("fuelAlertRepeatUntilSacksEmptied");
+        if (legacy != null && legacy.isJsonPrimitive() && legacy.getAsJsonPrimitive().isBoolean()
+                && !legacy.getAsBoolean()) {
+            loaded.alertSpeeds.fuelAlertRepeatMode = 2; // Don't Repeat
         }
     }
 
