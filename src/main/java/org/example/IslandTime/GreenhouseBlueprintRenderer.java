@@ -28,7 +28,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -114,10 +113,10 @@ public class GreenhouseBlueprintRenderer {
 
     // The outline around the crop head the player can hit: a thin green frame, as vanilla frames a block
     private static final float[] COLOR_REACH = {0.25f, 1.0f, 0.45f};
-    private static final float REACH_BEAM = 0.03f;
+    private static final float REACH_BEAM = 0.04f;
     private static final float REACH_ALPHA = 0.9f;
-    /** How far (in blocks) the frame sits outside the stand's hitbox, so it doesn't sink into the stand. */
-    private static final double REACH_GROW = 0.02;
+    /** How far (in blocks) the frame sits outside the head as it is drawn, so it doesn't sink into the head. */
+    private static final double REACH_GROW = 0.03;
     /** Game ticks between checks that the stand being aimed at is in a greenhouse, which are too costly to make every frame. */
     private static final long REACH_CHECK_INTERVAL_TICKS = 20;
 
@@ -189,10 +188,11 @@ public class GreenhouseBlueprintRenderer {
     private static volatile boolean modelRenderingFailed = false;
     private static int ticksSinceScan = SCAN_INTERVAL_TICKS;
 
-    // The last greenhouse check for the head highlight: which plot, when (game time) and what it found
+    // The last greenhouse check for the head highlight: which plot, when (game time) and what it found,
+    // which is why the plot's heads can't be outlined, or null if they can
     private static PlotRef reachPlot = null;
     private static long reachCheckedAt = Long.MIN_VALUE;
-    private static boolean reachAllowed = false;
+    private static String reachBlocked = null;
 
     private GreenhouseBlueprintRenderer() {}
 
@@ -545,6 +545,7 @@ public class GreenhouseBlueprintRenderer {
         boolean garden = isInGarden();
         lines.add("In the Garden: " + (garden ? "yes" : "no")
                 + (!garden && config.greenhouseBlueprint.onlyInGarden ? " (the overlay only shows in the Garden)" : ""));
+        lines.add("Crop in reach: " + reachStatus(client, config));
 
         PlotRef plot = currentPlot(client);
         if (plot == null || client.level == null) {
@@ -871,10 +872,14 @@ public class GreenhouseBlueprintRenderer {
 
     /**
      * Outlines the crop head the player can hit. A crop that is an armor stand with a head has no block
-     * border when it is aimed at, so there is no sign that it is in reach; this draws one around its hitbox.
+     * border when it is aimed at, so there is no sign that it is in reach; this draws one around the head.
      *
      * <p>The game only reports an entity as the target when it is within the player's reach, so aiming at
      * the stand is enough. It works without the layout itself being switched on.
+     *
+     * <p>The frame goes round the head as it is drawn, not round the stand's hitbox: a skull is drawn bigger
+     * than the hitbox, so a frame on the hitbox would be inside the head, and the head would hide it. It is
+     * drawn without a depth test for the same reason, so nothing about the head's model can hide it.
      */
     private static void renderReachHighlight(LevelRenderContext context) {
         IslandTimeConfig config = ConfigManager.getConfig();
@@ -885,15 +890,14 @@ public class GreenhouseBlueprintRenderer {
         ArmorStand stand = headInReach(client, config);
         if (stand == null) return;
 
+        double scale = stand.getBbWidth() / GreenhouseBlueprint.STAND_WIDTH;
+        if (scale <= 0) return;
+
         // The stand is drawn between its last two ticks, so its outline has to be too
         float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
-        Vec3 tickPos = stand.position();
-        Vec3 drawPos = stand.getPosition(partialTick);
-        AABB bounds = stand.getBoundingBox().inflate(REACH_GROW);
-        if (BlockHighlightRenderer.hasNoHitbox(bounds)) return;
-        float dx = (float) (drawPos.x - tickPos.x);
-        float dy = (float) (drawPos.y - tickPos.y);
-        float dz = (float) (drawPos.z - tickPos.z);
+        Vec3 pos = stand.getPosition(partialTick);
+        double[] head = GreenhouseGeometry.headBox(pos.x, pos.y, pos.z, scale,
+                stand.getYRot() + stand.getHeadPose().y(), REACH_GROW);
 
         PoseStack poseStack = context.poseStack();
         MultiBufferSource.BufferSource bufferSource = context.bufferSource();
@@ -902,11 +906,11 @@ public class GreenhouseBlueprintRenderer {
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         Matrix4fc pose = poseStack.last().pose();
-        VertexConsumer buffer = bufferSource.getBuffer(RenderTypes.debugFilledBox());
+        VertexConsumer buffer = bufferSource.getBuffer(BlockHighlightRenderer.NO_DEPTH_FILLED_BOX);
         OutlineStyle style = new OutlineStyle(REACH_BEAM, 0.0f, REACH_ALPHA);
         outlineBox(pose, buffer, style, COLOR_REACH,
-                (float) bounds.minX + dx, (float) bounds.minY + dy, (float) bounds.minZ + dz,
-                (float) bounds.maxX + dx, (float) bounds.maxY + dy, (float) bounds.maxZ + dz);
+                (float) head[0], (float) head[1], (float) head[2],
+                (float) head[3], (float) head[4], (float) head[5]);
         poseStack.popPose();
         bufferSource.endBatch();
     }
@@ -917,25 +921,63 @@ public class GreenhouseBlueprintRenderer {
      * check, which is dear, is only made for a stand that passes them.
      */
     private static ArmorStand headInReach(Minecraft client, IslandTimeConfig config) {
+        ArmorStand stand = aimedHeadStand(client);
+        if (stand == null) return null;
+        return reachBlocker(client, config, stand) == null ? stand : null;
+    }
+
+    /** The armor stand wearing a head that the game says the player is aiming at (and so can reach), or null. */
+    private static ArmorStand aimedHeadStand(Minecraft client) {
         if (!(client.hitResult instanceof EntityHitResult hit)) return null;
         if (!(hit.getEntity() instanceof ArmorStand stand) || stand.isRemoved()) return null;
-        if (stand.getItemBySlot(EquipmentSlot.HEAD).isEmpty()) return null;
+        return stand.getItemBySlot(EquipmentSlot.HEAD).isEmpty() ? null : stand;
+    }
 
+    /** Why the head of this stand can't be outlined: it is outside the greenhouses, or the checks failed. Null if it can. */
+    private static String reachBlocker(Minecraft client, IslandTimeConfig config, ArmorStand stand) {
         Vec3 pos = stand.position();
         int plotX = GreenhouseGeometry.plotIndex(pos.x);
         int plotZ = GreenhouseGeometry.plotIndex(pos.z);
-        if (!GreenhouseGeometry.isValidPlotIndex(plotX) || !GreenhouseGeometry.isValidPlotIndex(plotZ)) return null;
-        if (!inStandArea(pos, GreenhouseGeometry.areaMin(plotX), GreenhouseGeometry.areaMin(plotZ))) return null;
+        if (!GreenhouseGeometry.isValidPlotIndex(plotX) || !GreenhouseGeometry.isValidPlotIndex(plotZ)) {
+            return "it isn't in a garden plot";
+        }
+        if (!inStandArea(pos, GreenhouseGeometry.areaMin(plotX), GreenhouseGeometry.areaMin(plotZ))) {
+            return "it isn't in the soil area of the plot's greenhouse";
+        }
 
         PlotRef plot = new PlotRef(plotX, plotZ);
         long now = client.level.getGameTime();
         if (!plot.equals(reachPlot) || now < reachCheckedAt || now - reachCheckedAt >= REACH_CHECK_INTERVAL_TICKS) {
             reachPlot = plot;
             reachCheckedAt = now;
-            reachAllowed = (!config.greenhouseBlueprint.onlyInGarden || isInGarden())
-                    && (config.greenhouseBlueprint.ignoreGreenhouseCheck || hasGreenhouse(client.level, plot));
+            if (config.greenhouseBlueprint.onlyInGarden && !isInGarden()) {
+                reachBlocked = "you aren't in the Garden";
+            } else if (!config.greenhouseBlueprint.ignoreGreenhouseCheck && !hasGreenhouse(client.level, plot)) {
+                reachBlocked = "no greenhouse was found in plot " + plot.x() + "," + plot.z()
+                        + " (turn on \"Show In Any Plot\" to skip that check)";
+            } else {
+                reachBlocked = null;
+            }
         }
-        return reachAllowed ? stand : null;
+        return reachBlocked;
+    }
+
+    /** What the head highlight is doing right now, for {@code /it blueprint status}. */
+    private static String reachStatus(Minecraft client, IslandTimeConfig config) {
+        if (!config.greenhouseBlueprint.highlightHeadInReach) return "off (\"Highlight Crop In Reach\" is turned off)";
+        if (!(client.hitResult instanceof EntityHitResult hit)) {
+            return "nothing to outline: you aren't aiming at an armor stand within reach";
+        }
+        if (!(hit.getEntity() instanceof ArmorStand stand)) {
+            return "nothing to outline: you are aiming at " + hit.getEntity().getName().getString()
+                    + ", which isn't an armor stand";
+        }
+        if (stand.getItemBySlot(EquipmentSlot.HEAD).isEmpty()) {
+            return "nothing to outline: the armor stand you are aiming at wears no head";
+        }
+        if (client.level == null) return "nothing to outline: no world is loaded";
+        String blocker = reachBlocker(client, config, stand);
+        return blocker == null ? "on, the head you are aiming at is outlined" : "not outlined, because " + blocker;
     }
 
     /** Stands in for the soil ghost blocks when those aren't drawn: a flat tile where soil is missing or wrong. */
