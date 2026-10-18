@@ -753,7 +753,7 @@ public class IslandTimeConfig extends Config {
         @ConfigAccordionId(id = 7)
         @Expose
         @ConfigOption(name = "Show Top X Locations", desc = "Only show the top X most profitable locations (0 = show all)")
-        @ConfigEditorSlider(minValue = 0, maxValue = 30, minStep = 1)
+        @ConfigEditorSlider(minValue = 0, maxValue = 45, minStep = 1)
         public int huntrapTopCount = 5;
 
         // ── Other ────────────────────────────────────────────────────────────

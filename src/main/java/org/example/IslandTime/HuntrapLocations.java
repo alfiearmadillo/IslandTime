@@ -9,10 +9,20 @@ import java.util.Map;
 /**
  * Which Hunting shards a Huntrap can catch at each placement location.
  *
- * This is the only place that needs editing when the Huntraps locations list changes:
- * add or fix a {@code location(...)} line below. A shard written as {@code "Name"} has
- * equal odds with the other shards at that location; {@code "Name=3"} gives it a weight
- * of 3 against the default of 1 for the others.
+ * The data follows the Locations table on the Hypixel SkyBlock Wiki's Huntraps page (marked as incomplete there,
+ * and Fire Eel and Yog are still marked to be confirmed). It is the only place that needs editing when that
+ * table changes: add or fix a {@code location(...)} line below.
+ *
+ * Odds between the shards of a location:
+ * <ul>
+ *   <li>{@code "Name=100"} is a shard with a weight listed on the wiki.</li>
+ *   <li>{@code "Name"} is a shard without one. If no shard at the location has a weight, all of them get equal
+ *       odds. If only some do, the ones without get the average of the listed weights.</li>
+ * </ul>
+ *
+ * A shard the wiki lists for a whole island or zone ("Anywhere", or no placement) is written on every location
+ * line it applies to, e.g. Thyst anywhere in the Crystal Hollows is also a Thyst entry underwater and in the
+ * Magma Fields.
  */
 final class HuntrapLocations {
 
@@ -40,13 +50,16 @@ final class HuntrapLocations {
     record Shard(String name, String bazaarId, Rarity rarity, Category category) {
     }
 
-    /** A shard that can be caught at a location, with its weight against the other shards there. */
-    record Entry(Shard shard, double weight) {
+    /**
+     * A shard that can be caught at a location, with its weight against the other shards there.
+     * {@code weightKnown} is false when the wiki lists no weight and the value was filled in.
+     */
+    record Entry(Shard shard, double weight, boolean weightKnown) {
     }
 
     record Location(String name, String placement, List<Entry> entries) {
 
-        /** e.g. "Crystal Hollows, Underwater", or just "Smoldering Tomb" when the page gives no placement. */
+        /** e.g. "Crystal Hollows, Underwater", or just "Smoldering Tomb" when there is no placement. */
         String label() {
             return placement == null ? name : name + ", " + placement;
         }
@@ -57,12 +70,12 @@ final class HuntrapLocations {
             return total;
         }
 
-        /** True when no shard at this location has a weight different from the others. */
-        boolean equalOdds() {
+        /** True when at least one shard here has a weight listed on the wiki. */
+        boolean anyWeightKnown() {
             for (Entry entry : entries) {
-                if (entry.weight() != entries.get(0).weight()) return false;
+                if (entry.weightKnown()) return true;
             }
-            return true;
+            return false;
         }
     }
 
@@ -82,18 +95,30 @@ final class HuntrapLocations {
     }
 
     private static void location(String name, String placement, String... shards) {
-        List<Entry> entries = new ArrayList<>();
-        for (String spec : shards) {
-            String shardName = spec;
-            double weight = 1;
-            int eq = spec.indexOf('=');
+        String[] names = new String[shards.length];
+        double[] weights = new double[shards.length];
+        double knownTotal = 0;
+        int knownCount = 0;
+        for (int i = 0; i < shards.length; i++) {
+            names[i] = shards[i];
+            weights[i] = Double.NaN;
+            int eq = shards[i].indexOf('=');
             if (eq >= 0) {
-                shardName = spec.substring(0, eq);
-                weight = Double.parseDouble(spec.substring(eq + 1));
+                names[i] = shards[i].substring(0, eq);
+                weights[i] = Double.parseDouble(shards[i].substring(eq + 1));
+                if (!(weights[i] > 0)) throw new IllegalStateException("Weight must be above 0: " + shards[i]);
+                knownTotal += weights[i];
+                knownCount++;
             }
-            Shard shard = SHARDS.get(shardName);
-            if (shard == null) throw new IllegalStateException("Unknown shard '" + shardName + "' at " + name);
-            entries.add(new Entry(shard, weight));
+        }
+        double fillWeight = knownCount > 0 ? knownTotal / knownCount : 1;
+
+        List<Entry> entries = new ArrayList<>();
+        for (int i = 0; i < names.length; i++) {
+            Shard shard = SHARDS.get(names[i]);
+            if (shard == null) throw new IllegalStateException("Unknown shard '" + names[i] + "' at " + name);
+            boolean known = !Double.isNaN(weights[i]);
+            entries.add(new Entry(shard, known ? weights[i] : fillWeight, known));
         }
         LOCATIONS.add(new Location(name, placement, Collections.unmodifiableList(entries)));
     }
@@ -106,7 +131,9 @@ final class HuntrapLocations {
         shard("Azure", "SHARD_AZURE", Rarity.COMMON, Category.WATER);
         shard("Bambuleaf", "SHARD_BAMBULEAF", Rarity.UNCOMMON, Category.FOREST);
         shard("Bayou Sludge", "SHARD_BAYOU_SLUDGE", Rarity.UNCOMMON, Category.WATER);
+        shard("Bezal", "SHARD_BEZAL", Rarity.COMMON, Category.COMBAT);
         shard("Birries", "SHARD_BIRRIES", Rarity.COMMON, Category.WATER);
+        shard("Brineling", "SHARD_BRINELING", Rarity.COMMON, Category.WATER);
         shard("Bunbun", "SHARD_BUNBUN", Rarity.COMMON, Category.FOREST);
         shard("Chill", "SHARD_CHILL", Rarity.COMMON, Category.COMBAT);
         shard("Cinderbat", "SHARD_CINDER_BAT", Rarity.LEGENDARY, Category.FOREST);
@@ -119,13 +146,20 @@ final class HuntrapLocations {
         shard("Dustybit", "SHARD_DUSTYBIT", Rarity.UNCOMMON, Category.WATER);
         shard("Ember", "SHARD_EMBER", Rarity.UNCOMMON, Category.WATER);
         shard("Ent", "SHARD_ENT", Rarity.UNCOMMON, Category.WATER);
-        shard("Fenlord", "SHARD_FENLORD", Rarity.EPIC, Category.FOREST);
+        shard("Fire Eel", "SHARD_FIRE_EEL", Rarity.EPIC, Category.WATER);
+        shard("Flaming Spider", "SHARD_FLAMING_SPIDER", Rarity.UNCOMMON, Category.COMBAT);
+        shard("Ghost", "SHARD_GHOST", Rarity.EPIC, Category.COMBAT);
+        shard("Giant Isopod", "SHARD_GIANT_ISOPOD", Rarity.EPIC, Category.WATER);
         shard("Giant Water Bug", "SHARD_GIANT_WATER_BUG", Rarity.RARE, Category.WATER);
+        shard("Glacite Walker", "SHARD_GLACITE_WALKER", Rarity.RARE, Category.COMBAT);
+        shard("Golden Ghoul", "SHARD_GOLDEN_GHOUL", Rarity.COMMON, Category.COMBAT);
         shard("Goldolot", "SHARD_GOLDOLOT", Rarity.RARE, Category.WATER);
+        shard("Haggard", "SHARD_HAGGARD", Rarity.COMMON, Category.WATER);
         shard("Hellwisp", "SHARD_HELLWISP", Rarity.LEGENDARY, Category.COMBAT);
         shard("Inferno Koi", "SHARD_INFERNO_KOI", Rarity.RARE, Category.WATER);
         shard("Invisibug", "SHARD_INVISIBUG", Rarity.RARE, Category.FOREST);
         shard("Joydive", "SHARD_JOYDIVE", Rarity.RARE, Category.WATER);
+        shard("Lapis Zombie", "SHARD_LAPIS_ZOMBIE", Rarity.COMMON, Category.COMBAT);
         shard("Lava Flame", "SHARD_LAVA_FLAME", Rarity.RARE, Category.WATER);
         shard("Lotum", "SHARD_LOTUM", Rarity.UNCOMMON, Category.WATER);
         shard("Lotusfish", "SHARD_LOTUS_FISH", Rarity.COMMON, Category.WATER);
@@ -133,20 +167,23 @@ final class HuntrapLocations {
         shard("Magma Slug", "SHARD_MAGMA_SLUG", Rarity.UNCOMMON, Category.WATER);
         shard("Mochibear", "SHARD_MOCHIBEAR", Rarity.UNCOMMON, Category.FOREST);
         shard("Mossybit", "SHARD_MOSSYBIT", Rarity.UNCOMMON, Category.WATER);
-        shard("Mountain Goat", "SHARD_MOUNTAIN_GOAT", Rarity.EPIC, Category.FOREST);
         shard("Mudworm", "SHARD_MUDWORM", Rarity.COMMON, Category.FOREST);
+        shard("Obsidian Defender", "SHARD_OBSIDIAN_DEFENDER", Rarity.UNCOMMON, Category.COMBAT);
         shard("Phanflare", "SHARD_PHANFLARE", Rarity.COMMON, Category.FOREST);
         shard("Phanpyre", "SHARD_PHANPYRE", Rarity.COMMON, Category.FOREST);
         shard("Piranha", "SHARD_PIRANHA", Rarity.RARE, Category.WATER);
         shard("Queen Ant", "SHARD_QUEEN_ANT", Rarity.UNCOMMON, Category.FOREST);
         shard("Salmon", "SHARD_SALMON", Rarity.UNCOMMON, Category.WATER);
+        shard("Seer", "SHARD_SEER", Rarity.UNCOMMON, Category.COMBAT);
         shard("Sepialot", "SHARD_SEPIALOT", Rarity.UNCOMMON, Category.WATER);
         shard("Shellwise", "SHARD_SHELLWISE", Rarity.EPIC, Category.WATER);
         shard("Silentdepth", "SHARD_SILENTDEPTH", Rarity.RARE, Category.WATER);
+        shard("Silkbreeze", "SHARD_SILKBREEZE", Rarity.EPIC, Category.WATER);
         shard("Snowfin", "SHARD_SNOWFIN", Rarity.RARE, Category.WATER);
         shard("Solar", "SHARD_SOLAR", Rarity.UNCOMMON, Category.WATER);
         shard("Soul of the Alpha", "SHARD_SOUL_OF_THE_ALPHA", Rarity.UNCOMMON, Category.COMBAT);
         shard("Spike", "SHARD_SPIKE", Rarity.LEGENDARY, Category.WATER);
+        shard("Sprawl", "SHARD_SPRAWL", Rarity.UNCOMMON, Category.WATER);
         shard("Stingray", "SHARD_STINGRAY", Rarity.RARE, Category.WATER);
         shard("Stridersurfer", "SHARD_STRIDER_SURFER", Rarity.UNCOMMON, Category.WATER);
         shard("Tadgang", "SHARD_TADGANG", Rarity.COMMON, Category.WATER);
@@ -154,45 +191,83 @@ final class HuntrapLocations {
         shard("Thyst", "SHARD_THYST", Rarity.RARE, Category.FOREST);
         shard("Timil", "SHARD_TIMIL", Rarity.COMMON, Category.WATER);
         shard("Titanoboa", "SHARD_TITANOBOA", Rarity.LEGENDARY, Category.WATER);
+        shard("Torrid", "SHARD_TORRID", Rarity.RARE, Category.WATER);
         shard("Treasure Hoarder", "SHARD_TREASURE_HOARDER", Rarity.UNCOMMON, Category.WATER);
         shard("Verdant", "SHARD_VERDANT", Rarity.COMMON, Category.WATER);
+        shard("Voracious Spider", "SHARD_VORACIOUS_SPIDER", Rarity.COMMON, Category.COMBAT);
         shard("Water Snake", "SHARD_WATER_SNAKE", Rarity.UNCOMMON, Category.WATER);
         shard("Wetwing", "SHARD_WETWING", Rarity.UNCOMMON, Category.WATER);
+        shard("Wither Spectre", "SHARD_WITHER_SPECTER", Rarity.RARE, Category.COMBAT);
         shard("XYZ", "SHARD_XYZ", Rarity.EPIC, Category.FOREST);
+        shard("Yog", "SHARD_YOG", Rarity.COMMON, Category.COMBAT);
+        shard("Zealot", "SHARD_ZEALOT", Rarity.COMMON, Category.COMBAT);
+        shard("Zealot Bruiser", "SHARD_BRUISER", Rarity.UNCOMMON, Category.COMBAT);
 
-        // name, placement (null = none given), shards
-        location("Ant's Cave", null, "Ant", "Queen Ant");
-        location("Backwater Bayou", "Underwater", "Alligator", "Bayou Sludge", "Dumpster Diver", "Titanoboa");
-        location("Crimson Isle", "Under lava", "Inferno Koi", "Lava Flame", "Magma Slug");
-        location("Crystal Hollows", "Underwater", "Silentdepth", "Thyst");
-        location("Drowned Reliquary", null, "Drowned");
-        location("Dwarven Mines", "Underwater", "Abyssal Lanternfish", "Treasure Hoarder");
-        location("Galatea", "On Land", "Birries", "Dreadwing", "Fenlord", "Invisibug", "Mossybit", "Mudworm",
-                "Phanflare", "Phanpyre");
-        location("Hotspot Haven", "Underwater", "Ember", "Giant Water Bug", "Stingray");
-        location("Howling Cave", null, "Soul of the Alpha");
-        location("Jerry's Workshop", "Underwater", "Snowfin");
-        location("Kelpwoven Tunnels", "Underwater", "Spike");
-        location("Lotus Atoll", "On Land", "Lotum", "Tewtil");
-        location("Lotus Atoll", "Underwater", "Lotusfish", "Tewtil");
-        location("Matriarch's Lair", null, "Hellwisp");
-        location("Murkwater Depths", "Underwater", "Azure", "Cod", "Coralot", "Ent", "Joydive", "Piranha", "Salmon",
-                "Shellwise", "Spike", "Tadgang", "Verdant", "Wetwing");
-        location("Murkwater Shallows", "Underwater", "Azure", "Cod", "Ent", "Piranha", "Salmon", "Tadgang", "Verdant",
-                "Wetwing");
+        // name, placement (null = none), shards. Zone rows on the wiki use the zone as the name; the other rows
+        // use the island as the name and the placement column as the placement.
+        location("Backwater Bayou", "Underwater", "Dumpster Diver=2000", "Bayou Sludge=1000", "Alligator=500",
+                "Titanoboa=100");
+
+        location("Crimson Isle", "Under Lava", "Magma Slug", "Lava Flame", "Inferno Koi", "Fire Eel");
         location("Mystic Marsh", null, "XYZ");
+        location("Matriarch's Lair", null, "Hellwisp");
         location("Smoldering Tomb", null, "Cinderbat");
-        location("Spring Depths", "Underwater", "Ember", "Goldolot", "Sepialot", "Stingray", "Water Snake");
-        location("Spring Path", null, "Dung Beetle", "Dustybit", "Mountain Goat");
-        location("Spring Path", "Underwater", "Timil");
-        location("Spring Shallows", "Underwater", "Goldolot", "Sepialot", "Solar", "Water Snake");
-        location("Squid Cave", "Underwater", "Lumisquid");
+        location("Burning Desert", null, "Flaming Spider");
+        location("Stronghold", "Blaze rooms", "Bezal");
+        location("Stronghold", "Left side, where Wither Spectres spawn", "Wither Spectre");
+
+        // Thyst is listed for "Anywhere" in the Crystal Hollows, so it is also caught underwater and in the Magma Fields
+        location("Crystal Hollows", "Underwater", "Thyst", "Silentdepth");
+        location("Crystal Hollows", "Anywhere else", "Thyst");
+        location("Magma Fields", null, "Thyst", "Yog");
+
+        location("Lapis Quarry", null, "Lapis Zombie");
+
+        location("Dwarven Mines", "Underwater", "Abyssal Lanternfish");
+        location("The Mist", null, "Ghost");
+        location("Great Ice Wall", null, "Glacite Walker");
+        location("Treasure Hoarder's Pond", null, "Treasure Hoarder");
+
+        location("Moonglade Marsh", "On Land", "Phanpyre", "Phanflare", "Birries", "Mudworm", "Mossybit", "Invisibug",
+                "Dreadwing");
+        location("Murkwater Depths", "Underwater", "Wetwing", "Coralot", "Joydive", "Shellwise", "Spike", "Cod",
+                "Verdant", "Tadgang", "Azure", "Salmon", "Ent", "Piranha");
+        location("Kelpwoven Tunnels", "Underwater", "Spike", "Cod", "Verdant", "Tadgang", "Azure", "Salmon", "Ent",
+                "Piranha");
         location("Stride-Ember Fissure", null, "Stridersurfer");
-        location("Torrhus Canyon", "On Land", "Bunbun", "Dung Beetle", "Sepialot");
-        location("Torrhus Springs", "On Land", "Dustybit", "Goldolot", "Sepialot");
-        location("Tranquility Sanctum", "Spring or Summer", "Bambuleaf");
-        location("Tranquility Sanctum", "Autumn or Winter", "Mochibear");
+        location("Drowned Reliquary", null, "Drowned");
+        location("Squid Cave", null, "Lumisquid");
         location("Wyrmgrove Tomb", null, "Chill");
+        location("Tranquility Sanctum", "Autumn or Winter", "Mochibear");
+        location("Tranquility Sanctum", "Spring or Summer", "Bambuleaf");
+
+        location("Hub", "Golden Ghoul spawns in the Crypts", "Golden Ghoul");
+        location("Jerry's Workshop", "Underwater", "Snowfin");
+
+        // Tewtil is listed for "Anywhere" on Lotus Atoll, so it is caught both on land and underwater
+        location("Lotus Atoll", "On Land", "Tewtil", "Lotum");
+        location("Lotus Atoll", "Underwater", "Tewtil", "Lotusfish");
+
+        location("Spider Mound", null, "Voracious Spider");
+
+        // The wiki lists these three under "near where each one spawns", so each has its own spot
+        location("Dragon's Nest", "Near Zealot spawns", "Zealot");
+        location("Dragon's Nest", "Near Obsidian Defender spawns", "Obsidian Defender");
+        location("Dragon's Nest", "Near Seer spawns", "Seer");
+        location("Zealot Bruiser Hideout", null, "Zealot Bruiser");
+
+        location("Howling Cave", null, "Soul of the Alpha");
+
+        location("Torrhus Canyon", "On Land", "Bunbun", "Dung Beetle", "Sepialot=100");
+        location("Spring Path", "On Land", "Dung Beetle", "Dustybit");
+        location("Spring Path", "Underwater", "Timil");
+        location("Torrhus Springs", "On Land", "Dustybit", "Goldolot=25", "Sepialot=100");
+        location("Spring Shallows", "Underwater", "Solar=75", "Haggard=100", "Brineling=50", "Sprawl=25",
+                "Water Snake=50", "Goldolot=25", "Sepialot=100");
+        location("Spring Depths", "Underwater", "Ember=50", "Stingray=50", "Torrid=100", "Silkbreeze=25",
+                "Giant Isopod=10", "Water Snake=50", "Goldolot=25", "Sepialot=100");
+        location("Hotspot Haven", "Underwater", "Ember=50", "Stingray=50", "Giant Water Bug");
+        location("Ant's Cave", null, "Ant", "Queen Ant");
     }
 
     private HuntrapLocations() {

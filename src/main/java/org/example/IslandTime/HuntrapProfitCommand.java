@@ -163,10 +163,7 @@ public class HuntrapProfitCommand {
         }
 
         // Odds
-        String oddsNote = loc.equalOdds()
-                ? (loc.entries().size() == 1 ? "only shard here" : "equal odds, " + loc.entries().size() + " shards")
-                : "weight " + number(result.entry().weight()) + " of " + number(loc.totalWeight());
-        row(text, "Chance per catch", percent(result.odds()) + " (" + oddsNote + ")");
+        row(text, "Chance per catch", percent(result.odds()) + " (" + oddsNote(loc, result.entry()) + ")");
 
         // Hunter Fortune
         row(text, "Shards per catch", String.format(Locale.ROOT, "%.2f", settings.shardsPerCatch())
@@ -225,6 +222,13 @@ public class HuntrapProfitCommand {
                 + hours(result.meanCatchHours()) + " average catch time (" + sellLabel + ")").withStyle(ChatFormatting.GRAY));
         text.append(Component.literal("\nHover each shard for its full breakdown").withStyle(ChatFormatting.DARK_GRAY));
         return text;
+    }
+
+    private static String oddsNote(HuntrapLocations.Location loc, HuntrapLocations.Entry entry) {
+        if (loc.entries().size() == 1) return "only shard here";
+        if (!loc.anyWeightKnown()) return "no weights known, equal odds between " + loc.entries().size() + " shards";
+        String weight = "weight " + number(entry.weight()) + " of " + number(loc.totalWeight());
+        return entry.weightKnown() ? weight : weight + ", no weight listed so the average of the listed weights is assumed";
     }
 
     private static void row(MutableComponent text, String label, String value) {
