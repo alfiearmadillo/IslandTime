@@ -203,15 +203,18 @@ public class PriceCache {
     /**
      * Highest currently listed buy order. The Bazaar quick-status sellPrice is an
      * aggregated/averaged value, not necessarily the top order, so fuel costing uses
-     * buy_summary[0] when available.
+     * sell_summary[0] when available. The Bazaar API names its summaries from the
+     * order-placer's point of view: sell_summary lists the buy orders (what an
+     * instant seller receives) and buy_summary lists the sell offers (what an instant
+     * buyer pays), so the highest buy order is sell_summary[0], not buy_summary[0].
      */
     public static double getBuyOrderPrice(JsonObject products, String productId) {
         if (products == null) return -1;
         JsonObject product = products.getAsJsonObject(productId);
         if (product == null) return -1;
-        JsonArray buySummary = product.getAsJsonArray("buy_summary");
-        if (buySummary != null && !buySummary.isEmpty()) {
-            JsonObject topOrder = buySummary.get(0).getAsJsonObject();
+        JsonArray sellSummary = product.getAsJsonArray("sell_summary");
+        if (sellSummary != null && !sellSummary.isEmpty()) {
+            JsonObject topOrder = sellSummary.get(0).getAsJsonObject();
             JsonElement topPrice = topOrder.get("pricePerUnit");
             if (topPrice == null) topPrice = topOrder.get("price");
             if (topPrice != null && !topPrice.isJsonNull() && topPrice.getAsDouble() > 0) {
