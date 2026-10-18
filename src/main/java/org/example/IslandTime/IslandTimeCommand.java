@@ -282,6 +282,11 @@ public class IslandTimeCommand {
                             CookieProfitCommand.execute(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("huntrapProfit")
+                        .executes(ctx -> {
+                            HuntrapProfitCommand.execute(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("players")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
@@ -809,6 +814,8 @@ public class IslandTimeCommand {
                 // Page 10 - Cookie Profit & Settings Loadouts
                 {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
                 {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /it GUI"},
+                {"/it huntrapProfit", "Rank Huntrap locations by estimated shard profit/hour (5 traps) using live Bazaar prices"},
+                {"Huntrap Settings", "Set trap type, Hunter Fortune, Desert Temple buff, Forest/Combat Trap levels and how many locations to show under Misc > Huntrap Profit in /it GUI"},
                 {"/it settingssave <name>", "Save current settings as a named loadout"},
                 {"/it settingsload <name>", "Load a saved settings loadout (replaces current settings)"},
                 {"/it settingsdelete <name>", "Delete a saved settings loadout"},

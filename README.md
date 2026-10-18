@@ -29,6 +29,7 @@ A Minecraft Fabric mod for Hypixel SkyBlock that tracks island time, minion fuel
 - **Copy Skin** — Copy the skin texture of a targeted player head block to clipboard with `/it copyskin`, or copy from a skull item in any inventory/GUI by pressing a configurable keybind (default: `V`). Preserves transparency. The keybind and toggle are configurable in the MoulConfig GUI under Misc
 - **Aging Items** — Compare profit per hour for all levelling items (Bottle of Jyrre, Dark Cacao Truffle, Discrite, Moby-Duck, Not Very Moldy Bread, Rosewater Flask) using live Bazaar prices. Configure time-bag and inventory slot counts for estimated hourly income. Add or remove custom item pairs with `/it agingItems add/remove`
 - **Cookie Profit** — Compare profit per bit from spending Booster Cookie bits on Kismet Feathers, Magma Buckets, and Plasma Buckets using live Bazaar prices. Accounts for material costs (enchanted lava buckets) on crafted items. Configure your bits-per-cookie in the MoulConfig GUI
+- **Huntrap Profit** — `/it huntrapProfit` ranks Huntrap placement locations by estimated shard profit per hour for five traps, using live Bazaar prices. Configure the Huntrap type, Hunter Fortune, Desert Temple buff, Forest/Combat Trap attribute levels and how many locations to show under Misc > Huntrap Profit. Profit is estimated from the average catch time (the 16-24h range averages 20h, reduced by the Huntrap tier and sped up by the buffs), locations that can catch several shards split their catches by weight or evenly when no weight is known, and hovering a shard shows every factor of its calculation.
 - **MoulConfig GUI** — All settings accessible from a single GUI opened with `/it` (alias: `/islandtime`)
 
 ## Installation
@@ -83,6 +84,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it agingItems remove <agingId>` | Remove an aging item pair |
 | `/it agingItems list` | List all configured aging item pairs |
 | `/it cookieProfit` | Compare profit/bit for spending cookie bits (Kismet, Magma Bucket, Plasma Bucket) |
+| `/it huntrapProfit` | Rank Huntrap locations by estimated shard profit/hour (5 traps) using Bazaar prices; hover a shard for the full calculation |
 | `/it blueprint copy` | Preview the greenhouse area of the Garden plot you stand in: a frame around it and a box for every crop (block and armor stand, with what the stands wear and hold) that would be copied; the soil under them is copied too |
 | `/it blueprint save [name]\|addboard\|cancel` | Save what the preview shows (crops, armor stands and soil) as a new blueprint, add it to the selected blueprint as another plot's board, or stop the preview |
 | `/it blueprint list\|select <name>\|delete <name>` | List, switch between and delete copied greenhouse blueprints |
