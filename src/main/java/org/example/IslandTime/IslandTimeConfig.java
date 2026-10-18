@@ -874,6 +874,11 @@ public class IslandTimeConfig extends Config {
         public int outlineOpacity = 95;
 
         @Expose
+        @ConfigOption(name = "Highlight Crop In Reach", desc = "Outline the crop head (an armor stand) you are aiming at while it is in hit range. A head has no block border to show it can be broken, like a block has. Works in any greenhouse, even with the layout off")
+        @ConfigEditorBoolean
+        public boolean highlightHeadInReach = true;
+
+        @Expose
         @ConfigOption(name = "Check Floor", desc = "Also copy and compare the soil under the crops: a ghost block shows where a soil block is missing or the wrong type, and the legend lists the soil the layout needs. Turn this off to ignore the floor. Layouts always store the floor when you copy them")
         @ConfigEditorBoolean
         public boolean showFloor = true;

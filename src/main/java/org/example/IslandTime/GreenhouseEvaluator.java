@@ -143,12 +143,15 @@ final class GreenhouseEvaluator {
         boolean blockOk = true;
         boolean blockWrong = false;
         if (p.size == 1 && !p.block.isEmpty()) {
+            // A crop that changes block as it grows (a Wild Rose starts as wheat seeds) is still right
+            // while it is on its way, which its armor stand is what tells
+            GreenhouseCrops.Crop crop = GreenhouseCrops.byKey(p.crop);
             boolean anyBlock = false;
             boolean matches = false;
             for (GreenhouseScan.BlockCell cell : scan.blocks()) {
                 if (cell.x() != p.x || cell.z() != p.z) continue;
                 anyBlock = true;
-                if (GreenhouseScan.sameBlock(p.block, cell.state())) matches = true;
+                if (GreenhouseScan.blockMatches(p.block, cell.state(), crop, near)) matches = true;
             }
             blockOk = matches;
             blockWrong = anyBlock && !matches;

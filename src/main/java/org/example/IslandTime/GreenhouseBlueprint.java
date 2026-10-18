@@ -305,7 +305,8 @@ final class GreenhouseBlueprint {
         String name = "";
         /**
          * The block in the crop layer, as a state string like {@code minecraft:nether_wart}, or "" for
-         * none. Only matters for single cell placements.
+         * none. Only matters for single cell placements. For a crop that changes block as it grows this
+         * is the block it ends up as (see {@link #settleGrowth()}).
          */
         String block = "";
         List<Stand> stands = new ArrayList<>();
@@ -347,6 +348,19 @@ final class GreenhouseBlueprint {
         }
 
         /**
+         * Stores a crop that changes block as it grows as the block it ends up as. A Wild Rose is wheat
+         * seeds for a while and then a rose bush, so one copied (or saved by an older version) at the
+         * seed stage would otherwise want wheat seeds for good. Only a crop that is known by its armor
+         * stand is touched, since that is what tells wheat seeds from a Wild Rose that has just been
+         * planted; a crop whose block is the same all along has nothing to settle.
+         */
+        void settleGrowth() {
+            GreenhouseCrops.Crop known = GreenhouseCrops.byKey(crop);
+            if (known == null || block.isEmpty() || !known.growsThrough(GreenhouseScan.idOf(block))) return;
+            if (GreenhouseScan.hasStandOf(stands, known)) block = known.block();
+        }
+
+        /**
          * Fills in what blueprints made before blocks and armor stands were copied don't have: a plain
          * crop is its block, and a special crop is an armor stand wearing its head.
          */
@@ -358,6 +372,7 @@ final class GreenhouseBlueprint {
             stands.removeIf(s -> s == null);
             for (Stand s : stands) s.upgrade();
             if (size < 1) size = 1;
+            settleGrowth();
             if (!block.isEmpty() || !stands.isEmpty()) return;
 
             GreenhouseCrops.Crop known = GreenhouseCrops.byKey(crop);

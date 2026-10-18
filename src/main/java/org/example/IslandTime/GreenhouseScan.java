@@ -71,6 +71,31 @@ final class GreenhouseScan {
         return !idA.isEmpty() && idA.equals(idB);
     }
 
+    /** Whether one of the armor stands is the crop, which is to say its head is named after it. */
+    static boolean hasStandOf(List<GreenhouseBlueprint.Stand> stands, GreenhouseCrops.Crop crop) {
+        if (crop == null) return false;
+        for (GreenhouseBlueprint.Stand stand : stands) {
+            GreenhouseCrops.Crop named = GreenhouseCrops.fromPlantedName(stand.head);
+            if (named != null && named.key().equals(crop.key())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether the block found in a cell is the one the layout wants: the same block, or, for a crop that
+     * changes block as it grows, one of the blocks it passes through on the way (a Wild Rose is wheat
+     * seeds until it turns into a rose bush). The crop is only known by the armor stand with its head
+     * on, so the earlier blocks only count when one of {@code stands} (the ones in the cell) is that
+     * crop; a lone wheat block is wheat.
+     *
+     * @param crop the crop the layout wants in the cell, or null
+     */
+    static boolean blockMatches(String wanted, String actual, GreenhouseCrops.Crop crop,
+                                List<GreenhouseBlueprint.Stand> stands) {
+        if (sameBlock(wanted, actual)) return true;
+        return crop != null && crop.growsThrough(idOf(actual)) && hasStandOf(stands, crop);
+    }
+
     /**
      * What identifies an armor stand: the crop it is, when its head is named after one ("Veilshroom",
      * however it is worded), otherwise its head's name with everything but letters and digits dropped.

@@ -25,8 +25,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -46,6 +49,8 @@ import net.minecraft.world.phys.Vec3;
  *       soil block that the layout wants isn't right (air included), or where something is in the way
  *       that the layout doesn't have, a red outline is drawn around it, over the ghost if there is one.
  *       A small legend (the guide) shows what is left, and can hide itself once everything is right.</li>
+ *   <li>A crop that is an armor stand with a head has no block border to show it can be hit, so the
+ *       head the player is aiming at is outlined while it is in hit range (see {@link #renderReachHighlight}).</li>
  * </ul>
  *
  * <p>Everything is gated to the Garden using the same tab-list area detection as the block
@@ -106,6 +111,15 @@ public class GreenhouseBlueprintRenderer {
     private static final float OUTLINE_STAND_GROW = 0.1f;
     /** Outlines further than this from the camera (in blocks) aren't drawn. */
     private static final double OUTLINE_RANGE = 64.0;
+
+    // The outline around the crop head the player can hit: a thin green frame, as vanilla frames a block
+    private static final float[] COLOR_REACH = {0.25f, 1.0f, 0.45f};
+    private static final float REACH_BEAM = 0.03f;
+    private static final float REACH_ALPHA = 0.9f;
+    /** How far (in blocks) the frame sits outside the stand's hitbox, so it doesn't sink into the stand. */
+    private static final double REACH_GROW = 0.02;
+    /** Game ticks between checks that the stand being aimed at is in a greenhouse, which are too costly to make every frame. */
+    private static final long REACH_CHECK_INTERVAL_TICKS = 20;
 
     private static final int HUD_PADDING = 4;
     private static final int HUD_LINE_HEIGHT = 10;
@@ -175,11 +189,17 @@ public class GreenhouseBlueprintRenderer {
     private static volatile boolean modelRenderingFailed = false;
     private static int ticksSinceScan = SCAN_INTERVAL_TICKS;
 
+    // The last greenhouse check for the head highlight: which plot, when (game time) and what it found
+    private static PlotRef reachPlot = null;
+    private static long reachCheckedAt = Long.MIN_VALUE;
+    private static boolean reachAllowed = false;
+
     private GreenhouseBlueprintRenderer() {}
 
     public static void register() {
         LevelRenderEvents.COLLECT_SUBMITS.register(GreenhouseBlueprintRenderer::collectSubmits);
         LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register(GreenhouseBlueprintRenderer::render);
+        LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register(GreenhouseBlueprintRenderer::renderReachHighlight);
         HudElementRegistry.attachElementBefore(
                 VanillaHudElements.CHAT,
                 Identifier.fromNamespaceAndPath("islandtime", "greenhouse_blueprint"),
@@ -339,17 +359,28 @@ public class GreenhouseBlueprintRenderer {
         List<GreenhouseBlueprint.Stand> stands = new ArrayList<>();
         for (Entity entity : level.entitiesForRendering()) {
             if (!(entity instanceof ArmorStand stand) || stand.isRemoved()) continue;
-            Vec3 pos = stand.position();
-            double dx = pos.x - areaX;
-            double dz = pos.z - areaZ;
-            if (dx < -1 || dx >= size + 1 || dz < -1 || dz >= size + 1) continue;
-            if (pos.y < GreenhouseGeometry.SOIL_Y - 1 || pos.y > GreenhouseGeometry.CROP_Y + 8) continue;
+            if (!inStandArea(stand.position(), areaX, areaZ)) continue;
 
             GreenhouseBlueprint.Stand read =
                     GreenhouseStandItems.read(stand, areaX, areaZ, level.registryAccess(), keepItems);
             if (read != null) stands.add(read);
         }
         return new GreenhouseScan.Scan(floor, blocks, stands);
+    }
+
+    /**
+     * Whether a position is in a greenhouse's soil area or the block wide margin around it, and low
+     * enough to be a crop's armor stand rather than something high above it.
+     *
+     * @param areaX the world x of the area's north west corner
+     * @param areaZ the world z of the area's north west corner
+     */
+    private static boolean inStandArea(Vec3 pos, int areaX, int areaZ) {
+        int size = GreenhouseGeometry.AREA_SIZE;
+        double dx = pos.x - areaX;
+        double dz = pos.z - areaZ;
+        return dx >= -1 && dx < size + 1 && dz >= -1 && dz < size + 1
+                && pos.y >= GreenhouseGeometry.SOIL_Y - 1 && pos.y <= GreenhouseGeometry.CROP_Y + 8;
     }
 
     // -------------------------------------------------------------------------
@@ -814,9 +845,13 @@ public class GreenhouseBlueprintRenderer {
      */
     private static void outlineBox(Matrix4fc pose, VertexConsumer buffer, OutlineStyle style,
                                    float x0, float y0, float z0, float x1, float y1, float z1) {
+        outlineBox(pose, buffer, style, COLOR_OUTLINE, x0, y0, z0, x1, y1, z1);
+    }
+
+    private static void outlineBox(Matrix4fc pose, VertexConsumer buffer, OutlineStyle style, float[] c,
+                                   float x0, float y0, float z0, float x1, float y1, float z1) {
         float t = Math.min(style.beam(), Math.min(x1 - x0, Math.min(y1 - y0, z1 - z0)) / 3.0f);
         float a = style.alpha();
-        float[] c = COLOR_OUTLINE;
         for (int i = 0; i < 4; i++) {
             float y = (i & 1) == 0 ? y0 : y1 - t;
             float z = (i & 2) == 0 ? z0 : z1 - t;
@@ -832,6 +867,75 @@ public class GreenhouseBlueprintRenderer {
             float y = (i & 2) == 0 ? y0 : y1 - t;
             BlockHighlightRenderer.renderFilledBox(pose, buffer, x, y, z0 + t, x + t, y + t, z1 - t, c[0], c[1], c[2], a);
         }
+    }
+
+    /**
+     * Outlines the crop head the player can hit. A crop that is an armor stand with a head has no block
+     * border when it is aimed at, so there is no sign that it is in reach; this draws one around its hitbox.
+     *
+     * <p>The game only reports an entity as the target when it is within the player's reach, so aiming at
+     * the stand is enough. It works without the layout itself being switched on.
+     */
+    private static void renderReachHighlight(LevelRenderContext context) {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        if (config == null || !config.greenhouseBlueprint.highlightHeadInReach) return;
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.level == null) return;
+
+        ArmorStand stand = headInReach(client, config);
+        if (stand == null) return;
+
+        // The stand is drawn between its last two ticks, so its outline has to be too
+        float partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        Vec3 tickPos = stand.position();
+        Vec3 drawPos = stand.getPosition(partialTick);
+        AABB bounds = stand.getBoundingBox().inflate(REACH_GROW);
+        if (BlockHighlightRenderer.hasNoHitbox(bounds)) return;
+        float dx = (float) (drawPos.x - tickPos.x);
+        float dy = (float) (drawPos.y - tickPos.y);
+        float dz = (float) (drawPos.z - tickPos.z);
+
+        PoseStack poseStack = context.poseStack();
+        MultiBufferSource.BufferSource bufferSource = context.bufferSource();
+        Vec3 cameraPos = context.levelState().cameraRenderState.pos;
+
+        poseStack.pushPose();
+        poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+        Matrix4fc pose = poseStack.last().pose();
+        VertexConsumer buffer = bufferSource.getBuffer(RenderTypes.debugFilledBox());
+        OutlineStyle style = new OutlineStyle(REACH_BEAM, 0.0f, REACH_ALPHA);
+        outlineBox(pose, buffer, style, COLOR_REACH,
+                (float) bounds.minX + dx, (float) bounds.minY + dy, (float) bounds.minZ + dz,
+                (float) bounds.maxX + dx, (float) bounds.maxY + dy, (float) bounds.maxZ + dz);
+        poseStack.popPose();
+        bufferSource.endBatch();
+    }
+
+    /**
+     * The armor stand wearing a head that the player is aiming at, if it is part of a greenhouse the layout
+     * would apply to; null if there is none. The cheap checks on the target come first, and the greenhouse
+     * check, which is dear, is only made for a stand that passes them.
+     */
+    private static ArmorStand headInReach(Minecraft client, IslandTimeConfig config) {
+        if (!(client.hitResult instanceof EntityHitResult hit)) return null;
+        if (!(hit.getEntity() instanceof ArmorStand stand) || stand.isRemoved()) return null;
+        if (stand.getItemBySlot(EquipmentSlot.HEAD).isEmpty()) return null;
+
+        Vec3 pos = stand.position();
+        int plotX = GreenhouseGeometry.plotIndex(pos.x);
+        int plotZ = GreenhouseGeometry.plotIndex(pos.z);
+        if (!GreenhouseGeometry.isValidPlotIndex(plotX) || !GreenhouseGeometry.isValidPlotIndex(plotZ)) return null;
+        if (!inStandArea(pos, GreenhouseGeometry.areaMin(plotX), GreenhouseGeometry.areaMin(plotZ))) return null;
+
+        PlotRef plot = new PlotRef(plotX, plotZ);
+        long now = client.level.getGameTime();
+        if (!plot.equals(reachPlot) || now < reachCheckedAt || now - reachCheckedAt >= REACH_CHECK_INTERVAL_TICKS) {
+            reachPlot = plot;
+            reachCheckedAt = now;
+            reachAllowed = (!config.greenhouseBlueprint.onlyInGarden || isInGarden())
+                    && (config.greenhouseBlueprint.ignoreGreenhouseCheck || hasGreenhouse(client.level, plot));
+        }
+        return reachAllowed ? stand : null;
     }
 
     /** Stands in for the soil ghost blocks when those aren't drawn: a flat tile where soil is missing or wrong. */
