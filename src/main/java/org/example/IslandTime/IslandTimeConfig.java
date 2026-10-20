@@ -889,6 +889,16 @@ public class IslandTimeConfig extends Config {
     }
 
     public static class GreenhouseBlueprintSettings {
+        @ConfigOption(name = "Open Blueprint List", desc = "Open the greenhouse blueprint list to select, delete and share your layouts. Each layout has a button that copies an import code for it, and the button at the top imports a layout from a code on your clipboard. Also /it blueprint gui")
+        @ConfigEditorButton(buttonText = " Open Blueprint List ")
+        public Runnable openBlueprintListButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new GreenhouseBlueprintScreen()));
+            }
+        };
+
         @Expose
         @ConfigOption(name = "Enabled", desc = "Draw the selected greenhouse blueprint over the greenhouse plot you are standing in. Make one by planting a greenhouse, then /it blueprint copy to preview the area and /it blueprint save <name> to keep it. /it blueprint toggle switches this on and off")
         @ConfigEditorBoolean

@@ -38,14 +38,19 @@ public class HandledScreenMixin {
     }
 
     // -------------------------------------------------------------------------
-    // Render TAIL — runs AFTER vanilla has written hoveredSlot.
+    // Overlay update — runs once per frame AFTER vanilla has written hoveredSlot.
+    //
+    // This used to hook the TAIL of extractRenderState, but the recipe-book
+    // screens (the plain player inventory, crafting table, furnaces, ...) override
+    // extractRenderState WITHOUT calling the AbstractContainerScreen version, so
+    // that hook never ran for them: no backpack preview in the inventory GUI, and
+    // any state left behind by another screen was never cleaned up (which kept the
+    // vanilla tooltip cancelled below). extractTooltip is invoked by every
+    // container screen right after the slots are drawn, so we hook that instead.
     // -------------------------------------------------------------------------
 
-    @Inject(method = "extractRenderState", at = @At("TAIL"))
-    private void islandtime$afterRender(GuiGraphicsExtractor context,
-                                        int mouseX, int mouseY,
-                                        float delta,
-                                        CallbackInfo ci) {
+    @Unique
+    private void islandtime$updateOverlays(GuiGraphicsExtractor context, int mouseX, int mouseY) {
 
         // ── FavouriteGuiViewer active (overlay on top of a AbstractContainerScreen) ──
         if (FavouriteGuiViewer.isActive()) {
@@ -104,13 +109,15 @@ public class HandledScreenMixin {
     }
 
     // -------------------------------------------------------------------------
-    // Suppress vanilla tooltip while our overlay is active
+    // Update the overlays, then suppress the vanilla tooltip while one is active
     // -------------------------------------------------------------------------
 
     @Inject(method = "extractTooltip", at = @At("HEAD"), cancellable = true)
     private void islandtime$cancelTooltipForBackpack(GuiGraphicsExtractor context,
                                                      int mouseX, int mouseY,
                                                      CallbackInfo ci) {
+        islandtime$updateOverlays(context, mouseX, mouseY);
+
         if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.hasBackpackHovered()) {
             ci.cancel();
         }

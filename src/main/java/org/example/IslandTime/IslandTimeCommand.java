@@ -802,7 +802,7 @@ public class IslandTimeCommand {
                 {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; filter entities by name with entity:armor_stand[name=TEXT] or entity:*[name=TEXT] (any type); sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color, plus partial (IDs and names only need to contain the text, e.g. entity:ca) and/or minsize (1 block box for entities with no hitbox)."},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block or entity you're aiming at, even out of reach or untargetable (like marker armor stands). Can be bound to a key in /it > WAILA — shows IDs, position, state, NBT, equipment, skull textures, and SkyBlock custom ID, with buttons to add it to highlights"},
-                {"/it help [page]", "Show this help (pages 1-11)"},
+                {"/it help [page]", "Show this help (pages 1-13)"},
 
                 // Page 9 - Aging Items
                 {"/it agingItems", "Compare profit/hour for all configured aging items using live Bazaar prices"},
@@ -829,6 +829,7 @@ public class IslandTimeCommand {
                 {"/it blueprint copy", "Preview the greenhouse area of the Garden plot you stand in: a frame around it and a box for every crop (block and armor stand, with what the stands wear and hold) that would be copied, plus the soil under them"},
                 {"/it blueprint save [name]|addboard|cancel", "Save what the preview shows (crops, armor stands and soil) as a blueprint that is drawn as see-through blocks and armor stands, with a red outline around what is wrong, over greenhouse plots in the Garden (addboard adds it to the selected blueprint as another plot's board; cancel stops the preview)"},
                 {"/it blueprint list|select <name>|delete <name>", "List, switch between and delete copied greenhouse blueprints"},
+                {"/it blueprint gui|export [name]|import", "Open the blueprint list (select, delete, copy a shareable import code per layout, import one from the clipboard at the top). export copies the code of the selected or named layout, import reads one from the clipboard"},
                 {"/it blueprint board <n>|rotate [left|right]|mirror|align|toggle|status", "Pick the board for this plot, turn or mirror the layout (align fits it to what you have already built), switch the overlay on or off, or check why it isn't showing"},
         };
 

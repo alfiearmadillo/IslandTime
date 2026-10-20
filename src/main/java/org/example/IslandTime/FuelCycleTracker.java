@@ -28,6 +28,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -120,6 +121,7 @@ public class FuelCycleTracker {
         activeDaySlotIndex = 0;
         minionsCountedByDaySlot.clear();
         minionFuelUnitsQueued.clear();
+        timeWarps.clear();
         mobKillCoinsAt100Baseline = 0.0;
 
         load();
@@ -192,6 +194,13 @@ public class FuelCycleTracker {
     // was opened, so refueling a full set cannot split one cycle across several day records
     // merely because the minions were clicked in sequence.
     private static final ConcurrentHashMap<String, Integer> minionFuelUnitsQueued = new ConcurrentHashMap<>();
+
+    // Every Enchanted Clock "time warp" (see onTimeWarp()), oldest first. The cohort's
+    // day-slots are nominal 24h steps from cohortStartMs; these say how far each slot
+    // boundary has since been pulled sooner. Warps from before the current cohort started
+    // are ignored by the slot maths, so nothing needs clearing when a cohort ends.
+    private static final List<MinionTimeWarp.Warp> timeWarps = new CopyOnWriteArrayList<>();
+    private static final int MAX_REMEMBERED_WARPS = 256;
 
     private static long    lastTickTime        = 0;
     private static boolean wasOnIslandLastTick  = false;
@@ -283,7 +292,8 @@ public class FuelCycleTracker {
          *  (legacy/manual records) — see {@link #formatCycleRange(DayRecord)} for the
          *  display fallback. */
         public long cycleEndMs = 0;
-        /** True when the user manually corrected this day's displayed timestamps. */
+        /** True when this day's start/end are set explicitly rather than being start + 24h:
+         *  either corrected by hand, or moved by an Enchanted Clock time warp. */
         public boolean manualCycleTimes = false;
         /** Internal marker distinguishing a manually-entered end from a completed day. */
         public boolean cycleClosed = false;
@@ -811,7 +821,7 @@ public class FuelCycleTracker {
             closedActiveDay = true;
         }
 
-        long firstFutureSlotStart = cohortStartMs + (long) (activeDaySlotIndex + 1) * DAY_MS;
+        long firstFutureSlotStart = slotEndMs(cohortStartMs, activeDaySlotIndex);
         dayRecords.entrySet().removeIf(entry -> {
             DayRecord record = entry.getValue();
             return record.cycleStartMs >= firstFutureSlotStart
@@ -1001,7 +1011,7 @@ public class FuelCycleTracker {
 
         if (wasActiveRecord) {
             long shift = endMs - oldEffectiveEnd;
-            long newCohortStart = startMs - (long) activeDaySlotIndex * DAY_MS;
+            long newCohortStart = cohortStartMs + (startMs - slotStartMs(cohortStartMs, activeDaySlotIndex));
             String newKey = daySlotKey(newCohortStart, activeDaySlotIndex);
             if (!date.equals(newKey)) {
                 DayRecord collision = dayRecords.get(newKey);
@@ -1092,7 +1102,9 @@ public class FuelCycleTracker {
             long lastStart = last.cycleStartMs > 0
                     ? last.cycleStartMs
                     : recordStartForSorting(last);
-            nextCycleStart = lastStart + DAY_MS;
+            // Directly after the last day ends: its real end, which for a day that was
+            // edited by hand or shortened by a time warp is not necessarily start + 24h.
+            nextCycleStart = last.cycleStartMs > 0 ? effectiveEndMs(last) : lastStart + DAY_MS;
             minionCount = last.getEffectiveMinionCount();
             fuelCost = last.getEffectiveFuelCost();
         } else {
@@ -1116,6 +1128,103 @@ public class FuelCycleTracker {
         record.manualFuelCost = fuelCost;
         save();
         return record;
+    }
+
+    // -------------------------------------------------------------------------
+    // Enchanted Clock time warps
+    // -------------------------------------------------------------------------
+
+    /** Wall-clock start of day-slot {@code dayIndex} of the cohort that began at {@code cohortStart}. */
+    private static long slotStartMs(long cohortStart, int dayIndex) {
+        return MinionTimeWarp.slotStart(cohortStart, DAY_MS, dayIndex, timeWarps);
+    }
+
+    /** Wall-clock end of day-slot {@code dayIndex} of the cohort that began at {@code cohortStart}. */
+    private static long slotEndMs(long cohortStart, int dayIndex) {
+        return MinionTimeWarp.slotEnd(cohortStart, DAY_MS, dayIndex, timeWarps);
+    }
+
+    /** The day-slot of the cohort that began at {@code cohortStart} that {@code time} falls in. */
+    private static int dayIndexAt(long cohortStart, long time) {
+        return MinionTimeWarp.dayIndexAt(cohortStart, DAY_MS, time, timeWarps);
+    }
+
+    /**
+     * Total time minions were warped forward after {@code sinceMs}. Fuel units run out this
+     * much sooner than the wall clock alone says.
+     */
+    static long warpedMsSince(long sinceMs) {
+        return MinionTimeWarp.warpedSince(timeWarps, sinceMs);
+    }
+
+    /**
+     * Gives a day-slot's record its real start (and end, if the slot is not a plain 24h).
+     * Records that were set explicitly (by hand or by an earlier warp) and ones that
+     * already ended keep the times they have.
+     */
+    private static void applySlotTimes(DayRecord record, long cohortStart, int dayIndex) {
+        if (record.manualCycleTimes || isClosed(record)) return;
+
+        long start = slotStartMs(cohortStart, dayIndex);
+        long end = slotEndMs(cohortStart, dayIndex);
+        record.cycleStartMs = start;
+        if (end - start != DAY_MS) {
+            record.cycleEndMs = Math.max(end, start + 1);
+            record.manualCycleTimes = true;
+        }
+    }
+
+    /**
+     * An Enchanted Clock was used: every minion's timeline just moved {@code amountMs}
+     * closer. The end of the current fuel-day and of every later day (and every minion's
+     * fuel expiry) happens that much sooner. A boundary that was less than
+     * {@code amountMs} away can only move up to "now" — that day ends right now, and the
+     * rest of the warp comes off the next day instead (see {@link MinionTimeWarp}).
+     * Days that already ended are left as they were.
+     *
+     * @return how many tracked minions had their fuel expiry moved.
+     */
+    public static int onTimeWarp(long amountMs) {
+        return onTimeWarp(amountMs, System.currentTimeMillis());
+    }
+
+    static int onTimeWarp(long amountMs, long now) {
+        if (amountMs <= 0) return 0;
+
+        // A day that had already run out by now must keep its real end time, not be
+        // pulled back, so close those out before anything moves.
+        checkDueDayRecords(now);
+
+        int minionsMoved = 0;
+        for (Map.Entry<String, Long> entry : minionExpiries.entrySet()) {
+            long expiry = entry.getValue();
+            long shifted = MinionTimeWarp.shiftBoundary(expiry, now, amountMs);
+            if (shifted == expiry) continue;
+            entry.setValue(shifted);
+            minionsMoved++;
+        }
+
+        // Every day that hasn't ended yet — the active one and any queued after it, whether
+        // they came from fueling or were appended by hand — gets explicit times. They are no
+        // longer a plain start + 24h, which is also why they are marked as set explicitly.
+        for (DayRecord record : dayRecords.values()) {
+            if (record.cycleStartMs <= 0 || isClosed(record)) continue;
+
+            long newStart = MinionTimeWarp.shiftBoundary(record.cycleStartMs, now, amountMs);
+            long newEnd = MinionTimeWarp.shiftBoundary(effectiveEndMs(record), now, amountMs);
+            record.cycleStartMs = newStart;
+            record.cycleEndMs = Math.max(newEnd, newStart + 1);
+            record.manualCycleTimes = true;
+            record.cycleClosed = false;
+        }
+
+        timeWarps.add(new MinionTimeWarp.Warp(now, amountMs));
+        while (timeWarps.size() > MAX_REMEMBERED_WARPS) timeWarps.remove(0);
+
+        // The days that this warp ended right now (a boundary less than amountMs away) are
+        // closed on the next tick like any other day whose end has passed.
+        save();
+        return minionsMoved;
     }
 
     // -------------------------------------------------------------------------
@@ -1155,7 +1264,7 @@ public class FuelCycleTracker {
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(minionKey)) continue;
             DayRecord record = dayRecords.get(entry.getKey());
-            if (record != null && record.cycleEndMs <= 0 && record.minionsRefueledAuto > 0) {
+            if (record != null && !isClosed(record) && record.minionsRefueledAuto > 0) {
                 record.minionsRefueledAuto--;
             }
         }
@@ -1184,15 +1293,16 @@ public class FuelCycleTracker {
             if (!entry.getValue().contains(minionKey)) continue;
             DayRecord record = dayRecords.get(entry.getKey());
             if (record == null || record.cycleStartMs <= 0) continue;
-            int dayIndex = (int) Math.max(0, Math.round(
-                    (record.cycleStartMs - cohortStart) / (double) DAY_MS));
+            // Half a day in, so a start that is a little off its slot boundary still
+            // rounds to that slot (the slots aren't all exactly 24h once time is warped).
+            int dayIndex = dayIndexAt(cohortStart, record.cycleStartMs + DAY_MS / 2);
             highestDayIndex = Math.max(highestDayIndex, dayIndex);
         }
         if (highestDayIndex >= 0) return highestDayIndex + 1;
 
         Long expiry = minionExpiries.get(minionKey);
         if (expiry == null || expiry <= cohortStart) return 0;
-        return Math.max(1, (int) Math.round((expiry - cohortStart) / (double) DAY_MS));
+        return Math.max(1, dayIndexAt(cohortStart, expiry + DAY_MS / 2));
     }
 
     /** Removes expired state without changing counts for day-slots that already started. */
@@ -1202,7 +1312,7 @@ public class FuelCycleTracker {
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(minionKey)) continue;
             DayRecord record = dayRecords.get(entry.getKey());
-            if (record != null && record.cycleStartMs > now && record.cycleEndMs <= 0
+            if (record != null && record.cycleStartMs > now && !isClosed(record)
                     && record.minionsRefueledAuto > 0) {
                 record.minionsRefueledAuto--;
             }
@@ -1302,7 +1412,7 @@ public class FuelCycleTracker {
         int queuedBefore = hasActiveFuel
                 ? minionFuelUnitsQueued.getOrDefault(minionKey, inferQueuedFuelUnits(minionKey, cohortStartMs))
                 : 0;
-        int currentDayIndex = Math.max(0, (int) ((now - cohortStartMs) / DAY_MS));
+        int currentDayIndex = dayIndexAt(cohortStartMs, now);
         int firstDayIndex;
         if (!hasActiveFuel) {
             firstDayIndex = currentDayIndex;
@@ -1315,7 +1425,7 @@ public class FuelCycleTracker {
             // from the cohort's first day). Using it would pile the new fuel onto old,
             // already-closed days instead of queuing (and alerting on) new ones, so derive
             // the slot from where this minion's existing fuel actually runs out instead.
-            int expiryDayIndex = (int) Math.max(0, (existingExpiry - cohortStartMs) / DAY_MS);
+            int expiryDayIndex = dayIndexAt(cohortStartMs, existingExpiry);
             firstDayIndex = Math.max(currentDayIndex, expiryDayIndex);
         }
         // Stored as the day-slot index this minion's NEXT unit lands in (the same value
@@ -1332,7 +1442,7 @@ public class FuelCycleTracker {
             int dayIndex = firstDayIndex + u;
             String daySlot = daySlotKey(cohortStartMs, dayIndex);
             DayRecord record = getOrCreateCycleDayRecord(cohortStartMs, dayIndex, freshCycleStart);
-            record.cycleStartMs = cohortStartMs + (long) dayIndex * DAY_MS;
+            applySlotTimes(record, cohortStartMs, dayIndex);
 
             Set<String> counted = minionsCountedByDaySlot.computeIfAbsent(daySlot, k -> ConcurrentHashMap.newKeySet());
             if (counted.add(minionKey)) {
@@ -1428,7 +1538,7 @@ public class FuelCycleTracker {
 
         boolean cohortEnding = now >= maxExpiry;
         long clampedNow = cohortEnding ? maxExpiry : now;
-        int currentDayIndex = (int) Math.max(0, (clampedNow - cohortStartMs) / DAY_MS);
+        int currentDayIndex = dayIndexAt(cohortStartMs, clampedNow);
 
         // Close out (set cycleEndMs + fire that day's own "fuel day up" alert) every
         // day-slot that has fully elapsed since we last ticked. Each real 24h fuel-day
@@ -1467,7 +1577,7 @@ public class FuelCycleTracker {
                 DayRecord record = dayRecords.get(daySlot);
                 if (record != null) {
                     if (!record.manualCycleTimes) {
-                        record.cycleStartMs = cohortStartMs + (long) currentDayIndex * DAY_MS;
+                        record.cycleStartMs = slotStartMs(cohortStartMs, currentDayIndex);
                     }
                     record.activeMs += delta;
                 }
@@ -1495,7 +1605,7 @@ public class FuelCycleTracker {
         if (record == null || (!record.manualCycleTimes && record.cycleEndMs > 0)
                 || (record.manualCycleTimes && record.cycleClosed)) return;
         if (!record.manualCycleTimes) {
-            record.cycleEndMs = cohortStartMs + (long) (dayIndex + 1) * DAY_MS;
+            record.cycleEndMs = slotEndMs(cohortStartMs, dayIndex);
         }
         record.cycleClosed = true;
         minionsCountedByDaySlot.remove(daySlot);
@@ -1715,6 +1825,9 @@ public class FuelCycleTracker {
 
         Map<String, DayRecord> days;
 
+        /** Enchanted Clock uses, oldest first. Null in files written before time warps existed. */
+        List<MinionTimeWarp.Warp> timeWarps;
+
         // --- pre-record format, read on load and never written again ---
         Map<String, Long> minionExpiries;
         Map<String, Integer> minionFuelUnitsQueued;
@@ -1775,6 +1888,7 @@ public class FuelCycleTracker {
         }
 
         data.days                       = new TreeMap<>(dayRecords);
+        data.timeWarps                  = new ArrayList<>(timeWarps);
         return data;
     }
 
@@ -1911,6 +2025,12 @@ public class FuelCycleTracker {
                     minionExpiries.clear();
                     minionFuelUnitsQueued.clear();
                     minionsCountedByDaySlot.clear();
+                    timeWarps.clear();
+                    if (data.timeWarps != null) {
+                        for (MinionTimeWarp.Warp warp : data.timeWarps) {
+                            if (warp != null && warp.amountMs > 0) timeWarps.add(warp);
+                        }
+                    }
 
                     // Pre-record format (or a backup taken before this change): three
                     // separate maps keyed by the full minion key. Read first so a file
