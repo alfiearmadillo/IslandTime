@@ -171,7 +171,7 @@ final class GreenhouseBlueprintShare {
 
     private static String validate(GreenhouseBlueprint.Placement p, int boardSize) {
         if (p.size < 1 || p.size > boardSize || p.x < 0 || p.z < 0
-                || p.x + p.size > boardSize || p.z + p.size > boardSize) {
+                || p.x > boardSize - p.size || p.z > boardSize - p.size) {
             return "a crop is outside the greenhouse.";
         }
         if (tooLong(p.crop) || tooLong(p.name) || tooLong(p.block)) return "a crop has an invalid name.";
