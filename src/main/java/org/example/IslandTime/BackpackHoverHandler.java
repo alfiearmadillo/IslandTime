@@ -3,6 +3,7 @@ package org.example.islandtime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -33,6 +34,13 @@ public class BackpackHoverHandler {
     private static int lastMouseY = 0;
 
     private static int overlayHoveredIndex = -1;
+
+    /**
+     * The screen the current hover/frozen state belongs to. The state is
+     * discarded as soon as a different screen (or none) is showing, so closing a
+     * container while a preview is up can't leave the vanilla tooltip suppressed.
+     */
+    private static Screen stateScreen = null;
 
     /**
      * After unfreezing, suppress focusedSlot until the mouse moves away from
@@ -67,7 +75,7 @@ public class BackpackHoverHandler {
      * Returns true if focusedSlot should be forced to null this render frame.
      * Automatically lifts suppression once mouseX/mouseY differs from the anchor.
      *
-     * Called from the render TAIL inject after vanilla has written focusedSlot,
+     * Called from the render-time inject after vanilla has written focusedSlot,
      * so returning true here causes the mixin to overwrite it back to null.
      */
     public static boolean isFocusedSlotSuppressed(int mouseX, int mouseY) {
@@ -110,6 +118,7 @@ public class BackpackHoverHandler {
                                          AbstractContainerScreen<?> parentScreen) {
         lastMouseX = mouseX;
         lastMouseY = mouseY;
+        stateScreen = Minecraft.getInstance().screen;
 
         if (backpackStack != currentBackpack) {
             currentBackpack = backpackStack;
@@ -148,6 +157,19 @@ public class BackpackHoverHandler {
         if (parseFuture != null) { parseFuture.cancel(false); parseFuture = null; }
     }
 
+    /**
+     * Drops ALL preview state, including a frozen inspect, a pending unfreeze and
+     * the post-unfreeze suppression. Used when the screen the preview belonged to
+     * goes away.
+     */
+    public static void reset() {
+        frozen              = false;
+        pendingUnfreeze     = false;
+        suppressFocusedSlot = false;
+        clearHovered();
+        stateScreen         = null;
+    }
+
     // -------------------------------------------------------------------------
     // Freeze / unfreeze
     // -------------------------------------------------------------------------
@@ -184,6 +206,16 @@ public class BackpackHoverHandler {
     // -------------------------------------------------------------------------
 
     public static void tick(Minecraft client) {
+        // The preview belongs to one specific screen. If that screen was closed
+        // (or replaced), nothing will ever render it again to clean up after it.
+        if (client.screen != stateScreen) {
+            if (hasBackpackHovered() || pendingUnfreeze || suppressFocusedSlot) {
+                reset();
+                return;
+            }
+            stateScreen = null;
+        }
+
         if (pendingUnfreeze) {
             doUnfreeze();
         }

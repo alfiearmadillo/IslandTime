@@ -34,6 +34,7 @@ public class IslandTimeMod implements ClientModInitializer {
         ChatMessageStore.register();
         NewYearCakeTracker.register();
         EvolutionAlertTracker.register();
+        TimeWarpTracker.register();
         MinionFuelTracker.registerArmorStandInteractionListener();
 
         // Initialize MoulConfig

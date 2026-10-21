@@ -15,7 +15,8 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 /**
  * {@code /it blueprint ...}: copies a planted greenhouse into a blueprint (with a preview of the area
- * first) and adjusts how the overlay in {@link GreenhouseBlueprintRenderer} is laid on the plot.
+ * first), adjusts how the overlay in {@link GreenhouseBlueprintRenderer} is laid on the plot, and
+ * opens the {@link GreenhouseBlueprintScreen} for browsing, sharing and importing layouts.
  */
 final class GreenhouseBlueprintCommand {
 
@@ -32,6 +33,12 @@ final class GreenhouseBlueprintCommand {
                 .then(literal("status")
                         .executes(ctx -> {
                             status(ctx.getSource().getClient());
+                            return 1;
+                        }))
+                .then(literal("gui")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new GreenhouseBlueprintScreen()));
                             return 1;
                         }))
                 .then(literal("copy")
@@ -78,6 +85,22 @@ final class GreenhouseBlueprintCommand {
                                             StringArgumentType.getString(ctx, "blueprint"));
                                     return 1;
                                 })))
+                .then(literal("export")
+                        .executes(ctx -> {
+                            export(ctx.getSource().getClient(), null);
+                            return 1;
+                        })
+                        .then(argument("blueprint", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    export(ctx.getSource().getClient(),
+                                            StringArgumentType.getString(ctx, "blueprint"));
+                                    return 1;
+                                })))
+                .then(literal("import")
+                        .executes(ctx -> {
+                            importFromClipboard(ctx.getSource().getClient());
+                            return 1;
+                        }))
                 .then(literal("board")
                         .then(argument("number", IntegerArgumentType.integer(1, GreenhouseBlueprint.MAX_BOARDS))
                                 .executes(ctx -> {
@@ -150,8 +173,9 @@ final class GreenhouseBlueprintCommand {
         for (String line : GreenhouseBlueprintRenderer.describe(client)) {
             sendLine(client, line, ChatFormatting.GRAY);
         }
-        sendLine(client, "Commands: copy, save [name], addboard, cancel, list, select <name>, delete <name>, "
-                + "board <n>, rotate [left|right], mirror, align, toggle", ChatFormatting.DARK_GRAY);
+        sendLine(client, "Commands: gui, copy, save [name], addboard, cancel, list, select <name>, delete <name>, "
+                + "export [name], import, board <n>, rotate [left|right], mirror, align, toggle",
+                ChatFormatting.DARK_GRAY);
     }
 
     /** Starts the preview of the greenhouse area in the plot the player stands in. */
@@ -305,6 +329,29 @@ final class GreenhouseBlueprintCommand {
         GreenhouseBlueprintManager.delete(blueprint);
         GreenhouseBlueprintRenderer.requestRefresh();
         send(client, "Deleted \"" + blueprint.name + "\".", ChatFormatting.GREEN);
+    }
+
+    /** Copies the import code of a blueprint (the selected one if no name is given) to the clipboard. */
+    private static void export(Minecraft client, String query) {
+        GreenhouseBlueprint blueprint;
+        if (query == null) {
+            blueprint = requireActive(client);
+            if (blueprint == null) return;
+        } else {
+            blueprint = GreenhouseBlueprintManager.find(query);
+            if (blueprint == null) {
+                send(client, "No blueprint matches \"" + query + "\". See /it blueprint list.", ChatFormatting.RED);
+                return;
+            }
+        }
+        GreenhouseBlueprintShare.Outcome outcome = GreenhouseBlueprintShare.copyToClipboard(client, blueprint);
+        send(client, outcome.message(), outcome.ok() ? ChatFormatting.GREEN : ChatFormatting.RED);
+    }
+
+    /** Imports the blueprint whose code is on the clipboard. */
+    private static void importFromClipboard(Minecraft client) {
+        GreenhouseBlueprintShare.Outcome outcome = GreenhouseBlueprintShare.importFromClipboard(client);
+        send(client, outcome.message(), outcome.ok() ? ChatFormatting.GREEN : ChatFormatting.RED);
     }
 
     private static void board(Minecraft client, int number) {

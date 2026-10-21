@@ -753,8 +753,12 @@ public class MinionFuelTracker {
                         // be hidden by one or more units expiring in the meantime.
                         long observedAt = lastObservedFuelSlotTimes.getOrDefault(
                                 currentMinionKey, System.currentTimeMillis());
+                        // Enchanted Clock time warps made the fuel run out sooner than the
+                        // wall clock alone says, so count that time as elapsed too.
+                        long elapsedMs = Math.max(0L, System.currentTimeMillis() - observedAt)
+                                + FuelCycleTracker.warpedMsSince(observedAt);
                         int unitsExpired = (int) Math.min(Integer.MAX_VALUE,
-                                Math.max(0L, System.currentTimeMillis() - observedAt) / FuelCycleTracker.DAY_MS);
+                                elapsedMs / FuelCycleTracker.DAY_MS);
                         newFuelUnits = Math.max(0, currentCount - initialCount + unitsExpired);
                     }
                 } else {
