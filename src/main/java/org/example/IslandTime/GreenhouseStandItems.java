@@ -3,17 +3,20 @@ package org.example.islandtime;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.Rotations;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
@@ -131,13 +134,16 @@ final class GreenhouseStandItems {
                     .filter(e -> e instanceof CompoundTag)
                     .map(e -> (CompoundTag) e)
                     .orElse(null);
-            if (tag == null) return "";
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            NbtIo.writeCompressed(tag, bytes);
-            return Base64.getEncoder().encodeToString(bytes.toByteArray());
+            return tag == null ? "" : pack(tag);
         } catch (IOException | RuntimeException e) {
             return "";
         }
+    }
+
+    private static String pack(CompoundTag tag) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        NbtIo.writeCompressed(tag, bytes);
+        return Base64.getEncoder().encodeToString(bytes.toByteArray());
     }
 
     /** An item stored by {@link #encode}, or {@link ItemStack#EMPTY} if it can't be read back. */
@@ -159,6 +165,86 @@ final class GreenhouseStandItems {
         }
         DECODED.put(data, item);
         return item;
+    }
+
+    // -------------------------------------------------------------------------
+    // Items in shared layouts
+    // -------------------------------------------------------------------------
+
+    /**
+     * Turns items to and from what a shared layout keeps of them: the item type, the skin of a head and
+     * the dye colour of leather armor, which is all that is needed to draw a ghost. Everything else (lore,
+     * enchantments, the data Hypixel hides in an item) would only make the code longer. This works on the
+     * stored NBT directly, so it needs no world, and the skin is only ever rebuilt as a plain link to
+     * Mojang's texture server.
+     */
+    static final GreenhouseShareFormat.ItemLooks SHARE_LOOKS = new GreenhouseShareFormat.ItemLooks() {
+        @Override
+        public GreenhouseShareFormat.ItemLook look(String data) {
+            return lookOf(data);
+        }
+
+        @Override
+        public String data(GreenhouseShareFormat.ItemLook look) {
+            return dataOf(look);
+        }
+    };
+
+    private static GreenhouseShareFormat.ItemLook lookOf(String data) {
+        if (data == null || data.isEmpty()) return null;
+        try {
+            CompoundTag tag = NbtIo.readCompressed(new ByteArrayInputStream(Base64.getDecoder().decode(data)),
+                    NbtAccounter.defaultQuota());
+            String id = tag.getStringOr("id", "");
+            if (id.isEmpty()) return null;
+
+            CompoundTag components = tag.getCompoundOrEmpty("components");
+            String texture = "";
+            ListTag properties = components.getCompoundOrEmpty("minecraft:profile").getListOrEmpty("properties");
+            for (int i = 0; i < properties.size(); i++) {
+                CompoundTag property = properties.getCompoundOrEmpty(i);
+                if ("textures".equals(property.getStringOr("name", ""))) {
+                    texture = property.getStringOr("value", "");
+                    break;
+                }
+            }
+
+            int dye = components.getInt("minecraft:dyed_color")
+                    .orElseGet(() -> components.getCompoundOrEmpty("minecraft:dyed_color").getIntOr("rgb", -1));
+            return new GreenhouseShareFormat.ItemLook(id, texture, dye == -1 ? -1 : dye & 0xFFFFFF);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String dataOf(GreenhouseShareFormat.ItemLook look) {
+        try {
+            CompoundTag item = new CompoundTag();
+            item.putString("id", look.id());
+            item.putInt("count", 1);
+
+            CompoundTag components = new CompoundTag();
+            if (!look.texture().isEmpty()) {
+                CompoundTag property = new CompoundTag();
+                property.putString("name", "textures");
+                property.putString("value", look.texture());
+                ListTag properties = new ListTag();
+                properties.add(property);
+
+                UUID owner = UUID.nameUUIDFromBytes(look.texture().getBytes(StandardCharsets.UTF_8));
+                long most = owner.getMostSignificantBits();
+                long least = owner.getLeastSignificantBits();
+                CompoundTag profile = new CompoundTag();
+                profile.putIntArray("id", new int[] {(int) (most >> 32), (int) most, (int) (least >> 32), (int) least});
+                profile.put("properties", properties);
+                components.put("minecraft:profile", profile);
+            }
+            if (look.dye() >= 0) components.putInt("minecraft:dyed_color", look.dye());
+            if (!components.isEmpty()) item.put("components", components);
+            return pack(item);
+        } catch (IOException | RuntimeException e) {
+            return "";
+        }
     }
 
     // -------------------------------------------------------------------------

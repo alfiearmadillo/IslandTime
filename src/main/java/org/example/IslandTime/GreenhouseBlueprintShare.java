@@ -1,20 +1,22 @@
 package org.example.islandtime;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import net.minecraft.client.Minecraft;
 
 /**
- * Shares greenhouse blueprints as text: {@link #export} turns a layout into a single line that can be
- * posted anywhere, and {@link #importCode} reads one back in as a new blueprint. A code that comes from
+ * Shares greenhouse blueprints as text: {@link #export} turns a layout into a short single line that can
+ * be posted anywhere, and {@link #importCode} reads one back in as a new blueprint. A code that comes from
  * someone else is checked thoroughly first, since nothing in it can be trusted to be sane.
+ *
+ * <p>The layout is written by {@link GreenhouseShareFormat} and turned into text by {@link ShareCodec}.
+ * Codes from the first version of the mod, which were a few thousand characters and started with
+ * {@value #LEGACY_PREFIX}, can still be imported.
  */
 final class GreenhouseBlueprintShare {
 
-    /** The start of every code. The number is the version of the layout format inside. */
-    static final String PREFIX = "ITGH1:";
+    /** The start of the long codes the first version of the mod made. */
+    static final String LEGACY_PREFIX = "ITGH1:";
     /** What imported blueprints say they came from. */
     static final String SOURCE_IMPORTED = "Imported";
 
@@ -44,12 +46,14 @@ final class GreenhouseBlueprintShare {
     // Export
     // -------------------------------------------------------------------------
 
-    /** The shareable code for a blueprint. The blueprint's own id stays private to this install. */
+    /**
+     * The shareable code for a blueprint. The blueprint's own id stays private to this install.
+     *
+     * @throws IllegalArgumentException with a message fit to show the user if it can't be shared
+     */
     static String export(GreenhouseBlueprint blueprint) {
-        JsonElement tree = GSON.toJsonTree(blueprint);
-        JsonObject object = tree.getAsJsonObject();
-        object.addProperty("id", "");
-        return ShareCodec.encode(PREFIX, GSON.toJson(object));
+        byte[] layout = GreenhouseShareFormat.write(blueprint, GreenhouseStandItems.SHARE_LOOKS);
+        return ShareCodec.encode(layout, GreenhouseShareFormat.DICTIONARY);
     }
 
     /** Puts the blueprint's code on the clipboard. */
@@ -57,6 +61,8 @@ final class GreenhouseBlueprintShare {
         String code;
         try {
             code = export(blueprint);
+        } catch (IllegalArgumentException e) {
+            return new Outcome(false, "Couldn't make a code for \"" + blueprint.name + "\": " + e.getMessage());
         } catch (RuntimeException e) {
             return new Outcome(false, "Couldn't make a code for \"" + blueprint.name + "\".");
         }
@@ -91,20 +97,12 @@ final class GreenhouseBlueprintShare {
 
     /** Decodes and checks a code without storing anything. */
     static Parsed parse(String code) {
-        String json;
+        GreenhouseBlueprint blueprint;
         try {
-            json = ShareCodec.decode(PREFIX, code);
+            blueprint = ShareCodec.stripPasteNoise(code).startsWith(LEGACY_PREFIX) ? readLegacy(code) : read(code);
         } catch (IllegalArgumentException e) {
             return new Parsed(null, e.getMessage());
         }
-
-        GreenhouseBlueprint blueprint;
-        try {
-            blueprint = GSON.fromJson(json, GreenhouseBlueprint.class);
-        } catch (JsonParseException | IllegalStateException e) {
-            return new Parsed(null, "The code is damaged, it doesn't hold a greenhouse layout.");
-        }
-        if (blueprint == null) return new Parsed(null, "The code is damaged, it doesn't hold a greenhouse layout.");
 
         try {
             blueprint.upgrade();
@@ -119,6 +117,30 @@ final class GreenhouseBlueprintShare {
         blueprint.rotation = Math.floorMod(blueprint.rotation, 4);
         blueprint.name = clean(blueprint.name, MAX_NAME_LENGTH);
         return new Parsed(blueprint, null);
+    }
+
+    private static GreenhouseBlueprint read(String code) {
+        byte[] layout = ShareCodec.decode(code, GreenhouseShareFormat.DICTIONARY);
+        try {
+            return GreenhouseShareFormat.read(layout, GreenhouseStandItems.SHARE_LOOKS);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw ShareCodec.damaged();
+        }
+    }
+
+    /** Reads a code of the first version of the mod: gzipped JSON of the blueprint as it is stored. */
+    private static GreenhouseBlueprint readLegacy(String code) {
+        String json = ShareCodec.decodeLegacy(LEGACY_PREFIX, code);
+        GreenhouseBlueprint blueprint;
+        try {
+            blueprint = GSON.fromJson(json, GreenhouseBlueprint.class);
+        } catch (JsonParseException | IllegalStateException e) {
+            throw new IllegalArgumentException("The code is damaged, it doesn't hold a greenhouse layout.");
+        }
+        if (blueprint == null) throw new IllegalArgumentException("The code is damaged, it doesn't hold a greenhouse layout.");
+        return blueprint;
     }
 
     /**
