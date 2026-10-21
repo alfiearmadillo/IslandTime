@@ -67,6 +67,13 @@ final class GreenhouseShareFormat {
     private static final int MAX_STANDS = 32;
     private static final int MAX_GEAR = 16;
     private static final int MAX_PLOTS = 64;
+    private static final int MAX_ITEM_ID_CHARS = 256;
+    /**
+     * Limits on a whole layout. A crop is written once and placed many times, so a tiny code could
+     * otherwise stand for a huge number of stands; these are far above what a real greenhouse needs.
+     */
+    private static final int MAX_TOTAL_STANDS = 1500;
+    private static final int MAX_TOTAL_GEAR = 6000;
     private static final int MAX_PALETTE = GreenhouseBlueprint.PALETTE_CHARS.length();
 
     /**
@@ -107,8 +114,12 @@ final class GreenhouseShareFormat {
         ItemTable items = new ItemTable(looks);
         Map<String, TemplateBuild> templates = new LinkedHashMap<>();
         List<List<Placed>> boards = new ArrayList<>();
+        int[] totals = new int[2];
         for (GreenhouseBlueprint.Board board : blueprint.boards) {
-            boards.add(collect(board, items, templates));
+            boards.add(collect(board, items, templates, totals));
+        }
+        if (totals[0] > MAX_TOTAL_STANDS || totals[1] > MAX_TOTAL_GEAR) {
+            throw new IllegalArgumentException("It has too many armor stands.");
         }
         if (items.entries.size() > MAX_ITEMS) throw new IllegalArgumentException("It has too many different items.");
         if (templates.size() > MAX_TEMPLATES) throw new IllegalArgumentException("It has too many kinds of crops.");
@@ -158,7 +169,7 @@ final class GreenhouseShareFormat {
     private record Placed(int position, TemplateBuild template, byte[] yaws) {}
 
     private static List<Placed> collect(GreenhouseBlueprint.Board board, ItemTable items,
-                                        Map<String, TemplateBuild> templates) {
+                                        Map<String, TemplateBuild> templates, int[] totals) {
         int size = GreenhouseGeometry.AREA_SIZE;
         if (board.size != size) throw new IllegalArgumentException("A board isn't " + size + "x" + size + " cells.");
         if (board.placements.size() > size * size) throw new IllegalArgumentException("A board has too many crops.");
@@ -185,7 +196,9 @@ final class GreenhouseShareFormat {
                 GreenhouseBlueprint.Stand stand = p.stands.get(i);
                 writeStand(shape, stand, p, items);
                 yaws[i] = yawByte(stand.yaw);
+                totals[1] += stand.gear.size();
             }
+            totals[0] += p.stands.size();
 
             String key = new String(shape.toByteArray(), StandardCharsets.ISO_8859_1);
             TemplateBuild template = templates.computeIfAbsent(key,
@@ -345,7 +358,7 @@ final class GreenhouseShareFormat {
             String name = gear.name == null ? "" : gear.name;
             String key = gear.key == null ? "" : gear.key;
             ItemLook look = gear.data == null || gear.data.isEmpty() ? null : looks.look(gear.data);
-            if (look == null || look.id() == null || look.id().isEmpty()) {
+            if (look == null || look.id() == null || look.id().isEmpty() || look.id().length() > MAX_ITEM_ID_CHARS) {
                 return new Item(KIND_NONE, "", "", -1, name, key);
             }
             int dye = look.dye() >= 0 && look.dye() <= 0xFFFFFF ? look.dye() : -1;
@@ -426,10 +439,11 @@ final class GreenhouseShareFormat {
         List<ItemEntry> items = readItems(in, looks);
         List<Template> templates = readTemplates(in, items.size());
 
+        int[] totals = new int[2];
         for (int b = 0; b < boardCount; b++) {
             GreenhouseBlueprint.Board board = new GreenhouseBlueprint.Board();
             readFloor(in, board);
-            readPlacements(in, board, templates, items);
+            readPlacements(in, board, templates, items, totals);
             blueprint.boards.add(board);
         }
         if (!in.atEnd()) throw ShareCodec.damaged();
@@ -480,7 +494,7 @@ final class GreenhouseShareFormat {
                 }
                 case KIND_OTHER -> {
                     id = in.string();
-                    if (id.isEmpty()) throw ShareCodec.damaged();
+                    if (id.isEmpty() || id.length() > MAX_ITEM_ID_CHARS) throw ShareCodec.damaged();
                 }
                 default -> { }
             }
@@ -499,7 +513,7 @@ final class GreenhouseShareFormat {
 
     /** A crop as read: its shape, and the facing of its stands unless that is different for each placement. */
     private record Template(String crop, String name, String block, int size, List<StandShape> stands,
-                           boolean yawsVary, byte[] yaws) {}
+                           int gear, boolean yawsVary, byte[] yaws) {}
 
     private record StandShape(int dx, int dy, int dz, int width, int height, int flags, float[] pose,
                               String head, int[] slots, int[] items) {}
@@ -519,9 +533,14 @@ final class GreenhouseShareFormat {
             if (size < 1) throw ShareCodec.damaged();
             int standCount = in.varint(MAX_STANDS);
             List<StandShape> stands = new ArrayList<>(standCount);
-            for (int s = 0; s < standCount; s++) stands.add(readStand(in, itemCount));
+            int gear = 0;
+            for (int s = 0; s < standCount; s++) {
+                StandShape stand = readStand(in, itemCount);
+                gear += stand.slots().length;
+                stands.add(stand);
+            }
             byte[] yaws = yawsVary ? null : in.bytes(standCount);
-            templates.add(new Template(crop, name, block, size, stands, yawsVary, yaws));
+            templates.add(new Template(crop, name, block, size, stands, gear, yawsVary, yaws));
         }
         return templates;
     }
@@ -573,7 +592,7 @@ final class GreenhouseShareFormat {
     }
 
     private static void readPlacements(In in, GreenhouseBlueprint.Board board, List<Template> templates,
-                                       List<ItemEntry> items) {
+                                       List<ItemEntry> items, int[] totals) {
         int size = board.size;
         int groups = in.varint(size * size);
         int total = 0;
@@ -592,6 +611,11 @@ final class GreenhouseShareFormat {
                 int z = position / size;
                 if (x > size - template.size || z > size - template.size) throw ShareCodec.damaged();
                 byte[] yaws = template.yawsVary ? in.bytes(template.stands.size()) : template.yaws;
+                totals[0] += template.stands.size();
+                totals[1] += template.gear;
+                if (totals[0] > MAX_TOTAL_STANDS || totals[1] > MAX_TOTAL_GEAR) {
+                    throw new IllegalArgumentException("That layout has too many armor stands.");
+                }
                 board.placements.add(place(template, x, z, yaws, items));
             }
         }

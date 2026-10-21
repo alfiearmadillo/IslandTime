@@ -20,6 +20,7 @@ final class GreenhouseBlueprintShare {
     /** What imported blueprints say they came from. */
     static final String SOURCE_IMPORTED = "Imported";
 
+    private static final int MAX_STORED_CHARS = 4 * 1024 * 1024;
     private static final int MAX_NAME_LENGTH = 48;
     private static final int MAX_TEXT_LENGTH = 512;
     private static final int MAX_GEAR_DATA_LENGTH = 65_536;
@@ -111,6 +112,8 @@ final class GreenhouseBlueprintShare {
         }
         String problem = validate(blueprint);
         if (problem != null) return new Parsed(null, "The code isn't a usable layout: " + problem);
+        // However it got there, what is stored must stay as small as a layout can honestly be
+        if (GSON.toJson(blueprint).length() > MAX_STORED_CHARS) return new Parsed(null, "That layout is too big.");
 
         blueprint.id = "";
         blueprint.source = SOURCE_IMPORTED;
