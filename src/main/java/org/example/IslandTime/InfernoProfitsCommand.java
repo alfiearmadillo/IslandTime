@@ -27,7 +27,7 @@ public class InfernoProfitsCommand {
         return new InfernoReturnCalculator.Settings(
                 fuel.estimateMinionTier, fuel.estimateFuelGrade, fuel.estimateEyedrops, fuel.estimateFlycatcher,
                 fuel.estimateSecondFlycatcher, fuel.estimateBeacon, fuel.estimatePostcard, fuel.estimateInfusion,
-                fuel.estimateFreeWill, fuel.estimateSuperCompactor, fuel.estimateAfk,
+                fuel.estimateFreeWill, fuel.estimateSuperCompactor,
                 InfernoReturnCalculator.parsePrice(fuel.estimateFishPriceString, InfernoReturnCalculator.DEFAULT_FISH_PRICE),
                 InfernoReturnCalculator.parsePrice(fuel.estimateHydraHeadPriceString,
                         InfernoReturnCalculator.DEFAULT_HYDRA_HEAD_PRICE));

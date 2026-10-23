@@ -9,8 +9,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -36,10 +38,16 @@ final class FuelDataSets {
     record DataSet(String id, String name, boolean builtIn) {
     }
 
-    /** What is written to the registry file. */
+    /**
+     * What is written to the registry file. {@code names} holds the names given to the built-in sets (the custom
+     * sets keep theirs in {@link #custom}) and {@code estimated} lists the sets that show the estimated profit
+     * instead of the real one. Both are missing from files written by older versions.
+     */
     private static final class Registry {
         String active = MAIN_ID;
         List<Custom> custom = new ArrayList<>();
+        Map<String, String> names = new LinkedHashMap<>();
+        List<String> estimated = new ArrayList<>();
     }
 
     private static final class Custom {
@@ -52,9 +60,8 @@ final class FuelDataSets {
         }
     }
 
-    private static final DataSet MAIN = new DataSet(MAIN_ID, "Main", true);
-    private static final DataSet DEBUG = new DataSet(DEBUG_ID, "Debug", true);
-
+    private static final String MAIN_NAME = "Main";
+    private static final String DEBUG_NAME = "Debug";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private static Path baseDir = Paths.get("config/IslandTime");
@@ -137,6 +144,21 @@ final class FuelDataSets {
                     fresh.custom.add(new Custom(c.id, name.isEmpty() ? c.id : name));
                 }
             }
+            if (loaded.names != null) {
+                for (Map.Entry<String, String> entry : loaded.names.entrySet()) {
+                    String name = entry.getValue() == null ? "" : entry.getValue().strip();
+                    boolean builtIn = MAIN_ID.equals(entry.getKey()) || DEBUG_ID.equals(entry.getKey());
+                    if (builtIn && !name.isEmpty() && name.length() <= MAX_NAME_LENGTH) {
+                        fresh.names.put(entry.getKey(), name);
+                    }
+                }
+            }
+            if (loaded.estimated != null) {
+                for (String id : loaded.estimated) {
+                    boolean known = MAIN_ID.equals(id) || DEBUG_ID.equals(id) || containsCustom(fresh, id);
+                    if (known && !fresh.estimated.contains(id)) fresh.estimated.add(id);
+                }
+            }
         } else if (!existed) {
             fresh.active = readLegacyTestMode() ? DEBUG_ID : MAIN_ID;
         }
@@ -189,15 +211,19 @@ final class FuelDataSets {
     /** Every set: Main, Debug, then the custom ones in the order they were made. */
     static synchronized List<DataSet> all() {
         List<DataSet> sets = new ArrayList<>();
-        sets.add(MAIN);
-        sets.add(DEBUG);
+        sets.add(builtIn(MAIN_ID));
+        sets.add(builtIn(DEBUG_ID));
         for (Custom c : registry.custom) sets.add(new DataSet(c.id, c.name, false));
         return sets;
     }
 
+    private static DataSet builtIn(String id) {
+        String fallback = MAIN_ID.equals(id) ? MAIN_NAME : DEBUG_NAME;
+        return new DataSet(id, registry.names.getOrDefault(id, fallback), true);
+    }
+
     static synchronized DataSet get(String id) {
-        if (MAIN_ID.equals(id)) return MAIN;
-        if (DEBUG_ID.equals(id)) return DEBUG;
+        if (MAIN_ID.equals(id) || DEBUG_ID.equals(id)) return builtIn(id);
         for (Custom c : registry.custom) {
             if (c.id.equals(id)) return new DataSet(c.id, c.name, false);
         }
@@ -210,11 +236,25 @@ final class FuelDataSets {
 
     static synchronized DataSet active() {
         DataSet set = get(registry.active);
-        return set != null ? set : MAIN;
+        return set != null ? set : builtIn(MAIN_ID);
     }
 
     static synchronized boolean isActive(String id) {
         return registry.active.equals(id);
+    }
+
+    /** Whether the set shows the estimated profit of its days rather than the real one. */
+    static synchronized boolean isEstimated(String id) {
+        return id != null && registry.estimated.contains(id);
+    }
+
+    /** Switches one set between the estimated and the real profit. Any set can be changed, in use or not. */
+    static synchronized boolean setEstimated(String id, boolean estimated) {
+        if (!isKnown(id)) return false;
+        registry.estimated.remove(id);
+        if (estimated) registry.estimated.add(id);
+        save();
+        return true;
     }
 
     // -------------------------------------------------------------------------
@@ -223,15 +263,55 @@ final class FuelDataSets {
 
     /** Why {@code name} can't be used for a new set, or null if it can. */
     static synchronized String validateName(String name) {
+        String problem = validateNameText(name, null);
+        if (problem != null) return problem;
+        if (slug(name.strip()).isEmpty()) return "The name needs at least one letter or number.";
+        if (registry.custom.size() >= MAX_CUSTOM_SETS) return "You can have at most " + MAX_CUSTOM_SETS + " custom data sets.";
+        return null;
+    }
+
+    /** Why {@code name} can't be the new name of set {@code id}, or null if it can. Its own name is fine. */
+    static synchronized String validateRename(String id, String name) {
+        if (!isKnown(id)) return "That data set no longer exists.";
+        return validateNameText(name, id);
+    }
+
+    private static String validateNameText(String name, String ignoreId) {
         if (name == null || name.strip().isEmpty()) return "Enter a name for the data set.";
         String stripped = name.strip();
         if (stripped.length() > MAX_NAME_LENGTH) return "Names can be at most " + MAX_NAME_LENGTH + " characters.";
-        if (slug(stripped).isEmpty()) return "The name needs at least one letter or number.";
         for (DataSet set : all()) {
+            if (set.id().equals(ignoreId)) continue;
             if (set.name().equalsIgnoreCase(stripped)) return "A data set called \"" + set.name() + "\" already exists.";
         }
-        if (registry.custom.size() >= MAX_CUSTOM_SETS) return "You can have at most " + MAX_CUSTOM_SETS + " custom data sets.";
         return null;
+    }
+
+    /**
+     * Gives a set (built-in ones too) another name. Only the name changes: its id, its file and its backups stay
+     * as they are.
+     *
+     * @throws IllegalArgumentException with a message that can be shown, if the name can't be used
+     */
+    static synchronized DataSet rename(String id, String name) {
+        String problem = validateRename(id, name);
+        if (problem != null) throw new IllegalArgumentException(problem);
+
+        String stripped = name.strip();
+        if (MAIN_ID.equals(id) || DEBUG_ID.equals(id)) {
+            String fallback = MAIN_ID.equals(id) ? MAIN_NAME : DEBUG_NAME;
+            if (stripped.equals(fallback)) {
+                registry.names.remove(id);
+            } else {
+                registry.names.put(id, stripped);
+            }
+        } else {
+            for (Custom c : registry.custom) {
+                if (c.id.equals(id)) c.name = stripped;
+            }
+        }
+        save();
+        return get(id);
     }
 
     /**
@@ -301,6 +381,7 @@ final class FuelDataSets {
         if (found == null) return "That data set no longer exists.";
 
         registry.custom.remove(found);
+        registry.estimated.remove(id);
         save();
         try {
             Files.deleteIfExists(dataFile(id));

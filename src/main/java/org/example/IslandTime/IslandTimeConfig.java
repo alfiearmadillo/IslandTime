@@ -191,41 +191,21 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(
                 name = "Estimated Return (Inferno Minions)",
                 desc = "Estimate what the Inferno minions return each fuel day from their speed (one spawn + one " +
-                        "kill = 2 actions per harvest, 1 Crude Gabagool each, Gabagool Distillate fuel). Hypergolic " +
+                        "kill = 2 actions per harvest, 1 Crude Gabagool each). Hypergolic " +
                         "fuel also gets its rare drops (Chili Pepper, Inferno Vertex, Reaper Pepper, Inferno Apex, " +
                         "Gabagool the Fish, Hypergolic Ionized Ceramics). Valued at the Bazaar sell offer taken when the fuel day " +
                         "ended (or the next time the game is open, if it was closed then). Gabagool the Fish " +
                         "isn't on the Bazaar and is worth the price set below (5M by default). Capsaicin " +
                         "Eyedrops, if on, are assumed used every day and their crafting cost is subtracted " +
-                        "(Water Hydra Head price set below, 1.5M by default). Item drops only: no " +
-                        "mob-kill coins, unless 'Assume AFK' is on. Shown in the Fuel Day Tracker GUI. " +
+                        "(Water Hydra Head price set below, 1.5M by default). For minions you aren't AFKing " +
+                        "next to: item drops only, no mob-kill coins. Each day uses the grade of fuel that was " +
+                        "placed for it, and a day that a time warp shortened still counts its full 24 hours. " +
+                        "Whether a data set shows the estimated or the real profit is set per data set, with the " +
+                        "'Profit' button in the Fuel Day Tracker GUI. " +
                         "Rising Celsius (+18% speed per Inferno minion placed, up to 10 minions) is always " +
                         "included, counting each day's minion count; the toggles below add to it."
         )
         public boolean estimateAccordion = false;
-
-        @ConfigAccordionId(id = 1)
-        @Expose
-        @ConfigOption(
-                name = "Show Estimated Return",
-                desc = "Show the estimated return and estimated profit (return minus fuel cost) in the Fuel Day " +
-                        "Tracker GUI. Also toggled by the 'Est. Return' button there."
-        )
-        @ConfigEditorBoolean
-        public boolean estimateEnabled = false;
-
-        @ConfigAccordionId(id = 1)
-        @Expose
-        @ConfigOption(
-                name = "Assume AFK",
-                desc = "Off: the minions are assumed to run the whole fuel day (24h, or the day's edited length), " +
-                        "and only their item drops count, no mob-kill coins. " +
-                        "On: only the time you actually spent AFKing counts, i.e. the day's AFK%, and the day's " +
-                        "mob-kill coins are added to the estimated profit. " +
-                        "Also toggled by the 'Est. AFK' button in the Fuel Day Tracker GUI."
-        )
-        @ConfigEditorBoolean
-        public boolean estimateAfk = false;
 
         @ConfigAccordionId(id = 1)
         @Expose
@@ -240,8 +220,11 @@ public class IslandTimeConfig extends Config {
         @ConfigAccordionId(id = 1)
         @Expose
         @ConfigOption(
-                name = "Fuel Grade",
-                desc = "The Inferno Minion Fuel burning. It multiplies the speed AFTER the bonuses below are added: " +
+                name = "Fuel Grade (if unknown)",
+                desc = "Each day's estimate uses the grade of fuel that was placed for it, taken from the colour of " +
+                        "the fueling message (blue Rare, purple Epic, gold Legendary). This grade is only used for a " +
+                        "day where that wasn't seen (days added by hand, or recorded before this was tracked). " +
+                        "Fuel multiplies the speed AFTER the bonuses below are added: " +
                         "Fuel Gabagool (Rare) x11, Heavy Gabagool (Epic) x16, Hypergolic Gabagool (Legendary) x21. " +
                         "Only Hypergolic also has the rare drops (1 in 136 Chili Pepper, 1 in 5,950 Inferno Vertex, " +
                         "1 in 458,182 Reaper Pepper, 1 in 1,309,091 Inferno Apex, doubled for tier X and XI, per " +

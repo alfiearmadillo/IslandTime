@@ -135,7 +135,7 @@ public class FuelCycleTracker {
         mobKillCoinsAt100Baseline = 0.0;
         lastBackupTime = 0;
         cachedFuelUnitCostCohortStart = -1;
-        cachedFuelUnitCost = -1;
+        java.util.Arrays.fill(cachedFuelUnitCosts, -1);
         wasOnIslandLastTick = false;
     }
 
@@ -222,6 +222,9 @@ public class FuelCycleTracker {
     // was opened, so refueling a full set cannot split one cycle across several day records
     // merely because the minions were clicked in sequence.
     private static final ConcurrentHashMap<String, Integer> minionFuelUnitsQueued = new ConcurrentHashMap<>();
+    /** The grade of fuel last placed in each minion, only so removing the minion can take its grade back off the
+     *  days it was counted on. Not saved: after a restart the day's most used grade is taken off instead. */
+    private static final ConcurrentHashMap<String, Integer> minionFuelGrades = new ConcurrentHashMap<>();
 
     // Every Enchanted Clock "time warp" (see onTimeWarp()), oldest first. The cohort's
     // day-slots are nominal 24h steps from cohortStartMs; these say how far each slot
@@ -249,7 +252,9 @@ public class FuelCycleTracker {
     // the live bazaar between fuelings. Naturally invalidates itself once a new cohort
     // starts (cohortStartMs changes), since the guard below compares against it.
     private static volatile long   cachedFuelUnitCostCohortStart = -1;
-    private static volatile double cachedFuelUnitCost           = -1;
+    /** The snapshotted unit price of each grade of fuel (Rare, Epic, Legendary), -1 where not captured yet. */
+    private static final double[] cachedFuelUnitCosts = {-1, -1, -1};
+    private static final int FUEL_GRADES = 3;
 
     /** Default mob-kill coins/day at 100% AFK, used as the snapshot baseline for newly created days. */
     private static double mobKillCoinsAt100Baseline = 0.0;
@@ -416,11 +421,19 @@ public class FuelCycleTracker {
         /** True when this day's start/end are set explicitly rather than being start + 24h:
          *  either corrected by hand, or moved by an Enchanted Clock time warp. */
         public boolean manualCycleTimes = false;
+        /** How much of this day's 24 hours an Enchanted Clock warp took off its start-to-end span. The
+         *  minions still ran for the full day, so this is added back for production (see
+         *  {@link #getProductionMs()}). 0 for a day that was never warped. */
+        public long timeWarpedMs = 0;
         /** Internal marker distinguishing a manually-entered end from a completed day. */
         public boolean cycleClosed = false;
 
         /** Minions refueled today, auto-detected from fuel placements. */
         public int minionsRefueledAuto = 0;
+
+        /** Fuel units placed this day by grade, indexed {@code 0} Rare, {@code 1} Epic, {@code 2} Legendary,
+         *  taken from the colour of the fuel in the fueling message. Null when no grade was seen. */
+        public int[] fuelGradeCounts = null;
 
         /** Manual override for minions refueled — null means "use the auto-detected value".
          *  Useful when lag desyncs the automatic fuel-placement detection. */
@@ -570,6 +583,39 @@ public class FuelCycleTracker {
         }
 
         /**
+         * How long the minions produced on this day: the span plus any time a warp took off it, and a day typed
+         * in by hand that crossed a clock change counts as its whole days (see {@link FuelDayTime#productionMs}).
+         */
+        public long getProductionMs() {
+            if (!(manualCycleTimes && cycleEndMs > cycleStartMs)) return DAY_MS;
+            return FuelDayTime.productionMs(cycleStartMs, cycleEndMs, timeWarpedMs, ZoneId.systemDefault());
+        }
+
+        /** Whether an Enchanted Clock warp shortened this day. */
+        public boolean isTimeWarped() {
+            return timeWarpedMs > 0;
+        }
+
+        /** The grade of fuel used for most of this day's minions ({@code 0} Rare to {@code 2} Legendary), or -1. */
+        public int getFuelGrade() {
+            return FuelDayTime.majorityGrade(fuelGradeCounts);
+        }
+
+        /** Whether the minions of this day were fueled with more than one grade. */
+        public boolean hasMixedFuelGrades() {
+            return FuelDayTime.mixedGrades(fuelGradeCounts);
+        }
+
+        void addFuelGrade(int grade, int delta) {
+            if (grade < 0 || grade > 2) return;
+            if (fuelGradeCounts == null || fuelGradeCounts.length < 3) {
+                fuelGradeCounts = java.util.Arrays.copyOf(fuelGradeCounts == null ? new int[0] : fuelGradeCounts, 3);
+            }
+            fuelGradeCounts[grade] = Math.max(0, fuelGradeCounts[grade] + delta);
+            if (fuelGradeCounts[0] + fuelGradeCounts[1] + fuelGradeCounts[2] == 0) fuelGradeCounts = null;
+        }
+
+        /**
          * AFK percentage of the full cycle duration, regardless of whether the day is still
          * in progress. Manually corrected cycle durations are used here too, so mob-kill
          * coins remain consistent with an edited timeframe instead of silently reverting to
@@ -700,12 +746,12 @@ public class FuelCycleTracker {
     /**
      * Computes the DayRecord key for the given day-slot index within a cohort that
      * started at {@code cohortStart} — the calendar date that particular 24h span
-     * started on. Since each slot is exactly 24h after the last, this normally advances
-     * by exactly one calendar day per index (aside from rare DST edge cases).
+     * started on. Slots are exactly 24h apart, but the key advances by exactly one calendar day
+     * per index even when the clocks change in between (where 24h steps would repeat or skip a
+     * date and two days would share a record).
      */
     private static String daySlotKey(long cohortStart, int dayIndex) {
-        long slotStartMs = cohortStart + (long) dayIndex * DAY_MS;
-        return LocalDate.ofInstant(Instant.ofEpochMilli(slotStartMs), ZoneId.systemDefault()).toString();
+        return FuelDayTime.slotDate(cohortStart, dayIndex, ZoneId.systemDefault());
     }
 
     /** Matches a modern armor-stand key from {@code MinionFuelTracker.buildArmorStandKey()}: a
@@ -796,6 +842,9 @@ public class FuelCycleTracker {
             changed = true;
         }
 
+        Integer migratedGrade = minionFuelGrades.remove(oldKey);
+        if (migratedGrade != null) minionFuelGrades.putIfAbsent(newKey, migratedGrade);
+
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(oldKey)) continue;
             changed = true;
@@ -803,7 +852,10 @@ public class FuelCycleTracker {
                 // Both keys were counted toward this day slot, but they are the same
                 // physical minion — drop the now-duplicated count.
                 DayRecord record = dayRecords.get(entry.getKey());
-                if (record != null && record.minionsRefueledAuto > 0) record.minionsRefueledAuto--;
+                if (record != null && record.minionsRefueledAuto > 0) {
+                    record.minionsRefueledAuto--;
+                    removeFuelGrade(record, migratedGrade);
+                }
             }
         }
 
@@ -855,12 +907,14 @@ public class FuelCycleTracker {
         for (String legacyKey : legacyKeys) {
             minionExpiries.remove(legacyKey);
             minionFuelUnitsQueued.remove(legacyKey);
+            Integer legacyGrade = minionFuelGrades.remove(legacyKey);
             changed = true;
             for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
                 if (entry.getValue().remove(legacyKey)) {
                     DayRecord record = dayRecords.get(entry.getKey());
                     if (record != null && record.minionsRefueledAuto > 0) {
                         record.minionsRefueledAuto -= 1;
+                        removeFuelGrade(record, legacyGrade);
                     }
                 }
             }
@@ -877,12 +931,14 @@ public class FuelCycleTracker {
 
         for (String queuedKey : queuedOnlyKeys) {
             minionFuelUnitsQueued.remove(queuedKey);
+            Integer queuedGrade = minionFuelGrades.remove(queuedKey);
             changed = true;
             for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
                 if (entry.getValue().remove(queuedKey)) {
                     DayRecord record = dayRecords.get(entry.getKey());
                     if (record != null && record.minionsRefueledAuto > 0) {
                         record.minionsRefueledAuto -= 1;
+                        removeFuelGrade(record, queuedGrade);
                     }
                 }
             }
@@ -1149,6 +1205,8 @@ public class FuelCycleTracker {
         selected.cycleStartMs = startMs;
         selected.cycleEndMs = endMs;
         selected.manualCycleTimes = true;
+        // The span is now what was typed in, so a warp's credit no longer applies to it
+        selected.timeWarpedMs = 0;
         // Only a day whose alert already fired stays closed, and only while its new end is
         // still in the past. A manually-timed record always has an end set, so using that
         // as the "closed" marker would silently swallow the alert of an active/queued day.
@@ -1271,6 +1329,9 @@ public class FuelCycleTracker {
         record.cycleStartMs = nextCycleStart;
         record.manualMinionCount = minionCount;
         record.manualFuelCost = fuelCost;
+        if (!existing.isEmpty() && existing.get(0).fuelGradeCounts != null) {
+            record.fuelGradeCounts = existing.get(0).fuelGradeCounts.clone();
+        }
         save();
         return record;
     }
@@ -1316,6 +1377,8 @@ public class FuelCycleTracker {
         if (end - start != DAY_MS) {
             record.cycleEndMs = Math.max(end, start + 1);
             record.manualCycleTimes = true;
+            // A slot cut short by a warp that happened before it was queued still gets its full 24 hours
+            if (end - start < DAY_MS) record.timeWarpedMs = DAY_MS - (end - start);
         }
     }
 
@@ -1355,12 +1418,16 @@ public class FuelCycleTracker {
         for (DayRecord record : dayRecords.values()) {
             if (record.cycleStartMs <= 0 || isClosed(record)) continue;
 
+            long oldSpan = effectiveEndMs(record) - record.cycleStartMs;
             long newStart = MinionTimeWarp.shiftBoundary(record.cycleStartMs, now, amountMs);
             long newEnd = MinionTimeWarp.shiftBoundary(effectiveEndMs(record), now, amountMs);
             record.cycleStartMs = newStart;
             record.cycleEndMs = Math.max(newEnd, newStart + 1);
             record.manualCycleTimes = true;
             record.cycleClosed = false;
+            // The day got shorter, but the minions still run for all of it
+            long lost = oldSpan - (record.cycleEndMs - record.cycleStartMs);
+            if (lost > 0) record.timeWarpedMs += lost;
         }
 
         timeWarps.add(new MinionTimeWarp.Warp(now, amountMs));
@@ -1405,15 +1472,23 @@ public class FuelCycleTracker {
     private static boolean removeMinionFuelState(String minionKey) {
         if (minionExpiries.remove(minionKey) == null) return false;
         minionFuelUnitsQueued.remove(minionKey);
+        Integer minionGrade = minionFuelGrades.remove(minionKey);
 
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(minionKey)) continue;
             DayRecord record = dayRecords.get(entry.getKey());
             if (record != null && !isClosed(record) && record.minionsRefueledAuto > 0) {
                 record.minionsRefueledAuto--;
+                removeFuelGrade(record, minionGrade);
             }
         }
         return true;
+    }
+
+    /** Takes one minion's fuel grade off a day: its own when known, otherwise the one the day used most. */
+    private static void removeFuelGrade(DayRecord record, Integer minionGrade) {
+        int grade = minionGrade != null ? minionGrade : record.getFuelGrade();
+        record.addFuelGrade(grade, -1);
     }
 
     /** Removes expired state left behind when a minion was not opened as its fuel ran out. */
@@ -1453,6 +1528,7 @@ public class FuelCycleTracker {
     /** Removes expired state without changing counts for day-slots that already started. */
     private static boolean removeExpiredMinionState(String minionKey, long now) {
         if (minionExpiries.remove(minionKey) == null) return false;
+        Integer minionGrade = minionFuelGrades.remove(minionKey);
 
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(minionKey)) continue;
@@ -1460,6 +1536,7 @@ public class FuelCycleTracker {
             if (record != null && record.cycleStartMs > now && !isClosed(record)
                     && record.minionsRefueledAuto > 0) {
                 record.minionsRefueledAuto--;
+                removeFuelGrade(record, minionGrade);
             }
         }
         return true;
@@ -1472,6 +1549,7 @@ public class FuelCycleTracker {
         activeDaySlotIndex = 0;
         minionsCountedByDaySlot.clear();
         minionFuelUnitsQueued.clear();
+        minionFuelGrades.clear();
         wasOnIslandLastTick = false;
     }
 
@@ -1517,6 +1595,15 @@ public class FuelCycleTracker {
      * running/extending regardless of the toggle — we never abandon data mid-cohort.
      */
     public static void onMinionFueled(String minionKey, int fuelCount) {
+        onMinionFueled(minionKey, fuelCount, -1);
+    }
+
+    /**
+     * As {@link #onMinionFueled(String, int)}, also recording which grade of fuel was placed
+     * ({@code 0} Rare, {@code 1} Epic, {@code 2} Legendary, or -1 when it isn't known) on each
+     * day it covers, so the estimated return can use the grade that was really used.
+     */
+    public static void onMinionFueled(String minionKey, int fuelCount, int fuelGrade) {
         if (fuelCount <= 0) return;
         if (minionKey == null || minionKey.isEmpty()) minionKey = "unknown";
         long now = System.currentTimeMillis();
@@ -1546,6 +1633,7 @@ public class FuelCycleTracker {
             activeDaySlotIndex = 0;
             minionsCountedByDaySlot.clear();
             minionFuelUnitsQueued.clear();
+            minionFuelGrades.clear();
         }
 
         // The wall-clock moment the FIRST of these newly-added units starts burning:
@@ -1592,8 +1680,10 @@ public class FuelCycleTracker {
             Set<String> counted = minionsCountedByDaySlot.computeIfAbsent(daySlot, k -> ConcurrentHashMap.newKeySet());
             if (counted.add(minionKey)) {
                 record.minionsRefueledAuto += 1;
+                record.addFuelGrade(fuelGrade, 1);
             }
         }
+        if (fuelGrade >= 0) minionFuelGrades.put(minionKey, fuelGrade);
 
         // Estimate the per-minion recipe price from the bazaar in the background so we
         // never block the client thread while a container screen is open. Each day gets
@@ -1605,18 +1695,19 @@ public class FuelCycleTracker {
         final int firstDayIndexFinal = firstDayIndex;
         saveExecutor.submit(() -> {
             try {
-                double unitCost = getCohortFuelUnitCost(cohortStartFinal);
-                if (unitCost > 0) {
-                    for (int u = 0; u < fuelCount; u++) {
-                        int dayIndex = firstDayIndexFinal + u;
-                        DayRecord r = dayRecords.get(daySlotKey(cohortStartFinal, dayIndex));
-                        if (r != null) {
-                            r.lockedFuelCostPerMinion = unitCost;
-                            r.fuelCost = unitCost * r.minionsRefueledAuto;
-                        }
+                boolean priced = false;
+                for (int u = 0; u < fuelCount; u++) {
+                    int dayIndex = firstDayIndexFinal + u;
+                    DayRecord r = dayRecords.get(daySlotKey(cohortStartFinal, dayIndex));
+                    if (r == null) continue;
+                    double unitCost = getDayFuelUnitCost(r, cohortStartFinal);
+                    if (unitCost > 0) {
+                        r.lockedFuelCostPerMinion = unitCost;
+                        r.fuelCost = unitCost * r.minionsRefueledAuto;
+                        priced = true;
                     }
-                    save();
                 }
+                if (priced) save();
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Fuel cost estimate failed: " + e.getMessage());
             }
@@ -1627,8 +1718,26 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Returns the buy-order unit price to use for every fuel-cost calculation within the
-     * cohort that started at {@code cohortStart}, fetching and caching it from the live
+     * The recipe cost of one minion's fuel on a day: each grade placed is costed at its own recipe, averaged over
+     * the grades the day used. A day with no grade seen is costed as Epic fuel, which is what every day used to be.
+     */
+    private static double getDayFuelUnitCost(DayRecord record, long cohortStart) {
+        double sum = 0;
+        int units = 0;
+        int[] counts = record.fuelGradeCounts;
+        for (int grade = 0; counts != null && grade < counts.length && grade < FUEL_GRADES; grade++) {
+            if (counts[grade] <= 0) continue;
+            double cost = getCohortFuelUnitCost(cohortStart, grade);
+            if (cost <= 0) return -1;
+            sum += cost * counts[grade];
+            units += counts[grade];
+        }
+        return units > 0 ? sum / units : getCohortFuelUnitCost(cohortStart, InfernoReturnCalculator.GRADE_HEAVY);
+    }
+
+    /**
+     * Returns the buy-order unit price of one fuel of {@code grade} to use for every fuel-cost calculation within
+     * the cohort that started at {@code cohortStart}, fetching and caching it from the live
      * bazaar the first time it's needed for that cohort and simply returning the cached
      * value for every later call (from the same or a different fueling event) within
      * that same cohort — so a day's recorded fuel cost is never affected by however the
@@ -1636,16 +1745,19 @@ public class FuelCycleTracker {
      * (different {@code cohortStart}) always re-fetches a fresh price. If the live fetch
      * fails (returns <= 0, e.g. no network), nothing is cached, so the next call retries.
      */
-    private static synchronized double getCohortFuelUnitCost(long cohortStart) {
-        if (cachedFuelUnitCostCohortStart == cohortStart && cachedFuelUnitCost > 0) {
-            return cachedFuelUnitCost;
+    private static synchronized double getCohortFuelUnitCost(long cohortStart, int grade) {
+        if (cachedFuelUnitCostCohortStart != cohortStart) {
+            cachedFuelUnitCostCohortStart = cohortStart;
+            java.util.Arrays.fill(cachedFuelUnitCosts, -1);
+        }
+        if (cachedFuelUnitCosts[grade] > 0) {
+            return cachedFuelUnitCosts[grade];
         }
         IslandTimeConfig config = ConfigManager.getConfig();
         boolean gabagoolOnly = config != null && config.fuelCycles.gabagoolDistillateOnly;
-        double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar(), gabagoolOnly);
+        double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar(), gabagoolOnly, grade);
         if (unitCost > 0) {
-            cachedFuelUnitCost = unitCost;
-            cachedFuelUnitCostCohortStart = cohortStart;
+            cachedFuelUnitCosts[grade] = unitCost;
         }
         return unitCost;
     }
@@ -1931,6 +2043,21 @@ public class FuelCycleTracker {
                         .append(Component.literal(String.format("%.1f%%", record.getAfkPercent())).withStyle(ChatFormatting.WHITE))
                         .append(Component.literal(" | Fuel Cost: ").withStyle(ChatFormatting.GRAY))
                         .append(Component.literal(PriceCache.formatCoins(record.getEffectiveFuelCost())).withStyle(ChatFormatting.WHITE)));
+        if (FuelDataSets.isEstimated(FuelDataSets.active().id())) {
+            IslandTimeConfig config = ConfigManager.getConfig();
+            FuelDayEstimates.DayEstimate day = FuelDayEstimates.estimate(record,
+                    InfernoProfitsCommand.settingsFrom(config != null ? config.fuelCycles : null), PriceCache.peekBazaar());
+            double profit = day.profit();
+            client.player.sendSystemMessage(
+                    Component.literal("  Est. return: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(day.estimate().priced()
+                                    ? PriceCache.formatCoins(day.estimate().value()) : "n/a").withStyle(ChatFormatting.WHITE))
+                            .append(Component.literal(" | Est. Profit: ").withStyle(ChatFormatting.GRAY))
+                            .append(Component.literal(Double.isNaN(profit) ? "n/a" : PriceCache.formatCoins(profit))
+                                    .withStyle(Double.isNaN(profit) ? ChatFormatting.GRAY
+                                            : profit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED)));
+            return;
+        }
         client.player.sendSystemMessage(
                 Component.literal("  Coins: ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(PriceCache.formatCoins(record.getMobKillCoins())).withStyle(ChatFormatting.WHITE))

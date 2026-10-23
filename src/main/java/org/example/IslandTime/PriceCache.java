@@ -106,7 +106,12 @@ public class PriceCache {
      * before selecting the cheapest one, unless {@code gabagoolOnly} asks for Crude Gabagool Distillate.
      */
     public static double getInfernoFuelUnitCost(JsonObject products, boolean gabagoolOnly) {
-        FuelCostBreakdown breakdown = getInfernoFuelCostBreakdown(products, 1, gabagoolOnly);
+        return getInfernoFuelUnitCost(products, gabagoolOnly, InfernoReturnCalculator.GRADE_HEAVY);
+    }
+
+    /** The same for another grade of fuel, see {@link #getInfernoFuelCostBreakdown(JsonObject, int, boolean, int)}. */
+    public static double getInfernoFuelUnitCost(JsonObject products, boolean gabagoolOnly, int grade) {
+        FuelCostBreakdown breakdown = getInfernoFuelCostBreakdown(products, 1, gabagoolOnly, grade);
         return breakdown == null ? -1 : breakdown.totalCost;
     }
 

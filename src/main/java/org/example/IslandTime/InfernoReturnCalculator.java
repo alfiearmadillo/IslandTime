@@ -172,12 +172,12 @@ final class InfernoReturnCalculator {
 
     /**
      * What is set up on the minions. {@code eyedrops} are Capsaicin Eyedrops in the Hypergolic fuel, used on every
-     * minion every day, and {@code afk} makes the estimate only count the time spent AFKing. {@code fishPrice} and
+     * minion every day. {@code fishPrice} and
      * {@code hydraHeadPrice} are what Gabagool the Fish and a Water Hydra Head (for crafting the eyedrops) are
      * worth, as neither is on the Bazaar; one that isn't a number of 0 or more is replaced by its default.
      */
     record Settings(int minionTier, int fuelGrade, boolean eyedrops, boolean flycatcher, boolean secondFlycatcher, int beacon,
-                    boolean postcard, boolean infusion, boolean freeWill, boolean superCompactor, boolean afk,
+                    boolean postcard, boolean infusion, boolean freeWill, boolean superCompactor,
                     double fishPrice, double hydraHeadPrice) {
 
         Settings {
@@ -191,13 +191,7 @@ final class InfernoReturnCalculator {
         /** The same set-up with another grade of fuel. */
         Settings withFuelGrade(int grade) {
             return new Settings(minionTier, grade, eyedrops, flycatcher, secondFlycatcher, beacon, postcard, infusion,
-                    freeWill, superCompactor, afk, fishPrice, hydraHeadPrice);
-        }
-
-        /** The same set-up with AFK mode switched on or off. */
-        Settings withAfk(boolean value) {
-            return new Settings(minionTier, fuelGrade, eyedrops, flycatcher, secondFlycatcher, beacon, postcard, infusion,
-                    freeWill, superCompactor, value, fishPrice, hydraHeadPrice);
+                    freeWill, superCompactor, fishPrice, hydraHeadPrice);
         }
     }
 
@@ -283,8 +277,8 @@ final class InfernoReturnCalculator {
     /**
      * Estimates the loot of {@code minions} Inferno minions over {@code activeSeconds} of running.
      *
-     * @param activeSeconds   how long the minions were producing: the length of the fuel day, or only the time
-     *                        spent AFKing
+     * @param activeSeconds   how long the minions were producing: the whole fuel day, which is 24 hours even when a
+     *                        time warp made the day itself shorter
      * @param fuelSeconds     how long the fuel burned, which is what the Hypergolic Ionized Ceramics depends on
      * @param prices          sell offers: Crude and Very Crude Gabagool (the latter only used with a Super
      *                        Compactor) and, for Hypergolic fuel, the rare drops and the eyedrop ingredients

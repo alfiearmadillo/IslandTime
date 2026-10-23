@@ -53,7 +53,7 @@ final class InfernoProfits {
     /**
      * The profit of {@code minions} minions over one whole fuel day on each grade of fuel, in the order Rare,
      * Epic, Legendary. The minions use the speed bonuses and the eyedrops of {@code settings}, whatever fuel it
-     * names, and never AFK mode: nothing is earned from mob kills while the minions are left alone.
+     * names, and whole days only: nothing is earned from mob kills while the minions are left alone.
      *
      * @param sellOffers prices the loot and the eyedrop ingredients are valued at
      * @param products   the Bazaar, for the buy orders of the fuel ingredients
@@ -63,7 +63,7 @@ final class InfernoProfits {
         List<GradeProfit> result = new ArrayList<>();
         if (minions <= 0) return result;
         for (int grade = 0; grade < InfernoReturnCalculator.GRADE_NAMES.length; grade++) {
-            InfernoReturnCalculator.Settings gradeSettings = settings.withFuelGrade(grade).withAfk(false);
+            InfernoReturnCalculator.Settings gradeSettings = settings.withFuelGrade(grade);
             InfernoReturnCalculator.Estimate estimate = InfernoReturnCalculator.estimate(gradeSettings, minions,
                     InfernoReturnCalculator.FUEL_DAY_SECONDS, InfernoReturnCalculator.FUEL_DAY_SECONDS, sellOffers);
             PriceCache.FuelCostBreakdown fuel = PriceCache.getInfernoFuelCostBreakdown(products, minions, true, grade);
