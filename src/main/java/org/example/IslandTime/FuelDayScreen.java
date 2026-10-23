@@ -63,7 +63,8 @@ public class FuelDayScreen extends Screen {
 
     /** The data set to show, or null to always show the one in use. */
     private final String pinnedSetId;
-    private final Screen parent;
+    /** Where closing this screen goes. Never a {@link FuelDataSetsScreen}, see {@link FuelDataSetsScreen#exitScreen}. */
+    final Screen parent;
 
     private Rect forceEndRect;
     private Rect useRect;
@@ -124,12 +125,13 @@ public class FuelDayScreen extends Screen {
 
     /**
      * @param setId  the data set to show, or null for the one in use
-     * @param parent the screen to go back to when this one is closed, or null to close it
+     * @param parent the screen to go back to when this one is closed, or null to close it. If this is opened from
+     *               the data sets screen, closing goes to whatever opened that instead.
      */
     public FuelDayScreen(String setId, Screen parent) {
         super(Component.literal("Fuel Day Tracker"));
         this.pinnedSetId = setId;
-        this.parent = parent;
+        this.parent = FuelDataSetsScreen.exitScreen(parent);
     }
 
     private String viewedSetId() {
@@ -157,9 +159,9 @@ public class FuelDayScreen extends Screen {
         return foreignRecords;
     }
 
-    private static IslandTimeConfig.FuelCycles fuelConfig() {
+    private static IslandTimeConfig.ProfitCalculators fuelConfig() {
         IslandTimeConfig config = ConfigManager.getConfig();
-        return config != null ? config.fuelCycles : null;
+        return config != null ? config.profitCalculators : null;
     }
 
     /** Whether the data set being shown works out its profit from the estimated return rather than the tracked one. */
@@ -750,7 +752,7 @@ public class FuelDayScreen extends Screen {
             lines.add(Component.literal("day still gets its full 24 hours").withStyle(ChatFormatting.GRAY));
             lines.add(Component.literal("Each data set has its own setting, used here, in the Data Sets menu").withStyle(ChatFormatting.GRAY));
             lines.add(Component.literal("Hover a row's blue line for the details").withStyle(ChatFormatting.GRAY));
-            lines.add(Component.literal("Speed boosts: /it > Fuel Cycles > Estimated Return").withStyle(ChatFormatting.DARK_GRAY));
+            lines.add(Component.literal("Speed boosts: /it > Profit Calculators > Inferno Profits").withStyle(ChatFormatting.DARK_GRAY));
         }
         if (!lines.isEmpty()) context.setComponentTooltipForNextFrame(font, lines, mouseX, mouseY);
     }

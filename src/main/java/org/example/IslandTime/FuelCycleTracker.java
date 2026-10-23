@@ -2046,7 +2046,7 @@ public class FuelCycleTracker {
         if (FuelDataSets.isEstimated(FuelDataSets.active().id())) {
             IslandTimeConfig config = ConfigManager.getConfig();
             FuelDayEstimates.DayEstimate day = FuelDayEstimates.estimate(record,
-                    InfernoProfitsCommand.settingsFrom(config != null ? config.fuelCycles : null), PriceCache.peekBazaar());
+                    InfernoProfitsCommand.settingsFrom(config != null ? config.profitCalculators : null), PriceCache.peekBazaar());
             double profit = day.profit();
             client.player.sendSystemMessage(
                     Component.literal("  Est. return: ").withStyle(ChatFormatting.GRAY)

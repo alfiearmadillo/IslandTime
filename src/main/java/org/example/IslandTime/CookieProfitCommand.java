@@ -90,21 +90,21 @@ public class CookieProfitCommand {
         if (client.player == null) return;
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        int baseBitsPerCookie = (config != null) ? config.misc.bitsPerCookie : 4800;
-        boolean includeBitsTalisman = (config != null) && config.misc.includeBitsTalisman;
-        boolean blazeSlayerPerk = (config != null) && config.misc.infernoFuelBlazeSlayerPerk;
-        int topCount = (config != null) ? config.misc.cookieTopCount : 0;
+        int baseBitsPerCookie = (config != null) ? config.profitCalculators.bitsPerCookie : 4800;
+        boolean includeBitsTalisman = (config != null) && config.profitCalculators.includeBitsTalisman;
+        boolean blazeSlayerPerk = (config != null) && config.profitCalculators.infernoFuelBlazeSlayerPerk;
+        int topCount = (config != null) ? config.profitCalculators.cookieTopCount : 0;
 
         // Per-item sell mode overrides
-        boolean kismetSellOffer = (config != null) && isSellOffer(config.misc.kismetSellMode);
-        boolean magmaSellOffer = (config != null) && isSellOffer(config.misc.magmaBucketSellMode);
-        boolean plasmaSellOffer = (config != null) && isSellOffer(config.misc.plasmaBucketSellMode);
-        boolean carrotSellOffer = (config != null) && isSellOffer(config.misc.ultimateCarrotCandySellMode);
-        boolean xlSellOffer = (config != null) && isSellOffer(config.misc.xlStorageSellMode);
-        boolean xxlSellOffer = (config != null) && isSellOffer(config.misc.xxlStorageSellMode);
-        boolean bitbugSellOffer = (config != null) && isSellOffer(config.misc.bitbugShardSellMode);
-        boolean fuelSellOffer = (config != null) && isSellOffer(config.misc.infernoFuelSellMode);
-        boolean enchSellOffer = (config != null) && isSellOffer(config.misc.enchantmentSellMode);
+        boolean kismetSellOffer = (config != null) && isSellOffer(config.profitCalculators.kismetSellMode);
+        boolean magmaSellOffer = (config != null) && isSellOffer(config.profitCalculators.magmaBucketSellMode);
+        boolean plasmaSellOffer = (config != null) && isSellOffer(config.profitCalculators.plasmaBucketSellMode);
+        boolean carrotSellOffer = (config != null) && isSellOffer(config.profitCalculators.ultimateCarrotCandySellMode);
+        boolean xlSellOffer = (config != null) && isSellOffer(config.profitCalculators.xlStorageSellMode);
+        boolean xxlSellOffer = (config != null) && isSellOffer(config.profitCalculators.xxlStorageSellMode);
+        boolean bitbugSellOffer = (config != null) && isSellOffer(config.profitCalculators.bitbugShardSellMode);
+        boolean fuelSellOffer = (config != null) && isSellOffer(config.profitCalculators.infernoFuelSellMode);
+        boolean enchSellOffer = (config != null) && isSellOffer(config.profitCalculators.enchantmentSellMode);
 
         // Bits Talisman doesn't create extra bits — same total, earned faster
         double hoursToEarn = BASE_HOURS_TO_EARN_ALL_BITS;
@@ -116,7 +116,7 @@ public class CookieProfitCommand {
 
         if (baseBitsPerCookie <= 0) {
             client.player.sendSystemMessage(
-                    Component.literal("Set your bits per cookie in /islandtime under Misc > Cookie Profit.")
+                    Component.literal("Set your bits per cookie in /islandtime under Profit Calculators > Cookie Profit.")
                             .withStyle(ChatFormatting.RED));
             return;
         }

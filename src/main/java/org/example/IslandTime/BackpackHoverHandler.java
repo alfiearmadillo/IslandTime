@@ -366,8 +366,9 @@ public class BackpackHoverHandler {
                                 ? TooltipFlag.Default.ADVANCED
                                 : TooltipFlag.Default.NORMAL));
                 if (hoveredSlot.hasOwnCountText()) {
-                    tip.add(Math.min(1, tip.size()), Component.literal("Stack size: " + BackpackCounts.exactText(hoveredSlot.count()))
-                            .withStyle(hoveredSlot.count() > 0 ? ChatFormatting.GRAY : ChatFormatting.RED));
+                    // At the very end, under the item id and component count the advanced tooltip adds
+                    tip.add(Component.literal("Stack size: " + BackpackCounts.exactText(hoveredSlot.count()))
+                            .withStyle(ChatFormatting.DARK_GRAY));
                 }
                 context.setComponentTooltipForNextFrame(tr, tip, mouseX, mouseY);
             }

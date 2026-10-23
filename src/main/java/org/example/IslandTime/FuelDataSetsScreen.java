@@ -37,8 +37,20 @@ public class FuelDataSetsScreen extends ListEditorScreen {
         this(null);
     }
 
+    /** @param parent the screen to go back to, or null to close. If it is a day screen, its own exit is used. */
     public FuelDataSetsScreen(Screen parent) {
-        super(parent, "Fuel Data Sets");
+        super(exitScreen(parent), "Fuel Data Sets");
+    }
+
+    /**
+     * The day screen and this one open each other, so going back through every one of them would stack up one
+     * more screen per click. Both therefore return to whatever opened the first of them: if {@code opener} is one
+     * of the two, that is where it would have returned to; otherwise it is {@code opener} itself (null = gameplay).
+     */
+    static Screen exitScreen(Screen opener) {
+        if (opener instanceof FuelDayScreen day) return day.parent;
+        if (opener instanceof FuelDataSetsScreen sets) return sets.parent;
+        return opener;
     }
 
     @Override
@@ -180,7 +192,7 @@ public class FuelDataSetsScreen extends ListEditorScreen {
         InfernoReturnCalculator.Settings settings = null;
         if (estimated) {
             IslandTimeConfig config = ConfigManager.getConfig();
-            settings = InfernoProfitsCommand.settingsFrom(config != null ? config.fuelCycles : null);
+            settings = InfernoProfitsCommand.settingsFrom(config != null ? config.profitCalculators : null);
         }
         JsonObject bazaar = estimated ? PriceCache.peekBazaar() : null;
 

@@ -777,7 +777,7 @@ public class IslandTimeCommand {
                 {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
                 {"/it datasets", "Open the fuel data sets menu: create, browse and switch between sets of fuel day data (Main, Debug, your own). The one in use is remembered"},
                 {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate (or only Gabagool Distillate if that setting is on)"},
-                {"/it infernoProfits [MINIONS]", "Show what your current cohort (or MINIONS minions) earns per fuel day on Rare, Epic and Legendary fuel: loot at the Bazaar sell offer (Legendary with its rare drops, partial ones included) less the fuel at buy orders and, on Legendary, the eyedrops. Uses the speed and eyedrop settings of the estimated return"},
+                {"/it infernoProfits [MINIONS]", "Show what your current cohort (or MINIONS minions) earns per fuel day on Rare, Epic and Legendary fuel: loot at the Bazaar sell offer (Legendary with its rare drops, partial ones included) less the fuel at buy orders and, on Legendary, the eyedrops. Uses the speed and eyedrop settings of Profit Calculators > Inferno Profits"},
 
                 // Page 2 - Discord webhook & pings
                 {"/it webhook", "Show current webhook URL"},
@@ -834,14 +834,14 @@ public class IslandTimeCommand {
                 {"/it agingItems add <agingId> <agedId>", "Add a custom aging item pair by SkyBlock IDs (e.g. BOTTLE_OF_JYRRE REFINED_BOTTLE_OF_JYRRE)"},
                 {"/it agingItems remove <agingId>", "Remove an aging item pair by its aging SkyBlock ID"},
                 {"/it agingItems list", "List all configured aging item pairs"},
-                {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /it GUI"},
+                {"Time Bag / Inventory Slots", "Configure slot counts under Profit Calculators > Aging Items in /it GUI"},
 
                 // Page 10 - Cookie Profit & Settings Loadouts
                 {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
-                {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /it GUI"},
+                {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Profit Calculators > Cookie Profit in /it GUI"},
                 {"/it huntrapProfit", "Rank Huntrap locations by estimated shard profit/hour (5 traps) using live Bazaar prices"},
-                {"/it huntrapEditor", "Open the Huntrap data editor: edit each location's shards and weights, add or remove locations and shards, or reset to the built-in data"},
-                {"Huntrap Settings", "Set trap type, Hunter Fortune, Desert Temple buff, Forest/Combat Trap levels and how many locations to show under Misc > Huntrap Profit in /it GUI"},
+                {"/it huntrapEditor", "Open the Huntrap data editor: edit each location's shards and weights, disable, add or remove locations and shards, or reset to the built-in data"},
+                {"Huntrap Settings", "Set trap type, Hunter Fortune, Desert Temple buff, Forest/Combat Trap levels and how many locations to show under Profit Calculators > Huntrap Profit in /it GUI"},
                 {"/it settingssave <name>", "Save current settings as a named loadout"},
                 {"/it settingsload <name>", "Load a saved settings loadout (replaces current settings)"},
                 {"/it settingsdelete <name>", "Delete a saved settings loadout"},

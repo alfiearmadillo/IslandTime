@@ -13,7 +13,8 @@ import java.util.Locale;
 
 /**
  * {@code /it infernoProfits [minions]}: what the minions of the current cohort earn in a fuel day on each of
- * the three fuels, using the speed and eyedrop settings of the estimated return in the Fuel Day Tracker.
+ * the three fuels, using the speed and eyedrop settings of Profit Calculators > Inferno Profits (the same ones the
+ * Fuel Day Tracker's estimated profit uses).
  * The maths lives in {@link InfernoProfits} and {@link InfernoReturnCalculator}.
  */
 public class InfernoProfitsCommand {
@@ -21,9 +22,9 @@ public class InfernoProfitsCommand {
     private static final String PREFIX = "[InfernoProfits] ";
     private static final ChatFormatting[] GRADE_COLORS = {ChatFormatting.BLUE, ChatFormatting.DARK_PURPLE, ChatFormatting.GOLD};
 
-    /** The set-up of the estimated return in the config, which is also what this command uses. */
-    static InfernoReturnCalculator.Settings settingsFrom(IslandTimeConfig.FuelCycles fuel) {
-        if (fuel == null) fuel = new IslandTimeConfig.FuelCycles();
+    /** The set-up of the Inferno Profits settings, which is also what the Fuel Day Tracker's estimate uses. */
+    static InfernoReturnCalculator.Settings settingsFrom(IslandTimeConfig.ProfitCalculators fuel) {
+        if (fuel == null) fuel = new IslandTimeConfig.ProfitCalculators();
         return new InfernoReturnCalculator.Settings(
                 fuel.estimateMinionTier, fuel.estimateFuelGrade, fuel.estimateEyedrops, fuel.estimateFlycatcher,
                 fuel.estimateSecondFlycatcher, fuel.estimateBeacon, fuel.estimatePostcard, fuel.estimateInfusion,
@@ -38,7 +39,7 @@ public class InfernoProfitsCommand {
         if (client.player == null) return;
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        final InfernoReturnCalculator.Settings settings = settingsFrom(config != null ? config.fuelCycles : null);
+        final InfernoReturnCalculator.Settings settings = settingsFrom(config != null ? config.profitCalculators : null);
 
         final boolean manual = minionsOverride != null;
         final int minions = manual ? minionsOverride : cohortMinions();

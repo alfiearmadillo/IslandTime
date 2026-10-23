@@ -20,7 +20,8 @@ import java.util.Set;
  */
 public class HuntrapShardsScreen extends ListEditorScreen {
 
-    private static final int ROW_BUTTON_WIDTH = 45;
+    private static final int ROW_BUTTON_WIDTH = 40;
+    private static final int TOGGLE_WIDTH = 50;
     private static final int DELETE_WIDTH = 20;
     private static final int SEARCH_HEIGHT = 16;
 
@@ -151,13 +152,20 @@ public class HuntrapShardsScreen extends ListEditorScreen {
             }
 
             int count = HuntrapLocations.locationsWith(shard.name());
-            String subtitle = shard.rarity().displayName + " " + shard.category().displayName + "  -  "
+            String subtitle = (shard.enabled() ? "" : "Disabled  -  ")
+                    + shard.rarity().displayName + " " + shard.category().displayName + "  -  "
                     + shard.bazaarId() + "  -  " + count + (count == 1 ? " location" : " locations");
 
             List<RowButton> buttons = new ArrayList<>();
             if (picking()) {
                 buttons.add(button("Add", ROW_BUTTON_WIDTH, 0xFF55FF55, () -> openAddToLocation(shard),
                         "Add this shard to " + (location == null ? "the location" : location.label())));
+            } else {
+                buttons.add(button(shard.enabled() ? "Disable" : "Enable", TOGGLE_WIDTH,
+                        shard.enabled() ? 0xFFFFAA00 : 0xFF55FF55, () -> toggleShard(shard),
+                        shard.enabled() ? "Treat every location as if it never caught this shard"
+                                : "Count this shard at its locations again",
+                        "Each location's own weight and on/off setting are kept."));
             }
             buttons.add(button("Edit", ROW_BUTTON_WIDTH, 0xFF55FFFF, () -> openShardForm(shard),
                     "Change this shard's name, Bazaar id, rarity or category"));
@@ -167,8 +175,16 @@ public class HuntrapShardsScreen extends ListEditorScreen {
                         count == 0 ? "It isn't at any location." : "It is also removed from " + count
                                 + (count == 1 ? " location." : " locations.")));
             }
-            rows.add(new Row(shard.name(), subtitle, 0, buttons));
+            rows.add(new Row(shard.enabled() ? shard.name() : shard.name() + " (disabled)", subtitle,
+                    shard.enabled() ? 0 : HuntrapEditorScreen.DISABLED_BACKGROUND, buttons));
         }
         return rows;
+    }
+
+    private void toggleShard(HuntrapLocations.Shard shard) {
+        boolean enable = !shard.enabled();
+        String error = HuntrapLocations.setShardEnabled(shard.name(), enable);
+        setStatus(error == null ? (enable ? "Enabled " : "Disabled ") + shard.name() + " everywhere." : error,
+                error == null);
     }
 }

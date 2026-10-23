@@ -62,17 +62,29 @@ final class HuntrapLocations {
         }
     }
 
-    record Shard(String name, String bazaarId, Rarity rarity, Category category) {
+    /** {@code enabled} is false for a shard that is turned off everywhere (kept in the catalog, but never counted). */
+    record Shard(String name, String bazaarId, Rarity rarity, Category category, boolean enabled) {
     }
 
     /**
      * A shard that can be caught at a location, with its weight against the other shards there.
-     * {@code weightKnown} is false when the wiki lists no weight and the value was filled in.
+     * {@code weightKnown} is false when the wiki lists no weight and the value was filled in. {@code enabled} is
+     * false when this shard is turned off at this location only; see {@link #active()} for whether it counts.
      */
-    record Entry(Shard shard, double weight, boolean weightKnown) {
+    record Entry(Shard shard, double weight, boolean weightKnown, boolean enabled) {
+
+        /** Whether the calculation counts it: turned on here, and the shard itself isn't turned off. */
+        boolean active() {
+            return enabled && shard.enabled();
+        }
     }
 
-    record Location(String name, String placement, List<Entry> entries) {
+    /**
+     * A placement location. {@code entries} has every shard of the location, turned off ones included, so they can
+     * be edited. The weights, odds and totals only go by the {@linkplain Entry#active() active} ones. The calculator
+     * is given locations from {@link #all()}, which hold nothing else.
+     */
+    record Location(String name, String placement, List<Entry> entries, boolean enabled) {
 
         /** e.g. "Crystal Hollows, Underwater", or just "Smoldering Tomb" when there is no placement. */
         String label() {
@@ -81,16 +93,26 @@ final class HuntrapLocations {
 
         double totalWeight() {
             double total = 0;
-            for (Entry entry : entries) total += entry.weight();
+            for (Entry entry : entries) {
+                if (entry.active()) total += entry.weight();
+            }
             return total;
         }
 
-        /** True when at least one shard here has a weight listed on the wiki. */
+        /** True when at least one active shard here has a weight listed on the wiki. */
         boolean anyWeightKnown() {
             for (Entry entry : entries) {
-                if (entry.weightKnown()) return true;
+                if (entry.active() && entry.weightKnown()) return true;
             }
             return false;
+        }
+
+        int activeCount() {
+            int count = 0;
+            for (Entry entry : entries) {
+                if (entry.active()) count++;
+            }
+            return count;
         }
     }
 
@@ -105,11 +127,13 @@ final class HuntrapLocations {
     // every change, so a Huntrap calculation running on another thread never sees a half-edited location.
     // -------------------------------------------------------------------------
 
+    // The "disabled" flags are missing from a file saved before they existed, so everything in one stays on.
     private static final class ShardDef {
         String name;
         String bazaarId;
         Rarity rarity;
         Category category;
+        boolean disabled;
 
         ShardDef(String name, String bazaarId, Rarity rarity, Category category) {
             this.name = name;
@@ -123,6 +147,7 @@ final class HuntrapLocations {
     private static final class EntryDef {
         String shard;
         Double weight;
+        boolean disabled;
 
         EntryDef(String shard, Double weight) {
             this.shard = shard;
@@ -133,6 +158,7 @@ final class HuntrapLocations {
     private static final class LocationDef {
         String name;
         String placement;
+        boolean disabled;
         List<EntryDef> entries = new ArrayList<>();
 
         LocationDef(String name, String placement) {
@@ -148,10 +174,19 @@ final class HuntrapLocations {
 
         Model copy() {
             Model copy = new Model();
-            for (ShardDef s : shards) copy.shards.add(new ShardDef(s.name, s.bazaarId, s.rarity, s.category));
+            for (ShardDef s : shards) {
+                ShardDef shardCopy = new ShardDef(s.name, s.bazaarId, s.rarity, s.category);
+                shardCopy.disabled = s.disabled;
+                copy.shards.add(shardCopy);
+            }
             for (LocationDef l : locations) {
                 LocationDef locationCopy = new LocationDef(l.name, l.placement);
-                for (EntryDef e : l.entries) locationCopy.entries.add(new EntryDef(e.shard, e.weight));
+                locationCopy.disabled = l.disabled;
+                for (EntryDef e : l.entries) {
+                    EntryDef entryCopy = new EntryDef(e.shard, e.weight);
+                    entryCopy.disabled = e.disabled;
+                    locationCopy.entries.add(entryCopy);
+                }
                 copy.locations.add(locationCopy);
             }
             return copy;
@@ -169,14 +204,20 @@ final class HuntrapLocations {
 
     private static volatile Map<String, Shard> shardSnapshot = Map.of();
     private static volatile List<Location> locationSnapshot = List.of();
-    private static volatile List<Location> nonEmptySnapshot = List.of();
+    private static volatile List<Location> activeSnapshot = List.of();
 
-    /** Every location that has at least one shard, in the order they are listed. These are the ones worth calculating. */
+    /**
+     * The locations the calculation should rank, in the order they are listed: only the ones turned on that have at
+     * least one active shard, and holding just those shards (so their odds are shared out between them alone).
+     */
     static List<Location> all() {
-        return nonEmptySnapshot;
+        return activeSnapshot;
     }
 
-    /** Every location including empty ones. The index of a location here is what the editing methods take. */
+    /**
+     * Every location including empty and turned off ones, with all of their shards. The index of a location here is
+     * what the editing methods take.
+     */
     static List<Location> allIncludingEmpty() {
         return locationSnapshot;
     }
@@ -381,20 +422,23 @@ final class HuntrapLocations {
 
     /**
      * Builds the immutable shards and locations from the editable model. A shard without a weight gets the average
-     * of the weights that are known at its location, or 1 if none are.
+     * of the weights that are known at its location (among the shards that count), or 1 if none are. A shard or
+     * location that is turned off stays in the editor's list but is left out of what {@link #all()} gives.
      */
     private static void rebuild() {
         Map<String, Shard> shards = new LinkedHashMap<>();
         for (ShardDef def : model.shards) {
-            shards.put(def.name, new Shard(def.name, def.bazaarId, def.rarity, def.category));
+            shards.put(def.name, new Shard(def.name, def.bazaarId, def.rarity, def.category, !def.disabled));
         }
 
         List<Location> locations = new ArrayList<>();
-        List<Location> nonEmpty = new ArrayList<>();
+        List<Location> active = new ArrayList<>();
         for (LocationDef def : model.locations) {
             double knownTotal = 0;
             int knownCount = 0;
             for (EntryDef entry : def.entries) {
+                Shard shard = shards.get(entry.shard);
+                if (shard == null || entry.disabled || !shard.enabled()) continue;
                 if (entry.weight != null) {
                     knownTotal += entry.weight;
                     knownCount++;
@@ -403,20 +447,24 @@ final class HuntrapLocations {
             double fillWeight = knownCount > 0 ? knownTotal / knownCount : 1;
 
             List<Entry> entries = new ArrayList<>();
+            List<Entry> activeEntries = new ArrayList<>();
             for (EntryDef entry : def.entries) {
                 Shard shard = shards.get(entry.shard);
                 if (shard == null) continue;
                 boolean known = entry.weight != null;
-                entries.add(new Entry(shard, known ? entry.weight : fillWeight, known));
+                Entry built = new Entry(shard, known ? entry.weight : fillWeight, known, !entry.disabled);
+                entries.add(built);
+                if (built.active()) activeEntries.add(built);
             }
-            Location location = new Location(def.name, def.placement, List.copyOf(entries));
-            locations.add(location);
-            if (!entries.isEmpty()) nonEmpty.add(location);
+            locations.add(new Location(def.name, def.placement, List.copyOf(entries), !def.disabled));
+            if (!def.disabled && !activeEntries.isEmpty()) {
+                active.add(new Location(def.name, def.placement, List.copyOf(activeEntries), true));
+            }
         }
 
         shardSnapshot = Collections.unmodifiableMap(shards);
         locationSnapshot = List.copyOf(locations);
-        nonEmptySnapshot = List.copyOf(nonEmpty);
+        activeSnapshot = List.copyOf(active);
     }
 
     // -------------------------------------------------------------------------
@@ -478,7 +526,9 @@ final class HuntrapLocations {
                 }
                 String name = def.name.strip();
                 if (canonicalByLower.putIfAbsent(name.toLowerCase(Locale.ROOT), name) != null) continue;
-                clean.shards.add(new ShardDef(name, def.bazaarId.strip(), def.rarity, def.category));
+                ShardDef cleanShard = new ShardDef(name, def.bazaarId.strip(), def.rarity, def.category);
+                cleanShard.disabled = def.disabled;
+                clean.shards.add(cleanShard);
             }
         }
 
@@ -487,6 +537,7 @@ final class HuntrapLocations {
                 if (def == null || isBlank(def.name)) continue;
                 LocationDef location = new LocationDef(def.name.strip(), isBlank(def.placement) ? null
                         : def.placement.strip());
+                location.disabled = def.disabled;
                 Set<String> seen = new HashSet<>();
                 if (def.entries != null) {
                     for (EntryDef entry : def.entries) {
@@ -495,7 +546,9 @@ final class HuntrapLocations {
                         if (shard == null || !seen.add(shard)) continue;
                         Double weight = entry.weight != null && Double.isFinite(entry.weight) && entry.weight > 0
                                 && entry.weight <= MAX_WEIGHT ? entry.weight : null;
-                        location.entries.add(new EntryDef(shard, weight));
+                        EntryDef cleanEntry = new EntryDef(shard, weight);
+                        cleanEntry.disabled = entry.disabled;
+                        location.entries.add(cleanEntry);
                     }
                 }
                 clean.locations.add(location);
@@ -600,6 +653,13 @@ final class HuntrapLocations {
         return commit();
     }
 
+    /** Turns a location on or off. A location that is off is kept, but /it huntrapProfit leaves it out. */
+    static synchronized String setLocationEnabled(int index, boolean enabled) {
+        if (!validLocation(index)) return "That location no longer exists.";
+        model.locations.get(index).disabled = !enabled;
+        return commit();
+    }
+
     /**
      * Checks the text of a weight box. Blank is allowed and means "not known", and gets the average of the others
      * at the location.
@@ -669,6 +729,26 @@ final class HuntrapLocations {
         List<EntryDef> entries = model.locations.get(locationIndex).entries;
         if (entryIndex < 0 || entryIndex >= entries.size()) return "That shard is no longer here.";
         entries.remove(entryIndex);
+        return commit();
+    }
+
+    /**
+     * Turns a shard on or off at one location. One that is off is kept with its weight, but the calculation acts as
+     * if it wasn't there, so the odds of the others add up to 100% without it.
+     */
+    static synchronized String setEntryEnabled(int locationIndex, int entryIndex, boolean enabled) {
+        if (!validLocation(locationIndex)) return "That location no longer exists.";
+        List<EntryDef> entries = model.locations.get(locationIndex).entries;
+        if (entryIndex < 0 || entryIndex >= entries.size()) return "That shard is no longer here.";
+        entries.get(entryIndex).disabled = !enabled;
+        return commit();
+    }
+
+    /** Turns a shard on or off at every location at once, without touching its per-location settings. */
+    static synchronized String setShardEnabled(String name, boolean enabled) {
+        ShardDef def = findShard(name);
+        if (def == null) return "That shard no longer exists.";
+        def.disabled = !enabled;
         return commit();
     }
 

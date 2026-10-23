@@ -15,7 +15,8 @@ import java.util.Locale;
  */
 public class HuntrapLocationScreen extends ListEditorScreen {
 
-    private static final int WEIGHT_WIDTH = 55;
+    private static final int WEIGHT_WIDTH = 50;
+    private static final int TOGGLE_WIDTH = 50;
     private static final int REMOVE_WIDTH = 20;
 
     private final int locationIndex;
@@ -114,17 +115,34 @@ public class HuntrapLocationScreen extends ListEditorScreen {
             String weight = entry.weightKnown()
                     ? "Weight " + HuntrapLocations.formatWeight(entry.weight())
                     : "Weight unknown (" + HuntrapLocations.formatWeight(entry.weight()) + ", the average)";
-            String subtitle = weight
-                    + String.format(Locale.ROOT, "  -  %.1f%%  -  ", entry.weight() / total * 100.0)
+            String odds = entry.active() ? String.format(Locale.ROOT, "%.1f%%", entry.weight() / total * 100.0)
+                    : entry.enabled() ? "off: disabled in the shard list" : "disabled";
+            String subtitle = weight + "  -  " + odds + "  -  "
                     + entry.shard().rarity().displayName + " " + entry.shard().category().displayName;
 
             List<RowButton> buttons = new ArrayList<>();
+            String toggleTip = entry.enabled() ? "Treat this location as if it never caught this shard, keeping its weight"
+                    : "Count this shard at this location again";
+            buttons.add(entry.shard().enabled()
+                    ? button(entry.enabled() ? "Disable" : "Enable", TOGGLE_WIDTH,
+                            entry.enabled() ? 0xFFFFAA00 : 0xFF55FF55, () -> toggleEntry(index, entry), toggleTip)
+                    : button(entry.enabled() ? "Disable" : "Enable", TOGGLE_WIDTH,
+                            entry.enabled() ? 0xFFFFAA00 : 0xFF55FF55, () -> toggleEntry(index, entry), toggleTip,
+                            "It is also disabled everywhere in the Shards list."));
             buttons.add(button("Weight", WEIGHT_WIDTH, 0xFF55FFFF, () -> openWeight(index, entry),
                     "Change this shard's weight at this location"));
             buttons.add(confirmButton("X", "?", REMOVE_WIDTH, 0xFFFF5555, "entry:" + shardName,
                     () -> removeEntry(index, shardName), "Remove this shard from this location"));
-            rows.add(new Row(shardName, subtitle, 0, buttons));
+            String title = entry.active() ? shardName : shardName + " (disabled)";
+            rows.add(new Row(title, subtitle, entry.active() ? 0 : HuntrapEditorScreen.DISABLED_BACKGROUND, buttons));
         }
         return rows;
+    }
+
+    private void toggleEntry(int entryIndex, HuntrapLocations.Entry entry) {
+        boolean enable = !entry.enabled();
+        String error = HuntrapLocations.setEntryEnabled(locationIndex, entryIndex, enable);
+        setStatus(error == null ? (enable ? "Enabled " : "Disabled ") + entry.shard().name() + " here." : error,
+                error == null);
     }
 }

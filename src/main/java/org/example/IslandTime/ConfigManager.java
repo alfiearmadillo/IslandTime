@@ -62,6 +62,7 @@ public class ConfigManager {
 
         try (FileReader reader = new FileReader(configFile)) {
             JsonElement root = JsonParser.parseReader(reader);
+            if (root.isJsonObject()) ProfitConfigMigration.apply(root.getAsJsonObject());
             IslandTimeConfig loaded = gson.fromJson(root, IslandTimeConfig.class);
             if (loaded == null) return new IslandTimeConfig();
             migrateLegacyFuelAlertRepeat(root, loaded);
@@ -182,8 +183,8 @@ public class ConfigManager {
         // Misc
         config.misc.showHiddenTooltips = TooltipOverrideConfig.isShowHiddenTooltips();
         config.misc.keepResourcePack = ResourcePackConfig.isEnabled();
-        config.misc.agingTimeBagSlots = AgingItemsConfig.getTimeBagSlots();
-        config.misc.agingInventorySlots = AgingItemsConfig.getInventorySlots();
+        config.profitCalculators.agingTimeBagSlots = AgingItemsConfig.getTimeBagSlots();
+        config.profitCalculators.agingInventorySlots = AgingItemsConfig.getInventorySlots();
 
         saveToFile();
     }
@@ -319,11 +320,11 @@ public class ConfigManager {
         }
 
         // Misc — aging items slots
-        if (AgingItemsConfig.getTimeBagSlots() != config.misc.agingTimeBagSlots) {
-            AgingItemsConfig.setTimeBagSlots(config.misc.agingTimeBagSlots);
+        if (AgingItemsConfig.getTimeBagSlots() != config.profitCalculators.agingTimeBagSlots) {
+            AgingItemsConfig.setTimeBagSlots(config.profitCalculators.agingTimeBagSlots);
         }
-        if (AgingItemsConfig.getInventorySlots() != config.misc.agingInventorySlots) {
-            AgingItemsConfig.setInventorySlots(config.misc.agingInventorySlots);
+        if (AgingItemsConfig.getInventorySlots() != config.profitCalculators.agingInventorySlots) {
+            AgingItemsConfig.setInventorySlots(config.profitCalculators.agingInventorySlots);
         }
 
         saveToFile();

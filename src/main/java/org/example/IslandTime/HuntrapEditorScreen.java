@@ -11,14 +11,16 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Editor for the Huntrap data used by /it huntrapProfit: one row per location, with buttons to open it (to edit
- * which shards it catches and their weights) or delete it. The header adds locations, opens the shard catalog, and
- * restores the built-in data.
+ * Editor for the Huntrap data used by /it huntrapProfit: one row per location, with buttons to disable it (kept,
+ * but left out of the calculation), open it (to edit which shards it catches and their weights) or delete it. The
+ * header adds locations, opens the shard catalog, and restores the built-in data.
  */
 public class HuntrapEditorScreen extends ListEditorScreen {
 
-    private static final int EDIT_WIDTH = 45;
+    private static final int TOGGLE_WIDTH = 50;
+    private static final int EDIT_WIDTH = 40;
     private static final int DELETE_WIDTH = 20;
+    static final int DISABLED_BACKGROUND = 0x40777777;
 
     private Button resetButton;
 
@@ -98,14 +100,26 @@ public class HuntrapEditorScreen extends ListEditorScreen {
             final int index = i;
             HuntrapLocations.Location location = locations.get(i);
             List<RowButton> buttons = new ArrayList<>();
+            buttons.add(button(location.enabled() ? "Disable" : "Enable", TOGGLE_WIDTH,
+                    location.enabled() ? 0xFFFFAA00 : 0xFF55FF55, () -> toggleLocation(index, location),
+                    location.enabled() ? "Leave this location out of /it huntrapProfit, keeping its data"
+                            : "Include this location in /it huntrapProfit again"));
             buttons.add(button("Edit", EDIT_WIDTH, 0xFF55FF55, () -> openLocation(index),
                     "Change the shards and weights of this location"));
             buttons.add(confirmButton("X", "?", DELETE_WIDTH, 0xFFFF5555, "loc:" + location.label(),
                     () -> deleteLocation(index, location.label()), "Delete this location"));
-            rows.add(new Row(location.label(), describe(location), location.entries().isEmpty() ? 0x40AA5500 : 0,
-                    buttons));
+            String title = location.enabled() ? location.label() : location.label() + " (disabled)";
+            int background = !location.enabled() ? DISABLED_BACKGROUND
+                    : location.entries().isEmpty() ? 0x40AA5500 : 0;
+            rows.add(new Row(title, describe(location), background, buttons));
         }
         return rows;
+    }
+
+    private void toggleLocation(int index, HuntrapLocations.Location location) {
+        boolean enable = !location.enabled();
+        String error = HuntrapLocations.setLocationEnabled(index, enable);
+        setStatus(error == null ? (enable ? "Enabled " : "Disabled ") + location.label() + "." : error, error == null);
     }
 
     private void openLocation(int index) {
@@ -117,18 +131,29 @@ public class HuntrapEditorScreen extends ListEditorScreen {
         setStatus(error == null ? "Deleted " + label + "." : error, error == null);
     }
 
-    /** "3 shards: Ant 50.0%, Azure 30.0%, ..." */
+    /** "3 shards: Ant 50.0%, Azure 30.0%, ..." Only shards that are switched on count towards the odds. */
     private static String describe(HuntrapLocations.Location location) {
         List<HuntrapLocations.Entry> entries = location.entries();
         if (entries.isEmpty()) return "No shards yet (skipped by /it huntrapProfit)";
+        int active = location.activeCount();
+        if (!location.enabled()) {
+            return "Disabled (skipped by /it huntrapProfit)  -  " + entries.size()
+                    + (entries.size() == 1 ? " shard" : " shards");
+        }
+        if (active == 0) return "Every shard here is disabled (skipped by /it huntrapProfit)";
+
         double total = location.totalWeight();
         StringBuilder sb = new StringBuilder();
-        sb.append(entries.size()).append(entries.size() == 1 ? " shard: " : " shards: ");
-        for (int i = 0; i < entries.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(entries.get(i).shard().name()).append(' ')
-                    .append(String.format(Locale.ROOT, "%.1f%%", entries.get(i).weight() / total * 100.0));
+        sb.append(active).append(active == 1 ? " shard: " : " shards: ");
+        boolean first = true;
+        for (HuntrapLocations.Entry entry : entries) {
+            if (!entry.active()) continue;
+            if (!first) sb.append(", ");
+            first = false;
+            sb.append(entry.shard().name()).append(' ')
+                    .append(String.format(Locale.ROOT, "%.1f%%", entry.weight() / total * 100.0));
         }
+        if (active < entries.size()) sb.append("  (+").append(entries.size() - active).append(" disabled)");
         return sb.toString();
     }
 }
