@@ -313,11 +313,43 @@ public class FuelCycleTracker {
         if (now - lastEndPriceRetryMs < END_PRICE_RETRY_INTERVAL_MS) return;
         lastEndPriceRetryMs = now;
         for (DayRecord record : dayRecords.values()) {
-            if (record.endPricesPending && record.endPricesMs <= 0) {
+            if (record.endPricesPending) {
                 submitEndOfDayPriceSnapshot();
                 return;
             }
         }
+    }
+
+    /**
+     * Locks in the prices of the closed days that don't have all of them saved, so a day's profit stops
+     * following the live Bazaar: a day from before the prices were tracked (or one whose price was never
+     * captured) gets the current ones once, and one that has some but not all gets the missing ones.
+     * Each day is only backfilled once; a day that was captured in full when it closed is left alone.
+     */
+    private static void queueEndOfDayPriceBackfill() {
+        boolean any = false;
+        for (DayRecord record : dayRecords.values()) {
+            if (record.endPricesPending || record.endPricesBackfilled || !isClosed(record)) continue;
+            if (record.endPricesMs <= 0 || !missingEndPrices(record).isEmpty()) {
+                record.endPricesPending = true;
+                record.endPricesBackfilled = true;
+                any = true;
+            }
+        }
+        if (any) submitEndOfDayPriceSnapshot();
+    }
+
+    /** The loot and eyedrop ingredients that a day has no saved price for. */
+    private static List<String> missingEndPrices(DayRecord record) {
+        List<String> missing = new ArrayList<>();
+        for (String id : InfernoReturnCalculator.priceIds()) {
+            boolean has;
+            if (InfernoReturnCalculator.CRUDE_GABAGOOL_ID.equals(id)) has = record.endCrudeSellOffer != null;
+            else if (InfernoReturnCalculator.VERY_CRUDE_GABAGOOL_ID.equals(id)) has = record.endVeryCrudeSellOffer != null;
+            else has = record.endRarePrices != null && record.endRarePrices.get(id) != null;
+            if (!has) missing.add(id);
+        }
+        return missing;
     }
 
     private static void submitEndOfDayPriceSnapshot() {
@@ -350,11 +382,19 @@ public class FuelCycleTracker {
                 // The data set was switched while the Bazaar was being fetched: these records are no longer loaded.
                 if (generation != dataSetGeneration) return;
                 for (DayRecord record : dayRecords.values()) {
-                    if (!record.endPricesPending || record.endPricesMs > 0) continue;
-                    record.endCrudeSellOffer = crude;
-                    record.endVeryCrudeSellOffer = veryCrude;
-                    record.endRarePrices = new HashMap<>(prices);
-                    record.endPricesMs = fetchedAt;
+                    if (!record.endPricesPending) continue;
+                    if (record.endPricesMs <= 0) {
+                        record.endCrudeSellOffer = crude;
+                        record.endVeryCrudeSellOffer = veryCrude;
+                        record.endRarePrices = new HashMap<>(prices);
+                        record.endPricesMs = fetchedAt;
+                    } else {
+                        // Already has prices from when the day ended: keep those, and only add the ones it lacks.
+                        if (record.endCrudeSellOffer == null) record.endCrudeSellOffer = crude;
+                        if (record.endVeryCrudeSellOffer == null) record.endVeryCrudeSellOffer = veryCrude;
+                        if (record.endRarePrices == null) record.endRarePrices = new HashMap<>();
+                        prices.forEach(record.endRarePrices::putIfAbsent);
+                    }
                     record.endPricesPending = false;
                     changed = true;
                 }
@@ -491,9 +531,14 @@ public class FuelCycleTracker {
         /** When the prices above were fetched, or 0 if they weren't captured. */
         public long endPricesMs = 0;
 
-        /** True from when the day closed until its end-of-day prices have been captured. Not set for days that
-         *  closed before this was tracked, so those keep using live prices. */
+        /** True from when the day closed (or, for a day that is missing prices, from the backfill) until its
+         *  prices have been captured. */
         public boolean endPricesPending = false;
+
+        /** True when some or all of the saved prices were taken after the day ended, because they hadn't been saved
+         *  when it closed (a day from before they were tracked, or one the game missed). They are still saved once and
+         *  then kept, so the day stops following the live price. */
+        public boolean endPricesBackfilled = false;
 
         public DayRecord() {}
 
@@ -589,6 +634,13 @@ public class FuelCycleTracker {
         public long getProductionMs() {
             if (!(manualCycleTimes && cycleEndMs > cycleStartMs)) return DAY_MS;
             return FuelDayTime.productionMs(cycleStartMs, cycleEndMs, timeWarpedMs, ZoneId.systemDefault());
+        }
+
+        /** Whether {@code now} falls inside this fuel-day: it has started and not yet ended. */
+        public boolean isInProgress(long now) {
+            if (cycleStartMs <= 0 || now < cycleStartMs) return false;
+            long end = cycleEndMs > cycleStartMs ? cycleEndMs : cycleStartMs + DAY_MS;
+            return now < end;
         }
 
         /** Whether an Enchanted Clock warp shortened this day. */
@@ -2352,6 +2404,7 @@ public class FuelCycleTracker {
 
                     reopenWronglyClosedDays(now);
                     purgeStaleLegacyMinionKeys();
+                    queueEndOfDayPriceBackfill();
                 }
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Load failed: " + e.getMessage());

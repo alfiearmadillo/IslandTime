@@ -31,6 +31,18 @@ final class FuelDayEstimates {
     private FuelDayEstimates() {
     }
 
+    /** Where a day's profit sits, for coloring it: a loss is red, up to {@link #GOOD_PROFIT} yellow, above that green. */
+    enum ProfitBand { UNKNOWN, LOSS, LOW, GOOD }
+
+    /** The profit from which a day counts as a good one (green). */
+    static final double GOOD_PROFIT = 10_000_000;
+
+    static ProfitBand band(double profit) {
+        if (Double.isNaN(profit)) return ProfitBand.UNKNOWN;
+        if (profit < 0) return ProfitBand.LOSS;
+        return profit >= GOOD_PROFIT ? ProfitBand.GOOD : ProfitBand.LOW;
+    }
+
     /**
      * What the Inferno minions should have returned on a day.
      *
@@ -73,11 +85,14 @@ final class FuelDayEstimates {
         }
         String source;
         if (fromSnapshot) {
-            source = "Bazaar sell offer from the end of the day" + (liveFill ? " (live for the ones it didn't have)" : "");
+            source = record.endPricesBackfilled
+                    ? "Bazaar sell offer saved after the day ended (it hadn't been saved at the end)"
+                    : "Bazaar sell offer from the end of the day";
+            if (liveFill) source += " (live for the ones it didn't have)";
         } else if (!record.isClosed()) {
             source = "Live Bazaar sell offer (the day hasn't ended)";
         } else if (record.endPricesPending) {
-            source = "Live Bazaar sell offer (the end-of-day price is still to be saved)";
+            source = "Live Bazaar sell offer (the price is still to be saved)";
         } else {
             source = "Live Bazaar sell offer (no end-of-day price was saved for this day)";
         }

@@ -22,8 +22,10 @@ import java.util.Map;
  * fuel/profit records, one row per real 24h fuel-day (see FuelCycleTracker) — placing
  * a multi-fuel stack creates several rows immediately (the currently active day plus
  * future/queued ones), rather than one row per calendar date. Rows are colored on a
- * red → yellow → green gradient
- * based on that cycle's AFK percentage. Every value is directly editable, similar to the
+ * red → yellow → green gradient based on that cycle's AFK percentage, or, with the estimated return
+ * switched on, by its estimated profit (a loss red, under 10m yellow, 10m and up green). The day that is
+ * running right now has a white outline.
+ * Every value is directly editable, similar to the
  * Block Highlights and Player List GUIs. While a day is still actively ticking, its AFK%
  * (and everything derived from it — mob-kill coins, profit) reflects progress against time
  * elapsed so far today rather than the full 24h, and refreshes once a second rather than
@@ -43,6 +45,7 @@ public class FuelDayScreen extends Screen {
     private static final int BANNER_Y = 58;
     private static final int BUTTON_SIZE = 20;
     private static final int PADDING = 4;
+    private static final int CURRENT_DAY_OUTLINE_COLOR = 0xFFFFFFFF;
     private static final int TOTAL_PROFIT_WIDGET_GAP = 12;
     private static final int TOTAL_PROFIT_WIDGET_WIDTH = 110;
     private static final int TOTAL_PROFIT_WIDGET_Y = 8;
@@ -567,9 +570,14 @@ public class FuelDayScreen extends Screen {
 
             FuelCycleTracker.DayRecord record = records.get(i);
             boolean isFutureDay = record.cycleStartMs > displayNowMs;
+            double estimatedProfit = showEstimate && !isFutureDay ? estimateFor(record).profit() : Double.NaN;
 
-            int bgColor = isFutureDay ? 0x50404040 : afkGradientColor(record.getAfkPercent(displayNowMs), 0x50);
+            int bgColor;
+            if (isFutureDay) bgColor = 0x50404040;
+            else if (showEstimate) bgColor = profitBandBackground(FuelDayEstimates.band(estimatedProfit));
+            else bgColor = afkGradientColor(record.getAfkPercent(displayNowMs), 0x50);
             context.fill(listLeft, rowY, listLeft + listWidth, rowY + rowHeight - 1, bgColor);
+            if (record.isInProgress(displayNowMs)) drawCurrentDayOutline(context, rowY, rowHeight);
 
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 2;
 
@@ -583,15 +591,16 @@ public class FuelDayScreen extends Screen {
                 context.text(font, Component.literal(queuedStr).withStyle(ChatFormatting.YELLOW), btnX - queuedW - 8, rowY + 3,
                         0xFFFFFF55, true);
             } else {
-                double profit = showEstimate ? estimateFor(record).profit() : record.getProfit(displayNowMs);
+                double profit = showEstimate ? estimatedProfit : record.getProfit(displayNowMs);
                 boolean noPrice = Double.isNaN(profit);
-                ChatFormatting profitStyle = noPrice ? ChatFormatting.GRAY
-                        : profit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
+                FuelDayEstimates.ProfitBand band = showEstimate ? FuelDayEstimates.band(profit)
+                        : noPrice ? FuelDayEstimates.ProfitBand.UNKNOWN
+                        : profit >= 0 ? FuelDayEstimates.ProfitBand.GOOD : FuelDayEstimates.ProfitBand.LOSS;
                 String profitStr = (showEstimate ? "Est. profit: " : "Profit: ")
                         + (noPrice ? "n/a" : PriceCache.formatCoins(profit));
                 int profitW = font.width(profitStr);
-                context.text(font, Component.literal(profitStr).withStyle(profitStyle), btnX - profitW - 8, rowY + 3,
-                        noPrice ? 0xFFAAAAAA : profit >= 0 ? 0xFF55FF55 : 0xFFFF5555, true);
+                context.text(font, Component.literal(profitStr).withStyle(profitBandStyle(band)),
+                        btnX - profitW - 8, rowY + 3, profitBandTextColor(band), true);
             }
 
             // Line 2: minions, fuel cost — and AFK% too, once this day has actually started
@@ -932,6 +941,45 @@ public class FuelDayScreen extends Screen {
 
     private static int lerp(int from, int to, float t) {
         return from + Math.round((to - from) * t);
+    }
+
+    /** Row background in estimated mode: red for a loss, yellow below 10m, green from 10m up, gray with no price. */
+    private static int profitBandBackground(FuelDayEstimates.ProfitBand band) {
+        return switch (band) {
+            case GOOD -> 0x5055FF55;
+            case LOW -> 0x50FFFF55;
+            case LOSS -> 0x50FF5555;
+            case UNKNOWN -> 0x50404040;
+        };
+    }
+
+    private static int profitBandTextColor(FuelDayEstimates.ProfitBand band) {
+        return switch (band) {
+            case GOOD -> 0xFF55FF55;
+            case LOW -> 0xFFFFFF55;
+            case LOSS -> 0xFFFF5555;
+            case UNKNOWN -> 0xFFAAAAAA;
+        };
+    }
+
+    private static ChatFormatting profitBandStyle(FuelDayEstimates.ProfitBand band) {
+        return switch (band) {
+            case GOOD -> ChatFormatting.GREEN;
+            case LOW -> ChatFormatting.YELLOW;
+            case LOSS -> ChatFormatting.RED;
+            case UNKNOWN -> ChatFormatting.GRAY;
+        };
+    }
+
+    /** A border just inside the row of the fuel day that is running right now. */
+    private void drawCurrentDayOutline(GuiGraphicsExtractor context, int rowY, int rowHeight) {
+        int right = listLeft + listWidth;
+        int bottom = rowY + rowHeight - 1;
+        int color = CURRENT_DAY_OUTLINE_COLOR;
+        context.fill(listLeft, rowY, right, rowY + 2, color);
+        context.fill(listLeft, bottom - 2, right, bottom, color);
+        context.fill(listLeft, rowY, listLeft + 2, bottom, color);
+        context.fill(right - 2, rowY, right, bottom, color);
     }
 
     private void drawSmallButton(GuiGraphicsExtractor context, int x, int y, String label, int color, int mouseX, int mouseY) {
