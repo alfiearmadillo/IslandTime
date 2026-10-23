@@ -131,14 +131,20 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorBoolean
         public boolean enabled = true;
 
-        @Expose
         @ConfigOption(
-                name = "Use Test Data File",
-                desc = "Read and write a separate test file (fuel_days_test.json) instead of your real " +
-                        "tracked data, so you can try things out safely. Toggling reloads the GUI."
+                name = "Fuel Data Sets",
+                desc = "Create, view and switch between sets of fuel day data (Main, Debug, or your own). " +
+                        "The set in use is the one new fuel days are recorded into, and is remembered across " +
+                        "restarts; you can browse another set without switching to it. Also /it datasets"
         )
-        @ConfigEditorBoolean
-        public boolean useTestDataFile = false;
+        @ConfigEditorButton(buttonText = " Open Data Sets ")
+        public Runnable openDataSetsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new FuelDataSetsScreen()));
+            }
+        };
 
         @Expose
         @ConfigOption(
@@ -178,6 +184,178 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorText
         public String todayGabagoolAmountString = "";
+
+        // ── Estimated Return ─────────────────────────────────────────────────
+
+        @ConfigEditorAccordion(id = 1)
+        @ConfigOption(
+                name = "Estimated Return (Inferno Minions)",
+                desc = "Estimate what the Inferno minions return each fuel day from their speed (one spawn + one " +
+                        "kill = 2 actions per harvest, 1 Crude Gabagool each, Gabagool Distillate fuel). Hypergolic " +
+                        "fuel also gets its rare drops (Chili Pepper, Inferno Vertex, Reaper Pepper, Inferno Apex, " +
+                        "Gabagool the Fish, Hypergolic Ionized Ceramics). Valued at the Bazaar sell offer taken when the fuel day " +
+                        "ended (or the next time the game is open, if it was closed then). Gabagool the Fish " +
+                        "isn't on the Bazaar and is worth the price set below (5M by default). Capsaicin " +
+                        "Eyedrops, if on, are assumed used every day and their crafting cost is subtracted " +
+                        "(Water Hydra Head price set below, 1.5M by default). Item drops only: no " +
+                        "mob-kill coins, unless 'Assume AFK' is on. Shown in the Fuel Day Tracker GUI. " +
+                        "Rising Celsius (+18% speed per Inferno minion placed, up to 10 minions) is always " +
+                        "included, counting each day's minion count; the toggles below add to it."
+        )
+        public boolean estimateAccordion = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Show Estimated Return",
+                desc = "Show the estimated return and estimated profit (return minus fuel cost) in the Fuel Day " +
+                        "Tracker GUI. Also toggled by the 'Est. Return' button there."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateEnabled = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Assume AFK",
+                desc = "Off: the minions are assumed to run the whole fuel day (24h, or the day's edited length), " +
+                        "and only their item drops count, no mob-kill coins. " +
+                        "On: only the time you actually spent AFKing counts, i.e. the day's AFK%, and the day's " +
+                        "mob-kill coins are added to the estimated profit. " +
+                        "Also toggled by the 'Est. AFK' button in the Fuel Day Tracker GUI."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateAfk = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Minion Tier",
+                desc = "Tier of your Inferno minions (I to XI). Base time between actions: I 1013s, II 982s, " +
+                        "III 950s, IV 919s, V 886s, VI 855s, VII 823s, VIII 792s, IX 760s, X 728s, XI 697s."
+        )
+        @ConfigEditorSlider(minValue = 1, maxValue = 11, minStep = 1)
+        public int estimateMinionTier = 11;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Fuel Grade",
+                desc = "The Inferno Minion Fuel burning. It multiplies the speed AFTER the bonuses below are added: " +
+                        "Fuel Gabagool (Rare) x11, Heavy Gabagool (Epic) x16, Hypergolic Gabagool (Legendary) x21. " +
+                        "Only Hypergolic also has the rare drops (1 in 136 Chili Pepper, 1 in 5,950 Inferno Vertex, " +
+                        "1 in 458,182 Reaper Pepper, 1 in 1,309,091 Inferno Apex, doubled for tier X and XI, per " +
+                        "harvest, and 1 in 3,927,273 Gabagool the Fish, valued at the Gabagool the Fish price " +
+                        "set below as it isn't on the Bazaar; 1 Hypergolic Ionized Ceramics per minion per fuel day). " +
+                        "The fuel cost this tracker uses is for the Epic one."
+        )
+        @ConfigEditorDropdown(values = {"Fuel Gabagool (Rare, x11)", "Heavy Gabagool (Epic, x16)", "Hypergolic Gabagool (Legendary, x21)"})
+        public int estimateFuelGrade = 1; // Heavy Gabagool (Epic)
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Capsaicin Eyedrops",
+                desc = "Capsaicin Eyedrops in the Hypergolic fuel: +30% (x1.3) chance on each rare drop per " +
+                        "harvest (Chili Pepper, Inferno Vertex, Reaper Pepper, Inferno Apex, Gabagool the Fish). " +
+                        "No speed change, and nothing (no effect and no cost) for the other fuels. Assumed used on " +
+                        "every minion every day. One craft (4 Chili Pepper, 128 Exportable Carrots, 128 Enchanted " +
+                        "Carrot, 1 Water Hydra Head) makes 3 eyedrops, so each day crafts enough for the minions, " +
+                        "rounded up: 31 minions need 11 crafts = 33 eyedrops. That crafting cost is subtracted " +
+                        "from the estimated profit; the ingredients are priced at the Bazaar sell offer."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateEyedrops = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Gabagool the Fish Price",
+                desc = "What one Gabagool the Fish (a 1 in 3,927,273 Hypergolic drop per harvest) is worth, as it " +
+                        "isn't on the Bazaar. Accepts 5000000, 5,000,000, 5m, 750k or 2b. Blank or invalid: 5m."
+        )
+        @ConfigEditorText
+        public String estimateFishPriceString = "5m";
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Water Hydra Head Price",
+                desc = "What one Water Hydra Head is worth, as it isn't on the Bazaar. One goes into each " +
+                        "Capsaicin Eyedrops craft. Accepts 1500000, 1,500,000, 1.5m, 750k or 2b. Blank or " +
+                        "invalid: 1.5m."
+        )
+        @ConfigEditorText
+        public String estimateHydraHeadPriceString = "1.5m";
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Flycatcher",
+                desc = "+20% minion speed. Needs Spider Slayer level 6 to use. Speed bonuses are added together. " +
+                        "A minion only has 2 upgrade slots; nothing stops you picking more than fit."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateFlycatcher = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Second Flycatcher",
+                desc = "A second Flycatcher in the other slot: another +20% minion speed (so +40% with both). " +
+                        "Together with a Super Compactor 3000 that is 3 upgrades, which a minion can't hold in " +
+                        "game, but it is allowed here."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateSecondFlycatcher = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Beacon",
+                desc = "A Beacon V next to the minions, powered by: Power Crystal +10% minion speed, " +
+                        "Scorched Power Crystal +11% minion speed. The beacon tier is assumed to be V."
+        )
+        @ConfigEditorDropdown(values = {"None", "Power Crystal (+10%)", "Scorched Power Crystal (+11%)"})
+        public int estimateBeacon = 0;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Postcard",
+                desc = "+5% minion speed."
+        )
+        @ConfigEditorBoolean
+        public boolean estimatePostcard = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Infusion",
+                desc = "Mithril Infusion: +10% minion speed."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateInfusion = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Free Will",
+                desc = "+10% minion speed. Assumes the minion stays loyal."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateFreeWill = false;
+
+        @ConfigAccordionId(id = 1)
+        @Expose
+        @ConfigOption(
+                name = "Super Compactor",
+                desc = "Super Compactor 3000: no speed change. Compacts 192 Crude Gabagool into 1 Very Crude " +
+                        "Gabagool, so the loot is valued as Very Crude Gabagool at its sell offer, with " +
+                        "decimals for a partial one."
+        )
+        @ConfigEditorBoolean
+        public boolean estimateSuperCompactor = false;
     }
 
     public static class FavouriteGui {
@@ -711,6 +889,17 @@ public class IslandTimeConfig extends Config {
                 if (client.player != null) {
                     client.player.connection.sendCommand("it huntrapProfit");
                 }
+            }
+        };
+
+        @ConfigAccordionId(id = 7)
+        @ConfigOption(name = "Edit Huntrap Data", desc = "Open the Huntrap data editor: change which shards each location can catch and their weights, add or remove locations and shards, and restore the built-in data. Also /it huntrapEditor")
+        @ConfigEditorButton(buttonText = " Edit Data ")
+        public Runnable huntrapEditorButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new HuntrapEditorScreen()));
             }
         };
 

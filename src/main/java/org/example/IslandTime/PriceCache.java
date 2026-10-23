@@ -22,8 +22,13 @@ public class PriceCache {
     private static final String COFLNET_SOLD_API = "https://sky.coflnet.com/api/auctions/tag/%s/sold";
     private static final long CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
-    private static JsonObject cachedBazaar = null;
-    private static long bazaarCacheTime = 0;
+    private static volatile JsonObject cachedBazaar = null;
+    private static volatile long bazaarCacheTime = 0;
+
+    private static final java.util.concurrent.atomic.AtomicBoolean asyncRefreshRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static volatile long lastAsyncRefreshAttemptMs = 0;
+    private static final long ASYNC_REFRESH_RETRY_MS = 30_000;
 
     // Per-item cache for AH lowest BIN prices
     private static final Map<String, CachedPrice> lowestBinCache = new ConcurrentHashMap<>();
@@ -58,11 +63,35 @@ public class PriceCache {
         return cheapest;
     }
 
-    /** Full Epic (medium) Inferno Minion Fuel recipe quantities. */
-    private static final String SULPHURIC_COAL_ID = "SULPHURIC_COAL";
-    private static final int    SULPHURIC_COAL_QTY = 25;
+    /**
+     * What one Inferno Minion Fuel needs of Sulphuric Coal and Very Crude Gabagool, by grade (an index of
+     * {@link InfernoReturnCalculator}'s GRADE_ constants). A Fuel Gabagool is 1 Sulphuric Coal and 1/8 of a
+     * Very Crude Gabagool, a Heavy Gabagool 24 Fuel Gabagool and 1 Sulphuric Coal, and a Hypergolic Gabagool
+     * 12 Heavy Gabagool and 1 Sulphuric Coal. Every grade also takes the distillate and fuel blocks below.
+     */
+    static final int[] SULPHURIC_COAL_QTY_BY_GRADE = {1, 25, 301};
+    static final double[] VERY_CRUDE_GABAGOOL_QTY_BY_GRADE = {0.125, 3, 36};
+
+    /**
+     * Sulphuric Coal is not priced as it is on the Bazaar but from what it is crafted from: 16 Enchanted Coal and
+     * 1 Enchanted Sulphur make 4 of it, so each takes 4 Enchanted Coal and a quarter of an Enchanted Sulphur.
+     */
+    static final int ENCHANTED_COAL_PER_SULPHURIC_COAL = 4;
+    static final double ENCHANTED_SULPHUR_PER_SULPHURIC_COAL = 0.25;
+
+    /** The Enchanted Coal one fuel of this grade needs, for all its Sulphuric Coal. */
+    static int enchantedCoalQty(int grade) {
+        return SULPHURIC_COAL_QTY_BY_GRADE[grade] * ENCHANTED_COAL_PER_SULPHURIC_COAL;
+    }
+
+    /** The Enchanted Sulphur one fuel of this grade needs (a fraction, e.g. 6.25 for Epic). */
+    static double enchantedSulphurQty(int grade) {
+        return SULPHURIC_COAL_QTY_BY_GRADE[grade] * ENCHANTED_SULPHUR_PER_SULPHURIC_COAL;
+    }
+
+    private static final String ENCHANTED_COAL_ID = "ENCHANTED_COAL";
+    private static final String ENCHANTED_SULPHUR_ID = "ENCHANTED_SULPHUR";
     private static final String VERY_CRUDE_GABAGOOL_ID = "VERY_CRUDE_GABAGOOL";
-    private static final int    VERY_CRUDE_GABAGOOL_QTY = 3;
     private static final String INFERNO_FUEL_BLOCK_ID = "INFERNO_FUEL_BLOCK";
     private static final int    INFERNO_FUEL_BLOCK_QTY = 2;
     private static final int    INFERNO_FUEL_DISTILLATE_QTY = 6;
@@ -72,9 +101,9 @@ public class PriceCache {
 
     /**
      * Returns the full buy-order crafting cost of one Epic (medium) Inferno Minion Fuel:
-     * 25x Sulphuric Coal, 3x Very Crude Gabagool, 6x the cheapest of the 5 distillates,
-     * and 2x Inferno Fuel Block. All five distillates are checked before selecting the
-     * cheapest one, unless {@code gabagoolOnly} asks for Crude Gabagool Distillate.
+     * 100x Enchanted Coal and 6.25x Enchanted Sulphur (the 25 Sulphuric Coal), 3x Very Crude Gabagool,
+     * 6x the cheapest of the 5 distillates, and 2x Inferno Fuel Block. All five distillates are checked
+     * before selecting the cheapest one, unless {@code gabagoolOnly} asks for Crude Gabagool Distillate.
      */
     public static double getInfernoFuelUnitCost(JsonObject products, boolean gabagoolOnly) {
         FuelCostBreakdown breakdown = getInfernoFuelCostBreakdown(products, 1, gabagoolOnly);
@@ -89,12 +118,26 @@ public class PriceCache {
      */
     public static FuelCostBreakdown getInfernoFuelCostBreakdown(JsonObject products, int fuelCount,
                                                                 boolean gabagoolOnly) {
-        if (products == null || fuelCount <= 0) return null;
+        return getInfernoFuelCostBreakdown(products, fuelCount, gabagoolOnly, InfernoReturnCalculator.GRADE_HEAVY);
+    }
 
-        double sulphuricCoalPrice = getBuyOrderPrice(products, SULPHURIC_COAL_ID);
+    /**
+     * The same for another grade of fuel ({@link InfernoReturnCalculator#GRADE_FUEL}, GRADE_HEAVY, which is
+     * the Epic one above, or GRADE_HYPERGOLIC): the Enchanted Coal, Enchanted Sulphur and Very Crude Gabagool it
+     * is made of change with the grade, the distillate and fuel blocks do not. The Enchanted Sulphur and the
+     * Very Crude Gabagool can be a fraction.
+     */
+    public static FuelCostBreakdown getInfernoFuelCostBreakdown(JsonObject products, int fuelCount,
+                                                                boolean gabagoolOnly, int grade) {
+        if (products == null || fuelCount <= 0) return null;
+        if (grade < 0 || grade >= SULPHURIC_COAL_QTY_BY_GRADE.length) return null;
+
+        double enchantedCoalPrice = getBuyOrderPrice(products, ENCHANTED_COAL_ID);
+        double enchantedSulphurPrice = getBuyOrderPrice(products, ENCHANTED_SULPHUR_ID);
         double veryCrudeGabagoolPrice = getBuyOrderPrice(products, VERY_CRUDE_GABAGOOL_ID);
         double fuelBlockPrice = getBuyOrderPrice(products, INFERNO_FUEL_BLOCK_ID);
-        if (sulphuricCoalPrice <= 0 || veryCrudeGabagoolPrice <= 0 || fuelBlockPrice <= 0) {
+        if (enchantedCoalPrice <= 0 || enchantedSulphurPrice <= 0 || veryCrudeGabagoolPrice <= 0
+                || fuelBlockPrice <= 0) {
             return null;
         }
 
@@ -112,13 +155,16 @@ public class PriceCache {
         }
         if (selectedDistillatePrice <= 0) return null;
 
-        double unitCost = sulphuricCoalPrice * SULPHURIC_COAL_QTY
-                + veryCrudeGabagoolPrice * VERY_CRUDE_GABAGOOL_QTY
+        double unitCost = enchantedCoalPrice * enchantedCoalQty(grade)
+                + enchantedSulphurPrice * enchantedSulphurQty(grade)
+                + veryCrudeGabagoolPrice * VERY_CRUDE_GABAGOOL_QTY_BY_GRADE[grade]
                 + selectedDistillatePrice * INFERNO_FUEL_DISTILLATE_QTY
                 + fuelBlockPrice * INFERNO_FUEL_BLOCK_QTY;
         return new FuelCostBreakdown(
                 fuelCount,
-                sulphuricCoalPrice,
+                grade,
+                enchantedCoalPrice,
+                enchantedSulphurPrice,
                 veryCrudeGabagoolPrice,
                 fuelBlockPrice,
                 distillatePrices,
@@ -131,7 +177,10 @@ public class PriceCache {
 
     public static class FuelCostBreakdown {
         public final int fuelCount;
-        public final double sulphuricCoalPrice;
+        /** Which fuel it is, as an index of {@link InfernoReturnCalculator}'s GRADE_ constants. */
+        public final int grade;
+        public final double enchantedCoalPrice;
+        public final double enchantedSulphurPrice;
         public final double veryCrudeGabagoolPrice;
         public final double fuelBlockPrice;
         public final Map<String, Double> distillatePrices;
@@ -142,13 +191,16 @@ public class PriceCache {
         public final double unitCost;
         public final double totalCost;
 
-        private FuelCostBreakdown(int fuelCount, double sulphuricCoalPrice,
+        private FuelCostBreakdown(int fuelCount, int grade, double enchantedCoalPrice,
+                                  double enchantedSulphurPrice,
                                   double veryCrudeGabagoolPrice, double fuelBlockPrice,
                                   Map<String, Double> distillatePrices,
                                   String selectedDistillateId, double selectedDistillatePrice,
                                   boolean gabagoolOnly, double unitCost, double totalCost) {
             this.fuelCount = fuelCount;
-            this.sulphuricCoalPrice = sulphuricCoalPrice;
+            this.grade = grade;
+            this.enchantedCoalPrice = enchantedCoalPrice;
+            this.enchantedSulphurPrice = enchantedSulphurPrice;
             this.veryCrudeGabagoolPrice = veryCrudeGabagoolPrice;
             this.fuelBlockPrice = fuelBlockPrice;
             this.distillatePrices = Collections.unmodifiableMap(new LinkedHashMap<>(distillatePrices));
@@ -165,9 +217,60 @@ public class PriceCache {
         if (cachedBazaar != null && (now - bazaarCacheTime) < CACHE_DURATION_MS) {
             return cachedBazaar;
         }
-        cachedBazaar = fetchBazaar();
-        bazaarCacheTime = now;
+        JsonObject fresh = fetchBazaar();
+        if (fresh != null) {
+            cachedBazaar = fresh;
+            bazaarCacheTime = now;
+        }
+        return fresh;
+    }
+
+    /**
+     * The last Bazaar snapshot of any age, or null if none has been fetched yet. Never touches the
+     * network, so it is safe on the render and tick threads, unlike {@link #getBazaar()}.
+     */
+    public static JsonObject peekBazaar() {
         return cachedBazaar;
+    }
+
+    /** When the snapshot returned by {@link #peekBazaar()} was fetched, or 0 if there is none. */
+    public static long peekBazaarTimeMs() {
+        return cachedBazaar != null ? bazaarCacheTime : 0;
+    }
+
+    /**
+     * Fetches the Bazaar on a background thread when the cache is stale, so a later
+     * {@link #peekBazaar()} has fresh data. Does nothing while the cache is fresh or a fetch is already
+     * running, and waits a little after a failed fetch before trying again, so calling it every frame is fine.
+     */
+    public static void requestBazaarRefreshAsync() {
+        long now = System.currentTimeMillis();
+        if (cachedBazaar != null && now - bazaarCacheTime < CACHE_DURATION_MS) return;
+        if (now - lastAsyncRefreshAttemptMs < ASYNC_REFRESH_RETRY_MS) return;
+        if (!asyncRefreshRunning.compareAndSet(false, true)) return;
+
+        lastAsyncRefreshAttemptMs = now;
+        Thread thread = new Thread(() -> {
+            try {
+                refreshBazaar();
+            } finally {
+                asyncRefreshRunning.set(false);
+            }
+        }, "IslandTime-BazaarRefresh");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    /**
+     * A Bazaar snapshot fetched no longer than {@code maxAgeMs} ago, fetching one if the cache is older.
+     * If that fetch fails, whatever is cached is returned instead (possibly null). Blocks on the network, so
+     * only call it from a background thread.
+     */
+    public static JsonObject getBazaarNoOlderThan(long maxAgeMs) {
+        JsonObject cached = cachedBazaar;
+        if (cached != null && System.currentTimeMillis() - bazaarCacheTime <= maxAgeMs) return cached;
+        JsonObject fresh = refreshBazaar();
+        return fresh != null ? fresh : cachedBazaar;
     }
 
     /**

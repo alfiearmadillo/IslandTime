@@ -1,5 +1,6 @@
 package org.example.islandtime;
 
+import com.google.gson.JsonObject;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -11,7 +12,11 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * GUI screen for the fuel day tracker. Displays a scrollable list of per-fuel-day
@@ -24,18 +29,76 @@ import java.util.List;
  * (and everything derived from it — mob-kill coins, profit) reflects progress against time
  * elapsed so far today rather than the full 24h, and refreshes once a second rather than
  * every render frame.
+ *
+ * The screen shows one fuel data set (see {@link FuelDataSets}): the one in use, or another one that is
+ * only being browsed, which is read-only until "Use This Data Set" is pressed. With the estimated return
+ * switched on, each started day gets a fourth line with the Inferno minions' estimated loot and profit
+ * (see {@link InfernoReturnCalculator}).
  */
 public class FuelDayScreen extends Screen {
 
-    private static final int ROW_HEIGHT = 54;
-    private static final int HEADER_HEIGHT = 40;
+    private static final int BASE_ROW_HEIGHT = 54;
+    private static final int ESTIMATE_ROW_HEIGHT = 66;
+    private static final int HEADER_HEIGHT = 64;
+    private static final int HEADER_ROW_1_Y = 10;
+    private static final int HEADER_ROW_2_Y = 34;
+    private static final int BANNER_Y = 58;
     private static final int BUTTON_SIZE = 20;
     private static final int PADDING = 4;
     private static final int TOTAL_PROFIT_WIDGET_GAP = 12;
     private static final int TOTAL_PROFIT_WIDGET_WIDTH = 110;
+    private static final int TOTAL_PROFIT_WIDGET_Y = 8;
     private static final int TOP_BUTTON_GAP = 8;
     private static final int FORCE_END_BUTTON_WIDTH = 150;
     private static final int ADD_DAY_BUTTON_WIDTH = 110;
+    private static final int USE_BUTTON_WIDTH = 150;
+    private static final int DATA_SETS_BUTTON_WIDTH = 70;
+    private static final int ESTIMATE_BUTTON_WIDTH = 105;
+    private static final int AFK_BUTTON_WIDTH = 90;
+    private static final long STATUS_MS = 4_000L;
+
+    /** A rectangle on screen, for the tooltips of the header buttons. */
+    private record Rect(int x, int y, int w, int h) {
+        boolean contains(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
+    }
+
+    /** The estimated return of one day, with what it was worked out from. */
+    private record DayEstimate(InfernoReturnCalculator.Estimate estimate, InfernoReturnCalculator.Settings settings,
+                               InfernoReturnCalculator.Prices prices, String priceSource, double mobKillCoins,
+                               double fuelCost) {
+        boolean priced() {
+            return estimate.fullyPriced();
+        }
+
+        /**
+         * Estimated return minus fuel and Capsaicin Eyedrops. The mob-kill coins are only added while AFK, as
+         * minions that run without the player only make item drops. NaN with no price.
+         */
+        double profit() {
+            return priced() ? mobKillCoins + estimate.value() - fuelCost - estimate.eyedropTotal() : Double.NaN;
+        }
+    }
+
+    /** The data set to show, or null to always show the one in use. */
+    private final String pinnedSetId;
+    private final Screen parent;
+
+    private Rect forceEndRect;
+    private Rect useRect;
+    private Rect dataSetsRect;
+    private Rect estimateRect;
+    private Rect afkRect;
+    /** Whether the header was built for the data set in use, so it can be rebuilt when that changes. */
+    private boolean builtForActive = true;
+
+    // Records of a data set that is not in use are read from its file once, not every frame
+    private List<FuelCycleTracker.DayRecord> foreignRecords = null;
+    private String foreignRecordsId = null;
+
+    private String statusText = "";
+    private long statusUntilMs = 0;
 
     private int scrollOffset = 0;
     private int listTop;
@@ -72,8 +135,68 @@ public class FuelDayScreen extends Screen {
     private long displayNowMs = System.currentTimeMillis();
     private long lastLiveValueRefreshMs = 0;
 
+    /** Shows the data set in use, and keeps following it if another one is switched to. */
     public FuelDayScreen() {
+        this(null, null);
+    }
+
+    /**
+     * @param setId  the data set to show, or null for the one in use
+     * @param parent the screen to go back to when this one is closed, or null to close it
+     */
+    public FuelDayScreen(String setId, Screen parent) {
         super(Component.literal("Fuel Day Tracker"));
+        this.pinnedSetId = setId;
+        this.parent = parent;
+    }
+
+    private String viewedSetId() {
+        if (pinnedSetId != null && FuelDataSets.get(pinnedSetId) != null) return pinnedSetId;
+        return FuelDataSets.activeId();
+    }
+
+    private boolean viewingActive() {
+        return FuelDataSets.isActive(viewedSetId());
+    }
+
+    private String viewedSetName() {
+        FuelDataSets.DataSet set = FuelDataSets.get(viewedSetId());
+        return set != null ? set.name() : viewedSetId();
+    }
+
+    /** The records being shown: live ones for the data set in use, otherwise read once from the set's file. */
+    private List<FuelCycleTracker.DayRecord> records() {
+        String id = viewedSetId();
+        if (FuelDataSets.isActive(id)) return FuelCycleTracker.getDayRecordsDescending();
+        if (foreignRecords == null || !id.equals(foreignRecordsId)) {
+            foreignRecords = FuelCycleTracker.readDayRecordsDescending(id);
+            foreignRecordsId = id;
+        }
+        return foreignRecords;
+    }
+
+    private static IslandTimeConfig.FuelCycles fuelConfig() {
+        IslandTimeConfig config = ConfigManager.getConfig();
+        return config != null ? config.fuelCycles : null;
+    }
+
+    private static boolean estimateEnabled() {
+        IslandTimeConfig.FuelCycles fuel = fuelConfig();
+        return fuel != null && fuel.estimateEnabled;
+    }
+
+    private static boolean estimateAfk() {
+        IslandTimeConfig.FuelCycles fuel = fuelConfig();
+        return fuel != null && fuel.estimateAfk;
+    }
+
+    private int rowHeight() {
+        return estimateEnabled() ? ESTIMATE_ROW_HEIGHT : BASE_ROW_HEIGHT;
+    }
+
+    private static Component onOffLabel(String label, boolean on) {
+        return Component.literal(label + ": ")
+                .append(Component.literal(on ? "On" : "Off").withStyle(on ? ChatFormatting.GREEN : ChatFormatting.RED));
     }
 
     @Override
@@ -84,18 +207,94 @@ public class FuelDayScreen extends Screen {
         listTop = HEADER_HEIGHT + 10;
         listBottom = height - 10;
 
+        forceEndRect = null;
+        useRect = null;
+        dataSetsRect = null;
+        estimateRect = null;
+        afkRect = null;
+        builtForActive = viewingActive();
+        if (estimateEnabled()) PriceCache.requestBazaarRefreshAsync();
+
         if (!editDialogOpen) {
-            int controlsWidth = FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP + ADD_DAY_BUTTON_WIDTH;
-            int controlsX = width / 2 - controlsWidth / 2;
-            addRenderableWidget(Button.builder(Component.literal("Force End Cohort"), btn -> {
-                        FuelCycleTracker.forceEndCohort();
-                    })
-                    .bounds(controlsX, 10, FORCE_END_BUTTON_WIDTH, 20)
+            if (builtForActive) {
+                int controlsWidth = FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP + ADD_DAY_BUTTON_WIDTH;
+                int controlsX = width / 2 - controlsWidth / 2;
+                forceEndRect = new Rect(controlsX, HEADER_ROW_1_Y, FORCE_END_BUTTON_WIDTH, 20);
+                addRenderableWidget(Button.builder(Component.literal("Force End Cohort"), btn -> {
+                            FuelCycleTracker.forceEndCohort();
+                        })
+                        .bounds(controlsX, HEADER_ROW_1_Y, FORCE_END_BUTTON_WIDTH, 20)
+                        .build());
+                addRenderableWidget(Button.builder(Component.literal("+ Add Day"), btn -> addQueuedDay())
+                        .bounds(controlsX + FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP, HEADER_ROW_1_Y, ADD_DAY_BUTTON_WIDTH, 20)
+                        .build());
+            } else {
+                useRect = new Rect(width / 2 - USE_BUTTON_WIDTH / 2, HEADER_ROW_1_Y, USE_BUTTON_WIDTH, 20);
+                addRenderableWidget(Button.builder(Component.literal("Use This Data Set"), btn -> useViewedSet())
+                        .bounds(useRect.x(), useRect.y(), useRect.w(), useRect.h())
+                        .build());
+            }
+
+            int row2Width = DATA_SETS_BUTTON_WIDTH + ESTIMATE_BUTTON_WIDTH + AFK_BUTTON_WIDTH + TOP_BUTTON_GAP * 2;
+            int x = width / 2 - row2Width / 2;
+            dataSetsRect = new Rect(x, HEADER_ROW_2_Y, DATA_SETS_BUTTON_WIDTH, 20);
+            addRenderableWidget(Button.builder(Component.literal("Data Sets"),
+                            btn -> Minecraft.getInstance().setScreen(new FuelDataSetsScreen(this)))
+                    .bounds(dataSetsRect.x(), dataSetsRect.y(), dataSetsRect.w(), dataSetsRect.h())
                     .build());
-            addRenderableWidget(Button.builder(Component.literal("+ Add Day"), btn -> addQueuedDay())
-                    .bounds(controlsX + FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP, 10, ADD_DAY_BUTTON_WIDTH, 20)
+
+            x += DATA_SETS_BUTTON_WIDTH + TOP_BUTTON_GAP;
+            estimateRect = new Rect(x, HEADER_ROW_2_Y, ESTIMATE_BUTTON_WIDTH, 20);
+            addRenderableWidget(Button.builder(onOffLabel("Est. Return", estimateEnabled()), btn -> {
+                        IslandTimeConfig.FuelCycles fuel = fuelConfig();
+                        if (fuel == null) return;
+                        fuel.estimateEnabled = !fuel.estimateEnabled;
+                        ConfigManager.saveToFile();
+                        btn.setMessage(onOffLabel("Est. Return", fuel.estimateEnabled));
+                        if (fuel.estimateEnabled) PriceCache.requestBazaarRefreshAsync();
+                    })
+                    .bounds(estimateRect.x(), estimateRect.y(), estimateRect.w(), estimateRect.h())
+                    .build());
+
+            x += ESTIMATE_BUTTON_WIDTH + TOP_BUTTON_GAP;
+            afkRect = new Rect(x, HEADER_ROW_2_Y, AFK_BUTTON_WIDTH, 20);
+            addRenderableWidget(Button.builder(onOffLabel("Est. AFK", estimateAfk()), btn -> {
+                        IslandTimeConfig.FuelCycles fuel = fuelConfig();
+                        if (fuel == null) return;
+                        fuel.estimateAfk = !fuel.estimateAfk;
+                        ConfigManager.saveToFile();
+                        btn.setMessage(onOffLabel("Est. AFK", fuel.estimateAfk));
+                    })
+                    .bounds(afkRect.x(), afkRect.y(), afkRect.w(), afkRect.h())
                     .build());
         }
+    }
+
+    /** Makes the data set being browsed the one new fuel days are recorded into. */
+    private void useViewedSet() {
+        String id = viewedSetId();
+        String name = viewedSetName();
+        String error = FuelCycleTracker.switchDataSet(id);
+        if (error == null) {
+            // Config values that mirror per-set data (mob-kill baseline, today's gabagool amount) must follow the switch
+            ConfigManager.syncFromExistingConfigs();
+            setStatus("Now using \"" + name + "\"", true);
+        } else {
+            setStatus(error, false);
+        }
+        foreignRecords = null;
+        foreignRecordsId = null;
+        scrollOffset = 0;
+        clearWidgets();
+        init();
+    }
+
+    private boolean statusOk = true;
+
+    private void setStatus(String message, boolean ok) {
+        statusText = message;
+        statusOk = ok;
+        statusUntilMs = System.currentTimeMillis() + STATUS_MS;
     }
 
     // -------------------------------------------------------------------------
@@ -316,15 +515,26 @@ public class FuelDayScreen extends Screen {
         if (realNow - lastLiveValueRefreshMs >= LIVE_VALUE_REFRESH_INTERVAL_MS) {
             displayNowMs = realNow;
             lastLiveValueRefreshMs = realNow;
+            if (estimateEnabled()) PriceCache.requestBazaarRefreshAsync();
         }
 
-        Component titleComp = Component.literal("Fuel Day Tracker").withStyle(ChatFormatting.GOLD);
+        // The data set in use changed (e.g. from the Data Sets screen), so the buttons no longer fit it
+        if (!editDialogOpen && builtForActive != viewingActive()) {
+            clearWidgets();
+            init();
+        }
+
+        String setName = viewedSetName();
+        Component titleComp = Component.literal("Fuel Day Tracker - " + fitTitle(setName)).withStyle(ChatFormatting.GOLD);
         int titleWidth = font.width(titleComp);
         context.text(font, titleComp, width / 2 - titleWidth / 2, 2, -1, true);
 
         if (!editDialogOpen) {
+            renderBanner(context, setName, realNow);
             renderEntryList(context, mouseX, mouseY);
             renderCohortExpiryTooltip(context, mouseX, mouseY);
+            renderHeaderTooltips(context, mouseX, mouseY);
+            renderEstimateTooltip(context, mouseX, mouseY);
         }
 
         if (editDialogOpen) {
@@ -362,31 +572,35 @@ public class FuelDayScreen extends Screen {
     }
 
     private void renderEntryList(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-        List<FuelCycleTracker.DayRecord> records = FuelCycleTracker.getDayRecordsDescending();
+        List<FuelCycleTracker.DayRecord> records = records();
 
         if (records.isEmpty()) {
-            Component emptyMsg = Component.literal("No fuel data yet. Fuel a minion to start tracking!")
+            Component emptyMsg = Component.literal(builtForActive
+                            ? "No fuel data yet. Fuel a minion to start tracking!"
+                            : "This data set has no fuel data yet.")
                     .withStyle(ChatFormatting.GRAY);
             int emptyW = font.width(emptyMsg);
             context.text(font, emptyMsg, width / 2 - emptyW / 2, height / 2, 0xFFAAAAAA, true);
             return;
         }
 
-        int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
+        int rowHeight = rowHeight();
+        boolean showEstimate = estimateEnabled();
+        int visibleRows = (listBottom - listTop) / rowHeight;
         int maxScroll = Math.max(0, records.size() - visibleRows);
         scrollOffset = Math.min(scrollOffset, maxScroll);
         scrollOffset = Math.max(0, scrollOffset);
 
         for (int i = 0; i < records.size(); i++) {
             int drawIndex = i - scrollOffset;
-            int rowY = listTop + drawIndex * ROW_HEIGHT;
-            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+            int rowY = listTop + drawIndex * rowHeight;
+            if (rowY + rowHeight < listTop || rowY > listBottom) continue;
 
             FuelCycleTracker.DayRecord record = records.get(i);
             boolean isFutureDay = record.cycleStartMs > displayNowMs;
 
             int bgColor = isFutureDay ? 0x50404040 : afkGradientColor(record.getAfkPercent(displayNowMs), 0x50);
-            context.fill(listLeft, rowY, listLeft + listWidth, rowY + ROW_HEIGHT - 1, bgColor);
+            context.fill(listLeft, rowY, listLeft + listWidth, rowY + rowHeight - 1, bgColor);
 
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 2;
 
@@ -433,11 +647,31 @@ public class FuelDayScreen extends Screen {
                         listLeft + PADDING, rowY + 33, 0xFF999999, true);
             }
 
-            // Buttons
-            int btnY = rowY + (ROW_HEIGHT - BUTTON_SIZE) / 2;
-            drawSmallButton(context, btnX, btnY, "\u270F", 0xFF55FFFF, mouseX, mouseY);
-            btnX += BUTTON_SIZE + 2;
-            drawSmallButton(context, btnX, btnY, "X", 0xFFFF5555, mouseX, mouseY);
+            // Line 4 (estimated return switched on): what the Inferno minions should have returned. Queued
+            // days are skipped like line 3, as nothing has run on them yet.
+            if (showEstimate && !isFutureDay) {
+                DayEstimate estimate = estimateFor(record);
+                String line4;
+                if (estimate.priced()) {
+                    line4 = "Est. return: " + PriceCache.formatCoins(estimate.estimate().value())
+                            + "  Est. profit: " + PriceCache.formatCoins(estimate.profit());
+                } else if (estimate.estimate().priced()) {
+                    line4 = "Est. return: " + PriceCache.formatCoins(estimate.estimate().value())
+                            + "  Est. profit: n/a (no Bazaar price for the eyedrops' ingredients)";
+                } else {
+                    line4 = "Est. return: n/a (no Bazaar price yet)";
+                }
+                context.text(font, Component.literal(fit(line4, listWidth - PADDING * 2)).withStyle(ChatFormatting.AQUA),
+                        listLeft + PADDING, rowY + 48, 0xFF55FFFF, true);
+            }
+
+            // Buttons. A data set that is only being browsed can't be edited.
+            if (builtForActive) {
+                int btnY = rowY + (rowHeight - BUTTON_SIZE) / 2;
+                drawSmallButton(context, btnX, btnY, "\u270F", 0xFF55FFFF, mouseX, mouseY);
+                btnX += BUTTON_SIZE + 2;
+                drawSmallButton(context, btnX, btnY, "X", 0xFFFF5555, mouseX, mouseY);
+            }
         }
 
         // Scrollbar
@@ -466,14 +700,20 @@ public class FuelDayScreen extends Screen {
      */
     private void renderTotalProfitWidget(GuiGraphicsExtractor context, List<FuelCycleTracker.DayRecord> records) {
         double totalProfit = 0.0;
+        double totalEstimatedProfit = 0.0;
+        boolean showEstimate = estimateEnabled();
         for (FuelCycleTracker.DayRecord record : records) {
             totalProfit += record.getProfit(displayNowMs);
+            if (showEstimate && record.cycleStartMs <= displayNowMs) {
+                double estimated = estimateFor(record).profit();
+                if (!Double.isNaN(estimated)) totalEstimatedProfit += estimated;
+            }
         }
 
         int widgetW = TOTAL_PROFIT_WIDGET_WIDTH;
         int widgetX = width - widgetW - TOTAL_PROFIT_WIDGET_GAP;
-        int widgetY = HEADER_HEIGHT - 32;
-        int widgetH = 36;
+        int widgetY = TOTAL_PROFIT_WIDGET_Y;
+        int widgetH = showEstimate ? 52 : 36;
 
         context.fill(widgetX, widgetY, widgetX + widgetW, widgetY + widgetH, 0x80000000);
 
@@ -482,14 +722,234 @@ public class FuelDayScreen extends Screen {
 
         ChatFormatting totalStyle = totalProfit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
         Component totalComp = Component.literal(PriceCache.formatCoins(totalProfit)).withStyle(totalStyle);
-        context.text(font, totalComp, widgetX + PADDING, widgetY + 18,
+        context.text(font, totalComp, widgetX + PADDING, showEstimate ? widgetY + 14 : widgetY + 18,
                 totalProfit >= 0 ? 0xFF55FF55 : 0xFFFF5555, true);
+
+        if (showEstimate) {
+            context.text(font, Component.literal("Est. Profit").withStyle(ChatFormatting.GRAY),
+                    widgetX + PADDING, widgetY + 28, 0xFFAAAAAA, true);
+            ChatFormatting estimatedStyle = totalEstimatedProfit >= 0 ? ChatFormatting.AQUA : ChatFormatting.RED;
+            context.text(font, Component.literal(PriceCache.formatCoins(totalEstimatedProfit)).withStyle(estimatedStyle),
+                    widgetX + PADDING, widgetY + 38, totalEstimatedProfit >= 0 ? 0xFF55FFFF : 0xFFFF5555, true);
+        }
+    }
+
+    private String fit(String text, int maxWidth) {
+        if (maxWidth <= 0 || font.width(text) <= maxWidth) return text;
+        return font.plainSubstrByWidth(text, Math.max(0, maxWidth - font.width("..."))) + "...";
+    }
+
+    /** A data set name short enough not to run into the Total Profit box. */
+    private String fitTitle(String name) {
+        return fit(name, Math.max(40, width - 2 * (TOTAL_PROFIT_WIDGET_WIDTH + TOTAL_PROFIT_WIDGET_GAP) - 120));
+    }
+
+    /** What the Inferno minions should have returned on a day, from the settings in the config. */
+    private DayEstimate estimateFor(FuelCycleTracker.DayRecord record) {
+        IslandTimeConfig.FuelCycles fuel = fuelConfig();
+        InfernoReturnCalculator.Settings settings = InfernoProfitsCommand.settingsFrom(fuel);
+
+        long durationMs = record.getCycleDurationMs();
+        long runningMs = settings.afk() ? Math.min(Math.max(0, record.activeMs), durationMs) : durationMs;
+
+        Map<String, Double> byId = new HashMap<>();
+        boolean fromSnapshot = record.endPricesMs > 0
+                && (record.endCrudeSellOffer != null || record.endVeryCrudeSellOffer != null);
+        if (fromSnapshot) {
+            if (record.endCrudeSellOffer != null) byId.put(InfernoReturnCalculator.CRUDE_GABAGOOL_ID, record.endCrudeSellOffer);
+            if (record.endVeryCrudeSellOffer != null) {
+                byId.put(InfernoReturnCalculator.VERY_CRUDE_GABAGOOL_ID, record.endVeryCrudeSellOffer);
+            }
+            if (record.endRarePrices != null) {
+                record.endRarePrices.forEach((id, price) -> {
+                    if (id != null && price != null) byId.put(id, price);
+                });
+            }
+        }
+        // Whatever the saved prices don't have (days saved before the eyedrop ingredients were saved too, or an
+        // item with no price then) is priced from the live Bazaar.
+        boolean liveFill = false;
+        JsonObject products = PriceCache.peekBazaar();
+        if (products != null) {
+            for (String id : InfernoReturnCalculator.priceIds()) {
+                if (byId.containsKey(id)) continue;
+                double price = PriceCache.getSellOfferPrice(products, id);
+                if (price > 0) {
+                    byId.put(id, price);
+                    liveFill = true;
+                }
+            }
+        }
+        String source;
+        if (fromSnapshot) {
+            source = "Bazaar sell offer from the end of the day" + (liveFill ? " (live for the ones it didn't have)" : "");
+        } else if (!record.isClosed()) {
+            source = "Live Bazaar sell offer (the day hasn't ended)";
+        } else if (record.endPricesPending) {
+            source = "Live Bazaar sell offer (the end-of-day price is still to be saved)";
+        } else {
+            source = "Live Bazaar sell offer (no end-of-day price was saved for this day)";
+        }
+        InfernoReturnCalculator.Prices prices = new InfernoReturnCalculator.Prices(byId);
+
+        InfernoReturnCalculator.Estimate estimate = InfernoReturnCalculator.estimate(settings,
+                record.getEffectiveMinionCount(), runningMs / 1000.0, durationMs / 1000.0, prices);
+        double mobKillCoins = settings.afk() ? record.getMobKillCoins(displayNowMs) : 0;
+        return new DayEstimate(estimate, settings, prices, source, mobKillCoins, record.getEffectiveFuelCost());
+    }
+
+    private void renderBanner(GuiGraphicsExtractor context, String setName, long now) {
+        String text;
+        int color;
+        if (!builtForActive) {
+            text = "Viewing \"" + setName + "\" (read-only). New fuel is recorded into \""
+                    + FuelDataSets.active().name() + "\".";
+            color = 0xFFFFFF55;
+        } else if (!statusText.isEmpty() && now < statusUntilMs) {
+            text = statusText;
+            color = statusOk ? 0xFF55FF55 : 0xFFFF5555;
+        } else {
+            return;
+        }
+        text = fit(text, width - 20);
+        context.text(font, Component.literal(text), width / 2 - font.width(text) / 2, BANNER_Y, color, true);
+    }
+
+    private void renderHeaderTooltips(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        List<Component> lines = new ArrayList<>();
+        if (useRect != null && useRect.contains(mouseX, mouseY)) {
+            lines.add(Component.literal("Record new fuel days into \"" + viewedSetName() + "\"").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("Your current data stays in \"" + FuelDataSets.active().name()
+                    + "\" and can be switched back to").withStyle(ChatFormatting.DARK_GRAY));
+        } else if (dataSetsRect != null && dataSetsRect.contains(mouseX, mouseY)) {
+            lines.add(Component.literal("Create, view and switch between data sets").withStyle(ChatFormatting.GRAY));
+        } else if (estimateRect != null && estimateRect.contains(mouseX, mouseY)) {
+            lines.add(Component.literal("Estimated return of the Inferno minions").withStyle(ChatFormatting.GOLD));
+            lines.add(Component.literal("Worked out from their speed: one spawn and one kill per Crude Gabagool").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("Hypergolic fuel adds its rare drops. Item drops only, no mob-kill coins").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("Capsaicin Eyedrops (if on) add their crafting cost every day").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("Valued at the Bazaar sell offer from the end of each day").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("Hover a row's blue line for the details").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("Speed boosts: /it > Fuel Cycles > Estimated Return").withStyle(ChatFormatting.DARK_GRAY));
+        } else if (afkRect != null && afkRect.contains(mouseX, mouseY)) {
+            lines.add(Component.literal("Off: the minions are counted for the whole fuel day").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("On: only the time spent AFK counts (the day's AFK%), and the").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("day's mob-kill coins are added to the estimated profit").withStyle(ChatFormatting.GRAY));
+        }
+        if (!lines.isEmpty()) context.setComponentTooltipForNextFrame(font, lines, mouseX, mouseY);
+    }
+
+    /** Hovering the blue line of a row explains how its estimate was worked out. */
+    private void renderEstimateTooltip(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        if (!estimateEnabled()) return;
+        List<FuelCycleTracker.DayRecord> records = records();
+        int rowHeight = rowHeight();
+        for (int i = 0; i < records.size(); i++) {
+            int rowY = listTop + (i - scrollOffset) * rowHeight;
+            if (rowY + rowHeight < listTop || rowY > listBottom) continue;
+            if (!isInBounds(mouseX, mouseY, listLeft, rowY + 44, listWidth, rowHeight - 44)) continue;
+
+            FuelCycleTracker.DayRecord record = records.get(i);
+            if (record.cycleStartMs > displayNowMs) return;
+            context.setComponentTooltipForNextFrame(font, estimateTooltip(estimateFor(record)), mouseX, mouseY);
+            return;
+        }
+    }
+
+    private static List<Component> estimateTooltip(DayEstimate day) {
+        InfernoReturnCalculator.Estimate e = day.estimate();
+        InfernoReturnCalculator.Settings s = day.settings();
+        InfernoReturnCalculator.Prices prices = day.prices();
+        List<Component> lines = new ArrayList<>();
+
+        lines.add(Component.literal("Estimated return").withStyle(ChatFormatting.GOLD));
+        for (InfernoReturnCalculator.Contribution bonus : e.bonuses()) {
+            lines.add(Component.literal("  +" + formatNumber(bonus.percent()) + "% " + bonus.name()).withStyle(ChatFormatting.GRAY));
+        }
+        lines.add(Component.literal("Speed bonus: +" + formatNumber(e.speedBonusPercent()) + "% (added together)")
+                .withStyle(ChatFormatting.WHITE));
+        lines.add(Component.literal(InfernoReturnCalculator.GRADE_NAMES[s.fuelGrade()] + ": +"
+                + formatNumber(InfernoReturnCalculator.GRADE_BONUS[s.fuelGrade()] * 100)
+                + "% speed, multiplied with the bonus above").withStyle(ChatFormatting.GRAY));
+        lines.add(Component.literal("Tier " + s.minionTier() + ": "
+                + formatNumber(InfernoReturnCalculator.BASE_SECONDS[s.minionTier() - 1]) + "s base, "
+                + String.format(Locale.ROOT, "%.2f", e.secondsPerAction()) + "s per action").withStyle(ChatFormatting.GRAY));
+        lines.add(Component.literal("Running: " + String.format(Locale.ROOT, "%.1f", e.activeSeconds() / 3600.0) + "h"
+                + (s.afk() ? " (AFK time only)" : " (the whole day)") + ", "
+                + String.format(Locale.ROOT, "%.1f", e.harvestsPerMinion()) + " harvests per minion")
+                .withStyle(ChatFormatting.GRAY));
+        lines.add(Component.literal("Crude Gabagool: " + String.format(Locale.ROOT, "%,.1f", e.crudeTotal())
+                + (e.compacted() ? " = " + String.format(Locale.ROOT, "%,.2f", e.veryCrudeTotal())
+                + " Very Crude (compacted, with decimals)" : "")).withStyle(ChatFormatting.GRAY));
+
+        if (!e.priced()) {
+            lines.add(Component.literal("No Bazaar price for Crude Gabagool yet").withStyle(ChatFormatting.RED));
+            return lines;
+        }
+
+        if (e.compacted() && !e.usedCrudePriceForCompacted()) {
+            lines.add(Component.literal("Very Crude price: "
+                    + PriceCache.formatCoinsPrecise(prices.get(InfernoReturnCalculator.VERY_CRUDE_GABAGOOL_ID)))
+                    .withStyle(ChatFormatting.GRAY));
+        } else {
+            lines.add(Component.literal("Crude price: "
+                    + PriceCache.formatCoinsPrecise(prices.get(InfernoReturnCalculator.CRUDE_GABAGOOL_ID)))
+                    .withStyle(ChatFormatting.GRAY));
+            if (e.usedCrudePriceForCompacted()) {
+                lines.add(Component.literal("No Very Crude price was available, so Crude was used")
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+        }
+        if (!e.rareDrops().isEmpty()) {
+            lines.add(Component.literal(s.eyedrops()
+                    ? "Hypergolic rare drops (Capsaicin Eyedrops: x" + formatNumber(InfernoReturnCalculator.EYEDROPS_MULTIPLIER) + "):"
+                    : "Hypergolic rare drops:").withStyle(ChatFormatting.LIGHT_PURPLE));
+            for (InfernoReturnCalculator.DropLine drop : e.rareDrops()) {
+                String amount = String.format(Locale.ROOT, "%,.3f", drop.amount());
+                String worth = drop.price() <= 0 && !drop.assumed() ? " (no Bazaar price)"
+                        : " = " + PriceCache.formatCoins(drop.value())
+                        + (drop.assumed() ? " (at " + PriceCache.formatCoins(drop.price()) + " each, the price you set)" : "");
+                lines.add(Component.literal("  " + amount + " " + drop.name() + worth).withStyle(ChatFormatting.GRAY));
+            }
+        }
+        InfernoReturnCalculator.EyedropCost eyedrops = e.eyedropCost();
+        if (eyedrops != null) {
+            lines.add(Component.literal("Capsaicin Eyedrops, used every day: " + eyedrops.crafts() + " crafts = "
+                    + eyedrops.eyedrops() + " eyedrops for " + e.minions() + " minions").withStyle(ChatFormatting.LIGHT_PURPLE));
+            for (InfernoReturnCalculator.DropLine item : eyedrops.ingredients()) {
+                String worth = item.price() <= 0 && !item.assumed() ? " (no Bazaar price)"
+                        : " = " + PriceCache.formatCoins(item.value())
+                        + (item.assumed() ? " (at " + PriceCache.formatCoins(item.price()) + " each, the price you set)" : "");
+                lines.add(Component.literal("  " + String.format(Locale.ROOT, "%,.0f", item.amount()) + " " + item.name() + worth)
+                        .withStyle(ChatFormatting.GRAY));
+            }
+            lines.add(Component.literal(Double.isNaN(eyedrops.total()) ? "  Eyedrops cost: n/a"
+                    : "  Eyedrops cost: " + PriceCache.formatCoins(eyedrops.total()) + " ("
+                    + PriceCache.formatCoins(eyedrops.perCraft()) + " per craft)").withStyle(ChatFormatting.GRAY));
+        } else if (s.eyedrops() && s.fuelGrade() != InfernoReturnCalculator.GRADE_HYPERGOLIC) {
+            lines.add(Component.literal("Capsaicin Eyedrops only work in Hypergolic fuel: not counted")
+                    .withStyle(ChatFormatting.DARK_GRAY));
+        }
+        lines.add(Component.literal(day.priceSource()).withStyle(ChatFormatting.DARK_GRAY));
+        lines.add(Component.literal("Est. return: " + PriceCache.formatCoins(e.value())).withStyle(ChatFormatting.AQUA));
+        String eyedropPart = eyedrops == null ? ""
+                : Double.isNaN(eyedrops.total()) ? " - eyedrops (n/a)"
+                : " - eyedrops (" + PriceCache.formatCoins(eyedrops.total()) + ")";
+        String profitFormula = s.afk()
+                ? "Est. profit = return + mob-kill coins (" + PriceCache.formatCoins(day.mobKillCoins())
+                + ") - fuel cost (" + PriceCache.formatCoins(day.fuelCost()) + ")" + eyedropPart
+                : "Est. profit = return - fuel cost (" + PriceCache.formatCoins(day.fuelCost()) + ")" + eyedropPart
+                + ", no mob-kill coins";
+        lines.add(Component.literal(profitFormula).withStyle(ChatFormatting.DARK_GRAY));
+        return lines;
+    }
+
+    private static String formatNumber(double value) {
+        return value == Math.rint(value) ? String.valueOf((long) value) : String.format(Locale.ROOT, "%.1f", value);
     }
 
     private void renderCohortExpiryTooltip(GuiGraphicsExtractor context, int mouseX, int mouseY) {
-        int controlsWidth = FORCE_END_BUTTON_WIDTH + TOP_BUTTON_GAP + ADD_DAY_BUTTON_WIDTH;
-        int controlsX = width / 2 - controlsWidth / 2;
-        if (!isInBounds(mouseX, mouseY, controlsX, 10, FORCE_END_BUTTON_WIDTH, 20)) return;
+        if (forceEndRect == null || !forceEndRect.contains(mouseX, mouseY)) return;
 
         List<Component> lines = new java.util.ArrayList<>();
         List<FuelCycleTracker.MinionExpiry> expiries =
@@ -571,8 +1031,9 @@ public class FuelDayScreen extends Screen {
 
         if (editDialogOpen) return false;
 
-        List<FuelCycleTracker.DayRecord> records = FuelCycleTracker.getDayRecordsDescending();
-        int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
+        List<FuelCycleTracker.DayRecord> records = records();
+        int rowHeight = rowHeight();
+        int visibleRows = (listBottom - listTop) / rowHeight;
 
         // Scrollbar
         if (records.size() > visibleRows) {
@@ -585,13 +1046,16 @@ public class FuelDayScreen extends Screen {
             }
         }
 
+        // Another data set is only browsed, so its rows have no buttons
+        if (!builtForActive) return false;
+
         for (int i = 0; i < records.size(); i++) {
             int drawIndex = i - scrollOffset;
-            int rowY = listTop + drawIndex * ROW_HEIGHT;
-            if (rowY + ROW_HEIGHT < listTop || rowY > listBottom) continue;
+            int rowY = listTop + drawIndex * rowHeight;
+            if (rowY + rowHeight < listTop || rowY > listBottom) continue;
 
             int btnX = listLeft + listWidth - (BUTTON_SIZE + 2) * 2;
-            int btnY = rowY + (ROW_HEIGHT - BUTTON_SIZE) / 2;
+            int btnY = rowY + (rowHeight - BUTTON_SIZE) / 2;
 
             if (isInBounds(mouseX, mouseY, btnX, btnY, BUTTON_SIZE, BUTTON_SIZE)) {
                 openEditDialog(records.get(i).date);
@@ -633,12 +1097,17 @@ public class FuelDayScreen extends Screen {
     }
 
     private void updateScrollFromMouse(double mouseY) {
-        List<FuelCycleTracker.DayRecord> records = FuelCycleTracker.getDayRecordsDescending();
-        int visibleRows = (listBottom - listTop) / ROW_HEIGHT;
+        List<FuelCycleTracker.DayRecord> records = records();
+        int visibleRows = (listBottom - listTop) / rowHeight();
         int maxScroll = Math.max(0, records.size() - visibleRows);
         float ratio = (float) (mouseY - listTop) / (listBottom - listTop);
         ratio = Math.max(0, Math.min(1, ratio));
         scrollOffset = Math.round(ratio * maxScroll);
+    }
+
+    @Override
+    public void onClose() {
+        Minecraft.getInstance().setScreen(parent);
     }
 
     @Override

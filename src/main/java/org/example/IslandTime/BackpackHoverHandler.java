@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
 import net.minecraft.world.entity.player.Player;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -21,9 +22,9 @@ public class BackpackHoverHandler {
     // State
     // -------------------------------------------------------------------------
 
-    private static ItemStack                          currentBackpack  = ItemStack.EMPTY;
-    private static List<ItemStack>                    currentContents  = null;
-    private static CompletableFuture<List<ItemStack>> parseFuture      = null;
+    private static ItemStack                                               currentBackpack  = ItemStack.EMPTY;
+    private static List<BackpackNbtParser.BackpackItem>                    currentContents  = null;
+    private static CompletableFuture<List<BackpackNbtParser.BackpackItem>> parseFuture      = null;
 
     private static boolean frozen            = false;
     private static boolean pendingUnfreeze   = false;
@@ -94,7 +95,7 @@ public class BackpackHoverHandler {
                 || overlayHoveredIndex >= currentContents.size()) {
             return ItemStack.EMPTY;
         }
-        return currentContents.get(overlayHoveredIndex);
+        return currentContents.get(overlayHoveredIndex).stack();
     }
 
     // -------------------------------------------------------------------------
@@ -222,7 +223,7 @@ public class BackpackHoverHandler {
 
         if (parseFuture != null && parseFuture.isDone()) {
             try {
-                List<ItemStack> result = parseFuture.get();
+                List<BackpackNbtParser.BackpackItem> result = parseFuture.get();
                 currentContents = (result != null) ? result : List.of();
             } catch (Exception e) {
                 currentContents = List.of();
@@ -335,10 +336,12 @@ public class BackpackHoverHandler {
 
             context.fill(sx, sy, sx + SLOT_INNER, sy + SLOT_INNER, SLOT_BG);
 
-            ItemStack item = currentContents.get(i);
+            BackpackNbtParser.BackpackItem slot = currentContents.get(i);
+            ItemStack item = slot.stack();
             if (!item.isEmpty()) {
                 context.item(item, sx, sy);
                 context.itemDecorations(tr, item, sx, sy);
+                if (slot.hasOwnCountText()) drawCount(context, tr, slot.count(), sx, sy);
             }
 
             if (mouseX >= sx && mouseX < sx + SLOT_SIZE
@@ -353,17 +356,37 @@ public class BackpackHoverHandler {
         context.text(tr, hintText, hintX, hintY, -1, false);
 
         if (overlayHoveredIndex >= 0) {
-            ItemStack hovered = currentContents.get(overlayHoveredIndex);
+            BackpackNbtParser.BackpackItem hoveredSlot = currentContents.get(overlayHoveredIndex);
+            ItemStack hovered = hoveredSlot.stack();
             if (!hovered.isEmpty()) {
-                List<Component> tip = hovered.getTooltipLines(
+                List<Component> tip = new ArrayList<>(hovered.getTooltipLines(
                         Item.TooltipContext.of(client.level),
                         client.player,
                         client.options.advancedItemTooltips
                                 ? TooltipFlag.Default.ADVANCED
-                                : TooltipFlag.Default.NORMAL);
+                                : TooltipFlag.Default.NORMAL));
+                if (hoveredSlot.hasOwnCountText()) {
+                    tip.add(Math.min(1, tip.size()), Component.literal("Stack size: " + BackpackCounts.exactText(hoveredSlot.count()))
+                            .withStyle(hoveredSlot.count() > 0 ? ChatFormatting.GRAY : ChatFormatting.RED));
+                }
                 context.setComponentTooltipForNextFrame(tr, tip, mouseX, mouseY);
             }
         }
+    }
+
+    /**
+     * Draws a count the item can't show itself (0, negative or over 99) at the bottom right of the slot, where
+     * the game puts its own. It is abbreviated (12k, -1.2M) and, if still wider than the slot, shrunk to fit.
+     */
+    private static void drawCount(GuiGraphicsExtractor context, Font tr, int count, int sx, int sy) {
+        String text = BackpackCounts.shortText(count);
+        int textWidth = tr.width(text);
+        float scale = Math.min(1f, (SLOT_INNER + 1f) / textWidth);
+        context.pose().pushMatrix();
+        context.pose().translate(sx + SLOT_INNER + 1f, sy + SLOT_INNER + 1f);
+        context.pose().scale(scale, scale);
+        context.text(tr, text, -textWidth, -8, count > 0 ? 0xFFFFFFFF : 0xFFFF5555, true);
+        context.pose().popMatrix();
     }
 
     // -------------------------------------------------------------------------

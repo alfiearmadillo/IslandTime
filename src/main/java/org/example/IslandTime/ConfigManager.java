@@ -141,7 +141,6 @@ public class ConfigManager {
 
         // Fuel Cycles tracking
         config.fuelCycles.enabled = TrackingToggleConfig.isFuelCycleEnabled();
-        config.fuelCycles.useTestDataFile = FuelCycleTracker.isTestModeEnabled();
         config.fuelCycles.mobKillCoinsAt100PercentString = String.valueOf(FuelCycleTracker.getMobKillCoinsAt100Baseline());
         FuelCycleTracker.DayRecord today = FuelCycleTracker.getDayRecord(FuelCycleTracker.getCurrentCycleDateKey());
         // Keep this as the persistent default. It must not be replaced with the current
@@ -203,9 +202,6 @@ public class ConfigManager {
         // Fuel Cycles tracking
         if (TrackingToggleConfig.isFuelCycleEnabled() != config.fuelCycles.enabled) {
             TrackingToggleConfig.setFuelCycleEnabled(config.fuelCycles.enabled);
-        }
-        if (FuelCycleTracker.isTestModeEnabled() != config.fuelCycles.useTestDataFile) {
-            FuelCycleTracker.setTestModeEnabled(config.fuelCycles.useTestDataFile);
         }
         try {
             double baseline = Double.parseDouble(config.fuelCycles.mobKillCoinsAt100PercentString.trim());

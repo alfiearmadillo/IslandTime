@@ -1,17 +1,32 @@
 package org.example.islandtime;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Which Hunting shards a Huntrap can catch at each placement location.
  *
- * The data follows the Locations table on the Hypixel SkyBlock Wiki's Huntraps page (marked as incomplete there,
- * and Fire Eel and Yog are still marked to be confirmed). It is the only place that needs editing when that
- * table changes: add or fix a {@code location(...)} line below.
+ * The built-in data follows the Locations table on the Hypixel SkyBlock Wiki's Huntraps page (marked as incomplete
+ * there, and Fire Eel and Yog are still marked to be confirmed). It is what is used until something is changed in
+ * the in-game editor ({@link HuntrapEditorScreen}), which saves everything to {@code huntrap_locations.json}. From
+ * then on that file is used instead, and the built-in data can be restored from the editor. To change what a fresh
+ * install starts with, add or fix a {@code location(...)} line in the static block below.
  *
  * Odds between the shards of a location:
  * <ul>
@@ -79,48 +94,133 @@ final class HuntrapLocations {
         }
     }
 
-    private static final Map<String, Shard> SHARDS = new LinkedHashMap<>();
-    private static final List<Location> LOCATIONS = new ArrayList<>();
+    static final int MAX_LOCATION_NAME = 48;
+    static final int MAX_PLACEMENT = 64;
+    static final int MAX_SHARD_NAME = 40;
+    static final int MAX_BAZAAR_ID = 64;
+    private static final double MAX_WEIGHT = 1e9;
 
+    // -------------------------------------------------------------------------
+    // The editable data. Everything below that is public reads the immutable snapshot, which is rebuilt after
+    // every change, so a Huntrap calculation running on another thread never sees a half-edited location.
+    // -------------------------------------------------------------------------
+
+    private static final class ShardDef {
+        String name;
+        String bazaarId;
+        Rarity rarity;
+        Category category;
+
+        ShardDef(String name, String bazaarId, Rarity rarity, Category category) {
+            this.name = name;
+            this.bazaarId = bazaarId;
+            this.rarity = rarity;
+            this.category = category;
+        }
+    }
+
+    /** A shard at a location. A null weight means "not known", and is filled in when the snapshot is built. */
+    private static final class EntryDef {
+        String shard;
+        Double weight;
+
+        EntryDef(String shard, Double weight) {
+            this.shard = shard;
+            this.weight = weight;
+        }
+    }
+
+    private static final class LocationDef {
+        String name;
+        String placement;
+        List<EntryDef> entries = new ArrayList<>();
+
+        LocationDef(String name, String placement) {
+            this.name = name;
+            this.placement = placement;
+        }
+    }
+
+    /** What is saved to {@code huntrap_locations.json}. */
+    private static final class Model {
+        List<ShardDef> shards = new ArrayList<>();
+        List<LocationDef> locations = new ArrayList<>();
+
+        Model copy() {
+            Model copy = new Model();
+            for (ShardDef s : shards) copy.shards.add(new ShardDef(s.name, s.bazaarId, s.rarity, s.category));
+            for (LocationDef l : locations) {
+                LocationDef locationCopy = new LocationDef(l.name, l.placement);
+                for (EntryDef e : l.entries) locationCopy.entries.add(new EntryDef(e.shard, e.weight));
+                copy.locations.add(locationCopy);
+            }
+            return copy;
+        }
+    }
+
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    /** The built-in data from the wiki, filled in by the static block below. Never changed afterwards. */
+    private static final Model DEFAULTS = new Model();
+
+    private static Path baseDir = Paths.get("config/IslandTime");
+    private static Model model = new Model();
+    private static boolean customised;
+
+    private static volatile Map<String, Shard> shardSnapshot = Map.of();
+    private static volatile List<Location> locationSnapshot = List.of();
+    private static volatile List<Location> nonEmptySnapshot = List.of();
+
+    /** Every location that has at least one shard, in the order they are listed. These are the ones worth calculating. */
     static List<Location> all() {
-        return Collections.unmodifiableList(LOCATIONS);
+        return nonEmptySnapshot;
+    }
+
+    /** Every location including empty ones. The index of a location here is what the editing methods take. */
+    static List<Location> allIncludingEmpty() {
+        return locationSnapshot;
+    }
+
+    /** Every known shard, in the order they are listed. */
+    static List<Shard> shards() {
+        return List.copyOf(shardSnapshot.values());
     }
 
     static Shard shard(String name) {
-        return SHARDS.get(name);
+        return shardSnapshot.get(name);
+    }
+
+    /** True when the data was changed from the built-in one, so a file is being used. */
+    static synchronized boolean isCustomised() {
+        return customised;
     }
 
     private static void shard(String name, String bazaarId, Rarity rarity, Category category) {
-        SHARDS.put(name, new Shard(name, bazaarId, rarity, category));
+        DEFAULTS.shards.add(new ShardDef(name, bazaarId, rarity, category));
     }
 
     private static void location(String name, String placement, String... shards) {
-        String[] names = new String[shards.length];
-        double[] weights = new double[shards.length];
-        double knownTotal = 0;
-        int knownCount = 0;
-        for (int i = 0; i < shards.length; i++) {
-            names[i] = shards[i];
-            weights[i] = Double.NaN;
-            int eq = shards[i].indexOf('=');
+        LocationDef location = new LocationDef(name, placement);
+        for (String spec : shards) {
+            String shardName = spec;
+            Double weight = null;
+            int eq = spec.indexOf('=');
             if (eq >= 0) {
-                names[i] = shards[i].substring(0, eq);
-                weights[i] = Double.parseDouble(shards[i].substring(eq + 1));
-                if (!(weights[i] > 0)) throw new IllegalStateException("Weight must be above 0: " + shards[i]);
-                knownTotal += weights[i];
-                knownCount++;
+                shardName = spec.substring(0, eq);
+                weight = Double.parseDouble(spec.substring(eq + 1));
+                if (!(weight > 0)) throw new IllegalStateException("Weight must be above 0: " + spec);
             }
+            boolean exists = false;
+            for (ShardDef def : DEFAULTS.shards) {
+                if (def.name.equals(shardName)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) throw new IllegalStateException("Unknown shard '" + shardName + "' at " + name);
+            location.entries.add(new EntryDef(shardName, weight));
         }
-        double fillWeight = knownCount > 0 ? knownTotal / knownCount : 1;
-
-        List<Entry> entries = new ArrayList<>();
-        for (int i = 0; i < names.length; i++) {
-            Shard shard = SHARDS.get(names[i]);
-            if (shard == null) throw new IllegalStateException("Unknown shard '" + names[i] + "' at " + name);
-            boolean known = !Double.isNaN(weights[i]);
-            entries.add(new Entry(shard, known ? weights[i] : fillWeight, known));
-        }
-        LOCATIONS.add(new Location(name, placement, Collections.unmodifiableList(entries)));
+        DEFAULTS.locations.add(location);
     }
 
     static {
@@ -268,6 +368,381 @@ final class HuntrapLocations {
                 "Giant Isopod=10", "Water Snake=50", "Goldolot=25", "Sepialot=100");
         location("Hotspot Haven", "Underwater", "Ember=50", "Stingray=50", "Giant Water Bug");
         location("Ant's Cave", null, "Ant", "Queen Ant");
+    }
+
+    static {
+        model = DEFAULTS.copy();
+        rebuild();
+    }
+
+    // -------------------------------------------------------------------------
+    // Snapshot
+    // -------------------------------------------------------------------------
+
+    /**
+     * Builds the immutable shards and locations from the editable model. A shard without a weight gets the average
+     * of the weights that are known at its location, or 1 if none are.
+     */
+    private static void rebuild() {
+        Map<String, Shard> shards = new LinkedHashMap<>();
+        for (ShardDef def : model.shards) {
+            shards.put(def.name, new Shard(def.name, def.bazaarId, def.rarity, def.category));
+        }
+
+        List<Location> locations = new ArrayList<>();
+        List<Location> nonEmpty = new ArrayList<>();
+        for (LocationDef def : model.locations) {
+            double knownTotal = 0;
+            int knownCount = 0;
+            for (EntryDef entry : def.entries) {
+                if (entry.weight != null) {
+                    knownTotal += entry.weight;
+                    knownCount++;
+                }
+            }
+            double fillWeight = knownCount > 0 ? knownTotal / knownCount : 1;
+
+            List<Entry> entries = new ArrayList<>();
+            for (EntryDef entry : def.entries) {
+                Shard shard = shards.get(entry.shard);
+                if (shard == null) continue;
+                boolean known = entry.weight != null;
+                entries.add(new Entry(shard, known ? entry.weight : fillWeight, known));
+            }
+            Location location = new Location(def.name, def.placement, List.copyOf(entries));
+            locations.add(location);
+            if (!entries.isEmpty()) nonEmpty.add(location);
+        }
+
+        shardSnapshot = Collections.unmodifiableMap(shards);
+        locationSnapshot = List.copyOf(locations);
+        nonEmptySnapshot = List.copyOf(nonEmpty);
+    }
+
+    // -------------------------------------------------------------------------
+    // Saving and loading
+    // -------------------------------------------------------------------------
+
+    /** Points the file at another directory and goes back to the built-in data. Only for tests. */
+    static synchronized void useDirectory(Path dir) {
+        baseDir = dir;
+        model = DEFAULTS.copy();
+        customised = false;
+        rebuild();
+    }
+
+    private static Path file() {
+        return baseDir.resolve("huntrap_locations.json");
+    }
+
+    /**
+     * Loads the saved data, if there is any. Until the first edit there is no file and the built-in data is used.
+     * A file that can't be read is kept next to the original as {@code .corrupt} rather than overwritten.
+     */
+    static synchronized void load() {
+        model = DEFAULTS.copy();
+        customised = false;
+        Path file = file();
+        if (Files.exists(file)) {
+            try {
+                Model loaded = sanitise(GSON.fromJson(Files.readString(file), Model.class));
+                if (loaded == null) throw new IllegalStateException("the file has no shard or location data");
+                model = loaded;
+                customised = true;
+            } catch (Exception e) {
+                System.err.println("[HuntrapLocations] Could not read " + file + ": " + e.getMessage()
+                        + ". Using the built-in data, and keeping the file as .corrupt.");
+                try {
+                    Files.move(file, baseDir.resolve("huntrap_locations.json.corrupt"),
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException moveFailure) {
+                    System.err.println("[HuntrapLocations] Could not keep the unreadable file: "
+                            + moveFailure.getMessage());
+                }
+            }
+        }
+        rebuild();
+    }
+
+    /** Drops anything in loaded data that would break the calculation, instead of refusing the whole file. */
+    private static Model sanitise(Model raw) {
+        if (raw == null || (raw.shards == null && raw.locations == null)) return null;
+        Model clean = new Model();
+
+        Map<String, String> canonicalByLower = new HashMap<>();
+        if (raw.shards != null) {
+            for (ShardDef def : raw.shards) {
+                if (def == null || isBlank(def.name) || isBlank(def.bazaarId) || def.rarity == null
+                        || def.category == null) {
+                    continue;
+                }
+                String name = def.name.strip();
+                if (canonicalByLower.putIfAbsent(name.toLowerCase(Locale.ROOT), name) != null) continue;
+                clean.shards.add(new ShardDef(name, def.bazaarId.strip(), def.rarity, def.category));
+            }
+        }
+
+        if (raw.locations != null) {
+            for (LocationDef def : raw.locations) {
+                if (def == null || isBlank(def.name)) continue;
+                LocationDef location = new LocationDef(def.name.strip(), isBlank(def.placement) ? null
+                        : def.placement.strip());
+                Set<String> seen = new HashSet<>();
+                if (def.entries != null) {
+                    for (EntryDef entry : def.entries) {
+                        if (entry == null || entry.shard == null) continue;
+                        String shard = canonicalByLower.get(entry.shard.strip().toLowerCase(Locale.ROOT));
+                        if (shard == null || !seen.add(shard)) continue;
+                        Double weight = entry.weight != null && Double.isFinite(entry.weight) && entry.weight > 0
+                                && entry.weight <= MAX_WEIGHT ? entry.weight : null;
+                        location.entries.add(new EntryDef(shard, weight));
+                    }
+                }
+                clean.locations.add(location);
+            }
+        }
+        return clean;
+    }
+
+    /** @return null when saved, otherwise why it could not be */
+    private static String save() {
+        Path file = file();
+        Path tmp = baseDir.resolve("huntrap_locations.tmp");
+        try {
+            Files.createDirectories(baseDir);
+            Files.writeString(tmp, GSON.toJson(model));
+            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            customised = true;
+            return null;
+        } catch (IOException e) {
+            System.err.println("[HuntrapLocations] Failed to save: " + e.getMessage());
+            return "Changed, but could not be saved to disk: " + e.getMessage();
+        }
+    }
+
+    /** Applies a finished edit: rebuilds what the calculator reads, and saves. */
+    private static String commit() {
+        rebuild();
+        return save();
+    }
+
+    /** Goes back to the built-in data and deletes the saved file. */
+    static synchronized String resetToDefaults() {
+        model = DEFAULTS.copy();
+        customised = false;
+        rebuild();
+        try {
+            Files.deleteIfExists(file());
+            return null;
+        } catch (IOException e) {
+            return "Reset, but the saved file could not be deleted: " + e.getMessage();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Editing. Each of these returns null when it worked, or a message saying why it didn't.
+    // -------------------------------------------------------------------------
+
+    private static boolean isBlank(String text) {
+        return text == null || text.isBlank();
+    }
+
+    private static String normalisePlacement(String placement) {
+        return isBlank(placement) ? null : placement.strip();
+    }
+
+    private static String locationKey(String name, String placement) {
+        return name.strip().toLowerCase(Locale.ROOT) + "|"
+                + (isBlank(placement) ? "" : placement.strip().toLowerCase(Locale.ROOT));
+    }
+
+    private static String validateLocation(String name, String placement, int ignoreIndex) {
+        if (isBlank(name)) return "Enter a location name.";
+        if (name.strip().length() > MAX_LOCATION_NAME) return "Location names can be at most " + MAX_LOCATION_NAME + " characters.";
+        if (!isBlank(placement) && placement.strip().length() > MAX_PLACEMENT) {
+            return "Placements can be at most " + MAX_PLACEMENT + " characters.";
+        }
+        String key = locationKey(name, placement);
+        for (int i = 0; i < model.locations.size(); i++) {
+            LocationDef other = model.locations.get(i);
+            if (i != ignoreIndex && locationKey(other.name, other.placement).equals(key)) {
+                return "There is already a location with that name and placement.";
+            }
+        }
+        return null;
+    }
+
+    private static boolean validLocation(int index) {
+        return index >= 0 && index < model.locations.size();
+    }
+
+    /** Adds an empty location at the end of the list. Add shards to it afterwards. */
+    static synchronized String addLocation(String name, String placement) {
+        String problem = validateLocation(name, placement, -1);
+        if (problem != null) return problem;
+        model.locations.add(new LocationDef(name.strip(), normalisePlacement(placement)));
+        return commit();
+    }
+
+    static synchronized String updateLocation(int index, String name, String placement) {
+        if (!validLocation(index)) return "That location no longer exists.";
+        String problem = validateLocation(name, placement, index);
+        if (problem != null) return problem;
+        LocationDef def = model.locations.get(index);
+        def.name = name.strip();
+        def.placement = normalisePlacement(placement);
+        return commit();
+    }
+
+    static synchronized String removeLocation(int index) {
+        if (!validLocation(index)) return "That location no longer exists.";
+        model.locations.remove(index);
+        return commit();
+    }
+
+    /**
+     * Checks the text of a weight box. Blank is allowed and means "not known", and gets the average of the others
+     * at the location.
+     */
+    static String validateWeightText(String text) {
+        if (isBlank(text)) return null;
+        return weightError(parseNumber(text));
+    }
+
+    private static String weightError(double value) {
+        if (Double.isNaN(value)) return "The weight must be a number.";
+        if (!(value > 0)) return "The weight must be above 0.";
+        if (value > MAX_WEIGHT) return "The weight can be at most " + formatWeight(MAX_WEIGHT) + ".";
+        return null;
+    }
+
+    /** The weight in a box that has passed {@link #validateWeightText}: null for blank. */
+    static Double parseWeight(String text) {
+        return isBlank(text) ? null : parseNumber(text);
+    }
+
+    private static double parseNumber(String text) {
+        try {
+            double value = Double.parseDouble(text.trim().replace(",", "").replace("_", ""));
+            return Double.isFinite(value) ? value : Double.NaN;
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
+    }
+
+    /** A weight as it is edited: no exponent and no trailing zeros, e.g. "2000" or "12.5". */
+    static String formatWeight(double weight) {
+        return BigDecimal.valueOf(weight).stripTrailingZeros().toPlainString();
+    }
+
+    /** @param weight null when the weight isn't known */
+    static synchronized String addEntry(int locationIndex, String shardName, Double weight) {
+        if (!validLocation(locationIndex)) return "That location no longer exists.";
+        if (!shardSnapshot.containsKey(shardName)) return "That shard no longer exists.";
+        if (weight != null) {
+            String problem = weightError(weight);
+            if (problem != null) return problem;
+        }
+        LocationDef location = model.locations.get(locationIndex);
+        for (EntryDef entry : location.entries) {
+            if (entry.shard.equals(shardName)) return shardName + " is already at this location.";
+        }
+        location.entries.add(new EntryDef(shardName, weight));
+        return commit();
+    }
+
+    /** @param weight null when the weight isn't known */
+    static synchronized String setWeight(int locationIndex, int entryIndex, Double weight) {
+        if (!validLocation(locationIndex)) return "That location no longer exists.";
+        List<EntryDef> entries = model.locations.get(locationIndex).entries;
+        if (entryIndex < 0 || entryIndex >= entries.size()) return "That shard is no longer here.";
+        if (weight != null) {
+            String problem = weightError(weight);
+            if (problem != null) return problem;
+        }
+        entries.get(entryIndex).weight = weight;
+        return commit();
+    }
+
+    static synchronized String removeEntry(int locationIndex, int entryIndex) {
+        if (!validLocation(locationIndex)) return "That location no longer exists.";
+        List<EntryDef> entries = model.locations.get(locationIndex).entries;
+        if (entryIndex < 0 || entryIndex >= entries.size()) return "That shard is no longer here.";
+        entries.remove(entryIndex);
+        return commit();
+    }
+
+    private static String validateShard(String name, String bazaarId, String ignoreName) {
+        if (isBlank(name)) return "Enter a shard name.";
+        String stripped = name.strip();
+        if (stripped.length() > MAX_SHARD_NAME) return "Shard names can be at most " + MAX_SHARD_NAME + " characters.";
+        for (ShardDef other : model.shards) {
+            if (!other.name.equals(ignoreName) && other.name.equalsIgnoreCase(stripped)) {
+                return "There is already a shard called \"" + other.name + "\".";
+            }
+        }
+        if (isBlank(bazaarId)) return "Enter the Bazaar id, e.g. SHARD_ANT.";
+        String id = bazaarId.strip();
+        if (id.length() > MAX_BAZAAR_ID) return "The Bazaar id can be at most " + MAX_BAZAAR_ID + " characters.";
+        if (!id.matches("[A-Za-z0-9_:.-]+")) return "The Bazaar id can only use letters, numbers and _ : . -";
+        return null;
+    }
+
+    static synchronized String addShard(String name, String bazaarId, Rarity rarity, Category category) {
+        String problem = validateShard(name, bazaarId, null);
+        if (problem != null) return problem;
+        model.shards.add(new ShardDef(name.strip(), bazaarId.strip().toUpperCase(Locale.ROOT), rarity, category));
+        return commit();
+    }
+
+    /** Changes a shard. If it is renamed, every location that has it follows. */
+    static synchronized String updateShard(String oldName, String name, String bazaarId, Rarity rarity,
+                                           Category category) {
+        ShardDef def = findShard(oldName);
+        if (def == null) return "That shard no longer exists.";
+        String problem = validateShard(name, bazaarId, oldName);
+        if (problem != null) return problem;
+        String newName = name.strip();
+        for (LocationDef location : model.locations) {
+            for (EntryDef entry : location.entries) {
+                if (entry.shard.equals(oldName)) entry.shard = newName;
+            }
+        }
+        def.name = newName;
+        def.bazaarId = bazaarId.strip().toUpperCase(Locale.ROOT);
+        def.rarity = rarity;
+        def.category = category;
+        return commit();
+    }
+
+    /** Deletes a shard, and takes it out of every location that has it. */
+    static synchronized String removeShard(String name) {
+        ShardDef def = findShard(name);
+        if (def == null) return "That shard no longer exists.";
+        model.shards.remove(def);
+        for (LocationDef location : model.locations) location.entries.removeIf(entry -> entry.shard.equals(name));
+        return commit();
+    }
+
+    /** How many locations a shard can be caught at, for telling the user what deleting it would change. */
+    static synchronized int locationsWith(String shardName) {
+        int count = 0;
+        for (LocationDef location : model.locations) {
+            for (EntryDef entry : location.entries) {
+                if (entry.shard.equals(shardName)) {
+                    count++;
+                    break;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static ShardDef findShard(String name) {
+        for (ShardDef def : model.shards) {
+            if (def.name.equals(name)) return def;
+        }
+        return null;
     }
 
     private HuntrapLocations() {

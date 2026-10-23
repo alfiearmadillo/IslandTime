@@ -2,6 +2,7 @@ package org.example.islandtime;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -76,45 +77,54 @@ import java.util.concurrent.TimeUnit;
  */
 public class FuelCycleTracker {
 
-    private static final Path LIVE_SAVE_FILE     = Paths.get("config/IslandTime/fuel_days.json");
-    private static final Path LIVE_SAVE_FILE_TMP = Paths.get("config/IslandTime/fuel_days.tmp");
-
-    // Separate save location used while "test mode" is enabled, so experimenting with
-    // the tracker (e.g. testing this session's changes) never touches real minion data.
-    private static final Path TEST_SAVE_FILE     = Paths.get("config/IslandTime/fuel_days_test.json");
-    private static final Path TEST_SAVE_FILE_TMP = Paths.get("config/IslandTime/fuel_days_test.tmp");
-
-    // Legacy per-cycle save file, kept only so existing data can be migrated once.
-    // Test mode never touches or migrates this — it's real historical data.
+    // Legacy per-cycle save file, kept only so existing data can be migrated once into the
+    // "main" data set. No other data set ever touches or migrates it — it's real historical data.
     private static final Path LEGACY_SAVE_FILE = Paths.get("config/IslandTime/fuel_cycles.txt");
 
-    // The test-mode toggle itself is always persisted at a fixed path (never one of the
-    // two data files above), so switching modes doesn't depend on whichever data file
-    // happens to be active.
-    private static final Path TEST_MODE_FLAG_FILE = Paths.get("config/IslandTime/fuel_test_mode.txt");
+    // Every data set (see FuelDataSets) has its own file, so experimenting in one never touches
+    // another's real minion data. The tracker only ever records into the active one.
+    private static Path saveFile()    { return FuelDataSets.dataFile(FuelDataSets.activeId()); }
+    private static Path saveFileTmp() { return FuelDataSets.tmpFile(FuelDataSets.activeId()); }
 
-    /** When true, save()/load() read/write TEST_SAVE_FILE instead of LIVE_SAVE_FILE, so
-     *  testing the tracker never risks corrupting real tracked fuel/profit data. */
-    private static volatile boolean testModeEnabled = false;
+    // Held while the active data set changes and while a save or backup snapshots the in-memory
+    // state together with the file it belongs to, so the two can never come from different sets.
+    private static final Object dataSetLock = new Object();
 
-    private static Path saveFile()    { return testModeEnabled ? TEST_SAVE_FILE    : LIVE_SAVE_FILE; }
-    private static Path saveFileTmp() { return testModeEnabled ? TEST_SAVE_FILE_TMP : LIVE_SAVE_FILE_TMP; }
+    // Bumped on every switch, so background work started for one data set can tell it has gone stale.
+    private static volatile int dataSetGeneration = 0;
 
-    public static boolean isTestModeEnabled() { return testModeEnabled; }
+    /** The id of the data set being recorded into, see {@link FuelDataSets}. */
+    public static String getActiveDataSetId() { return FuelDataSets.activeId(); }
 
     /**
-     * Switches between the live and test data files, persisting the toggle itself and
-     * reloading all in-memory state (day records, per-minion expiries, etc.) from
-     * whichever file is now active. Any active fuel-cycle state before the switch is
-     * discarded in memory (it's still safely saved in the previous mode's file).
+     * Makes {@code id} the data set the tracker records into and reloads all in-memory state (day
+     * records, per-minion expiries, etc.) from its file. The set being left is saved first, and any
+     * active fuel-cycle state it had is discarded from memory (it's still safely in its file). A set
+     * with no file yet starts empty, but keeps the current mob-kill baseline.
+     *
+     * @return null when switched (or already active), otherwise why it could not be
      */
-    public static void setTestModeEnabled(boolean enabled) {
-        if (testModeEnabled == enabled) return;
-        testModeEnabled = enabled;
-        saveTestModeFlag();
+    public static String switchDataSet(String id) {
+        synchronized (dataSetLock) {
+            if (FuelDataSets.get(id) == null) return "That data set no longer exists.";
+            if (FuelDataSets.isActive(id)) return null;
 
-        // Reset in-memory state before reloading, so switching mid-session never bleeds
-        // live data into the test file (or vice versa).
+            save();
+            flushPendingSaves();
+            if (!FuelDataSets.setActive(id)) return "That data set no longer exists.";
+            dataSetGeneration++;
+
+            double carriedBaseline = mobKillCoinsAt100Baseline;
+            // Reset before loading, so switching mid-session never bleeds one set's data into another's file.
+            resetInMemoryState();
+            boolean hadFile = Files.exists(saveFile()) || Files.exists(saveFileTmp());
+            loadActiveSet();
+            if (!hadFile) mobKillCoinsAt100Baseline = carriedBaseline;
+            return null;
+        }
+    }
+
+    private static void resetInMemoryState() {
         dayRecords.clear();
         minionExpiries.clear();
         cohortStartMs = 0;
@@ -123,27 +133,46 @@ public class FuelCycleTracker {
         minionFuelUnitsQueued.clear();
         timeWarps.clear();
         mobKillCoinsAt100Baseline = 0.0;
-
-        load();
+        lastBackupTime = 0;
+        cachedFuelUnitCostCohortStart = -1;
+        cachedFuelUnitCost = -1;
+        wasOnIslandLastTick = false;
     }
 
-    private static void saveTestModeFlag() {
+    /** Waits for the writes already queued, so a set's file is complete before one is loaded from it. */
+    private static void flushPendingSaves() {
         try {
-            Files.createDirectories(TEST_MODE_FLAG_FILE.getParent());
-            Files.writeString(TEST_MODE_FLAG_FILE, String.valueOf(testModeEnabled));
-        } catch (IOException e) {
-            System.err.println("[FuelCycleTracker] Failed to save test-mode flag: " + e.getMessage());
+            saveExecutor.submit(() -> { }).get(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            System.err.println("[FuelCycleTracker] Could not wait for pending saves: " + e.getMessage());
         }
     }
 
-    private static void loadTestModeFlag() {
-        if (Files.exists(TEST_MODE_FLAG_FILE)) {
-            try {
-                testModeEnabled = Boolean.parseBoolean(Files.readString(TEST_MODE_FLAG_FILE).trim());
-            } catch (IOException e) {
-                System.err.println("[FuelCycleTracker] Failed to load test-mode flag: " + e.getMessage());
+    /**
+     * The day records of a data set, most recent first, for browsing a set that isn't the active one: they are
+     * read straight from its file and nothing in memory is touched. For the active set this is the live data.
+     */
+    public static List<DayRecord> readDayRecordsDescending(String id) {
+        if (FuelDataSets.isActive(id)) return getDayRecordsDescending();
+
+        List<DayRecord> records = new ArrayList<>();
+        Path file = FuelDataSets.dataFile(id);
+        if (!Files.exists(file)) file = FuelDataSets.tmpFile(id);
+        if (!Files.exists(file)) return records;
+        try {
+            SaveData data = GSON.fromJson(Files.readString(file), SaveData.class);
+            if (data != null && data.days != null) {
+                for (DayRecord record : data.days.values()) {
+                    if (record != null && record.date != null) records.add(record);
+                }
             }
+        } catch (Exception e) {
+            System.err.println("[FuelCycleTracker] Could not read data set " + id + ": " + e.getMessage());
         }
+        records.sort(Comparator.comparingLong(FuelCycleTracker::recordStartForSorting).reversed());
+        return records;
     }
 
     static final long DAY_MS = 24 * 60 * 60 * 1000L;
@@ -154,8 +183,7 @@ public class FuelCycleTracker {
 
     // Rolling backups of the day-record data, taken whenever new fuel data is added
     // (not on every save) provided at least BACKUP_INTERVAL_MS has passed since the
-    // last one. Only the most recent MAX_BACKUPS are kept.
-    private static final Path BACKUP_DIR = Paths.get("config/IslandTime/backups");
+    // last one. Only the most recent MAX_BACKUPS are kept per data set.
     private static final long BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000L;
     private static final int MAX_BACKUPS = 7;
     private static long lastBackupTime = 0;
@@ -240,6 +268,99 @@ public class FuelCycleTracker {
         t.setName("FuelCycle-Saver");
         return t;
     });
+
+    // A separate thread for the Bazaar fetch behind the end-of-day prices, so a slow or hung request
+    // can never hold up the saves on saveExecutor.
+    private static final ExecutorService priceSnapshotExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("FuelCycle-PriceSnapshot");
+        return t;
+    });
+
+    // Days closed together (or a snapshot fetched a moment ago) share one Bazaar request.
+    private static final long END_PRICE_MAX_AGE_MS = 15_000L;
+    // How often the days still waiting for their end-of-day prices try the Bazaar again.
+    private static final long END_PRICE_RETRY_INTERVAL_MS = 30_000L;
+    private static volatile long lastEndPriceRetryMs = 0;
+    private static final java.util.concurrent.atomic.AtomicBoolean endPriceSnapshotRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Records the Bazaar sell offers of the loot (see {@link InfernoReturnCalculator#priceIds()}) on days
+     * that have just closed, so their estimated return uses what the loot was worth when the day ended
+     * rather than a price from some other day. A day that closed while the game was off simply gets the
+     * prices of the moment the game is next open: it stays marked as waiting for them until the Bazaar
+     * answers, also across restarts. The Bazaar is fetched on a background thread.
+     */
+    private static void captureEndOfDayPrices(List<DayRecord> closed) {
+        boolean any = false;
+        for (DayRecord record : closed) {
+            if (record.endPricesMs > 0) continue;
+            record.endPricesPending = true;
+            any = true;
+        }
+        if (any) submitEndOfDayPriceSnapshot();
+    }
+
+    /** Tries again for the days that are still waiting for their end-of-day prices. Called every second. */
+    private static void retryPendingEndOfDayPrices(long now) {
+        if (now - lastEndPriceRetryMs < END_PRICE_RETRY_INTERVAL_MS) return;
+        lastEndPriceRetryMs = now;
+        for (DayRecord record : dayRecords.values()) {
+            if (record.endPricesPending && record.endPricesMs <= 0) {
+                submitEndOfDayPriceSnapshot();
+                return;
+            }
+        }
+    }
+
+    private static void submitEndOfDayPriceSnapshot() {
+        if (!endPriceSnapshotRunning.compareAndSet(false, true)) return;
+        int generation = dataSetGeneration;
+        try {
+            priceSnapshotExecutor.submit(() -> snapshotPendingEndOfDayPrices(generation));
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            endPriceSnapshotRunning.set(false); // shutting down
+        }
+    }
+
+    private static void snapshotPendingEndOfDayPrices(int generation) {
+        try {
+            JsonObject products = PriceCache.getBazaarNoOlderThan(END_PRICE_MAX_AGE_MS);
+            if (products == null) return;
+            Map<String, Double> prices = new HashMap<>();
+            for (String id : InfernoReturnCalculator.priceIds()) {
+                double price = PriceCache.getSellOfferPrice(products, id);
+                if (price > 0 && Double.isFinite(price)) prices.put(id, price);
+            }
+            Double crude = prices.remove(InfernoReturnCalculator.CRUDE_GABAGOOL_ID);
+            Double veryCrude = prices.remove(InfernoReturnCalculator.VERY_CRUDE_GABAGOOL_ID);
+            if (crude == null && veryCrude == null) return;
+            long fetchedAt = PriceCache.peekBazaarTimeMs();
+            if (fetchedAt <= 0) fetchedAt = System.currentTimeMillis();
+
+            boolean changed = false;
+            synchronized (dataSetLock) {
+                // The data set was switched while the Bazaar was being fetched: these records are no longer loaded.
+                if (generation != dataSetGeneration) return;
+                for (DayRecord record : dayRecords.values()) {
+                    if (!record.endPricesPending || record.endPricesMs > 0) continue;
+                    record.endCrudeSellOffer = crude;
+                    record.endVeryCrudeSellOffer = veryCrude;
+                    record.endRarePrices = new HashMap<>(prices);
+                    record.endPricesMs = fetchedAt;
+                    record.endPricesPending = false;
+                    changed = true;
+                }
+            }
+            if (changed) save();
+        } catch (Exception e) {
+            System.err.println("[FuelCycleTracker] Could not capture end-of-day prices: " + e.getMessage());
+        } finally {
+            endPriceSnapshotRunning.set(false);
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Tracking toggle
@@ -344,6 +465,23 @@ public class FuelCycleTracker {
 
         public String notes = "";
 
+        /** Bazaar sell offer of Crude Gabagool when this day closed, or null if it wasn't captured
+         *  (see {@link FuelCycleTracker#captureEndOfDayPrices}). Used by the estimated return. */
+        public Double endCrudeSellOffer = null;
+
+        /** Same as {@link #endCrudeSellOffer}, for Very Crude Gabagool. */
+        public Double endVeryCrudeSellOffer = null;
+
+        /** The same again for the rare drops of Hypergolic fuel, by Bazaar product id. Null if not captured. */
+        public Map<String, Double> endRarePrices = null;
+
+        /** When the prices above were fetched, or 0 if they weren't captured. */
+        public long endPricesMs = 0;
+
+        /** True from when the day closed until its end-of-day prices have been captured. Not set for days that
+         *  closed before this was tracked, so those keep using live prices. */
+        public boolean endPricesPending = false;
+
         public DayRecord() {}
 
         public DayRecord(String date) {
@@ -423,6 +561,12 @@ public class FuelCycleTracker {
             }
             double percent = (activeMs * 100.0) / elapsed;
             return Math.min(100.0, percent);
+        }
+
+        /** How long this fuel-day lasts: its edited start-to-end span, otherwise 24h. */
+        public long getCycleDurationMs() {
+            boolean manuallyTimed = manualCycleTimes && cycleEndMs > cycleStartMs;
+            return manuallyTimed ? cycleEndMs - cycleStartMs : DAY_MS;
         }
 
         /**
@@ -841,6 +985,7 @@ public class FuelCycleTracker {
             FuelExpiredAlertTracker.onFuelDayUp(activeRecord.minionsRefueledAuto,
                     hasFuelQueuedAfter(activeRecord, now));
         }
+        if (closedActiveDay) captureEndOfDayPrices(List.of(activeRecord));
         save();
     }
 
@@ -1522,6 +1667,7 @@ public class FuelCycleTracker {
             lastDueRecordsCheckMs = now;
             checkDueDayRecords(now);
             checkHeldBackFuelAlert(now);
+            retryPendingEndOfDayPrices(now);
         }
 
         if (minionExpiries.isEmpty()) {
@@ -1611,6 +1757,7 @@ public class FuelCycleTracker {
         minionsCountedByDaySlot.remove(daySlot);
         FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto,
                 hasFuelQueuedAfter(record, System.currentTimeMillis()));
+        captureEndOfDayPrices(List.of(record));
     }
 
     private static boolean isClosed(DayRecord record) {
@@ -1711,7 +1858,10 @@ public class FuelCycleTracker {
         // Persist immediately (rather than waiting for the periodic tick-based save)
         // so the closed/alerted state survives a crash or shutdown moments later —
         // otherwise re-launching before the next autosave would replay the same alert.
-        if (anyClosed) save();
+        if (anyClosed) {
+            captureEndOfDayPrices(due);
+            save();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1928,14 +2078,17 @@ public class FuelCycleTracker {
     }
 
     public static void save() {
-        SaveData data = buildSaveData();
-
-        // Snapshot the target file at submit-time (not inside the async lambda) so a
-        // save queued just before a test-mode toggle still writes to the file it was
-        // meant for, instead of racing the mode switch and writing live data into the
-        // test file (or vice versa).
-        Path file = saveFile();
-        Path tmp  = saveFileTmp();
+        SaveData data;
+        Path file;
+        Path tmp;
+        // Snapshot the data and the target file together, at submit-time (not inside the async
+        // lambda), so a save queued just before a data set switch still writes to the file it was
+        // meant for, instead of racing the switch and writing one set's data into another's file.
+        synchronized (dataSetLock) {
+            data = buildSaveData();
+            file = saveFile();
+            tmp  = saveFileTmp();
+        }
 
         saveExecutor.submit(() -> {
             try {
@@ -1964,15 +2117,20 @@ public class FuelCycleTracker {
         if (lastBackupTime != 0 && now - lastBackupTime < BACKUP_INTERVAL_MS) return;
         lastBackupTime = now;
 
-        SaveData data = buildSaveData();
-        String prefix = testModeEnabled ? "fuel_days_test_backup-" : "fuel_days_backup-";
-        Path backupFile = BACKUP_DIR.resolve(prefix + now + ".json");
+        SaveData data;
+        String prefix;
+        synchronized (dataSetLock) {
+            data = buildSaveData();
+            prefix = FuelDataSets.backupPrefix(FuelDataSets.activeId());
+        }
+        Path backupDir = FuelDataSets.backupDir();
+        Path backupFile = backupDir.resolve(prefix + now + ".json");
 
         saveExecutor.submit(() -> {
             try {
-                Files.createDirectories(BACKUP_DIR);
+                Files.createDirectories(backupDir);
                 Files.writeString(backupFile, GSON.toJson(data));
-                pruneOldBackups(prefix);
+                pruneOldBackups(backupDir, prefix);
             } catch (IOException e) {
                 System.err.println("[FuelCycleTracker] Backup failed: " + e.getMessage());
                 e.printStackTrace();
@@ -1981,11 +2139,11 @@ public class FuelCycleTracker {
     }
 
     /** Deletes the oldest backups beyond MAX_BACKUPS for the given file-name prefix. */
-    private static void pruneOldBackups(String prefix) {
+    private static void pruneOldBackups(Path backupDir, String prefix) {
         try {
-            if (!Files.isDirectory(BACKUP_DIR)) return;
+            if (!Files.isDirectory(backupDir)) return;
             List<Path> backups;
-            try (var stream = Files.list(BACKUP_DIR)) {
+            try (var stream = Files.list(backupDir)) {
                 backups = stream
                         .filter(p -> p.getFileName().toString().startsWith(prefix)
                                   && p.getFileName().toString().endsWith(".json"))
@@ -2001,9 +2159,13 @@ public class FuelCycleTracker {
         }
     }
 
+    /** Loads the data set registry, then the data set it says is active. Called once at startup. */
     public static void load() {
-        loadTestModeFlag();
+        FuelDataSets.load();
+        loadActiveSet();
+    }
 
+    private static void loadActiveSet() {
         Path file = saveFile();
         Path tmp  = saveFileTmp();
 
@@ -2071,10 +2233,10 @@ public class FuelCycleTracker {
             return;
         }
 
-        // No new-format file yet for the active mode. Legacy migration only ever applies
-        // to real (live) data — test mode simply starts empty instead of pulling in the
-        // legacy live history.
-        if (!testModeEnabled) {
+        // No new-format file yet for the active data set. Legacy migration only ever applies
+        // to the main (real) data — every other set simply starts empty instead of pulling in
+        // the legacy history.
+        if (FuelDataSets.MAIN_ID.equals(FuelDataSets.activeId())) {
             migrateLegacyFile();
         }
     }
@@ -2178,6 +2340,7 @@ public class FuelCycleTracker {
 
     public static void shutdown() {
         save();
+        priceSnapshotExecutor.shutdownNow();
         saveExecutor.shutdown();
         try {
             if (!saveExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
