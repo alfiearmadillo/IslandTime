@@ -38,7 +38,7 @@ public class AgingItemsCommand {
         int inventorySlots = AgingItemsConfig.getInventorySlots();
 
         IslandTimeConfig config = ConfigManager.getConfig();
-        boolean useSellOffer = (config != null) && config.misc.agingUseSellOffer;
+        boolean useSellOffer = (config != null) && config.profitCalculators.agingUseSellOffer;
 
         client.player.sendSystemMessage(
                 Component.literal("Fetching prices...").withStyle(ChatFormatting.GRAY));
@@ -127,7 +127,7 @@ public class AgingItemsCommand {
                                     .append(Component.literal(sellLabel).withStyle(ChatFormatting.AQUA)));
                     client.player.sendSystemMessage(Component.literal(""));
 
-                    int topCount = (config != null) ? config.misc.agingTopCount : 0;
+                    int topCount = (config != null) ? config.profitCalculators.agingTopCount : 0;
                     int shown = 0;
 
                     for (ItemResult r : results) {

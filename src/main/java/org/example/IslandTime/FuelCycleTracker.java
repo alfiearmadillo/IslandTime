@@ -2,6 +2,7 @@ package org.example.islandtime;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -76,45 +77,54 @@ import java.util.concurrent.TimeUnit;
  */
 public class FuelCycleTracker {
 
-    private static final Path LIVE_SAVE_FILE     = Paths.get("config/IslandTime/fuel_days.json");
-    private static final Path LIVE_SAVE_FILE_TMP = Paths.get("config/IslandTime/fuel_days.tmp");
-
-    // Separate save location used while "test mode" is enabled, so experimenting with
-    // the tracker (e.g. testing this session's changes) never touches real minion data.
-    private static final Path TEST_SAVE_FILE     = Paths.get("config/IslandTime/fuel_days_test.json");
-    private static final Path TEST_SAVE_FILE_TMP = Paths.get("config/IslandTime/fuel_days_test.tmp");
-
-    // Legacy per-cycle save file, kept only so existing data can be migrated once.
-    // Test mode never touches or migrates this — it's real historical data.
+    // Legacy per-cycle save file, kept only so existing data can be migrated once into the
+    // "main" data set. No other data set ever touches or migrates it — it's real historical data.
     private static final Path LEGACY_SAVE_FILE = Paths.get("config/IslandTime/fuel_cycles.txt");
 
-    // The test-mode toggle itself is always persisted at a fixed path (never one of the
-    // two data files above), so switching modes doesn't depend on whichever data file
-    // happens to be active.
-    private static final Path TEST_MODE_FLAG_FILE = Paths.get("config/IslandTime/fuel_test_mode.txt");
+    // Every data set (see FuelDataSets) has its own file, so experimenting in one never touches
+    // another's real minion data. The tracker only ever records into the active one.
+    private static Path saveFile()    { return FuelDataSets.dataFile(FuelDataSets.activeId()); }
+    private static Path saveFileTmp() { return FuelDataSets.tmpFile(FuelDataSets.activeId()); }
 
-    /** When true, save()/load() read/write TEST_SAVE_FILE instead of LIVE_SAVE_FILE, so
-     *  testing the tracker never risks corrupting real tracked fuel/profit data. */
-    private static volatile boolean testModeEnabled = false;
+    // Held while the active data set changes and while a save or backup snapshots the in-memory
+    // state together with the file it belongs to, so the two can never come from different sets.
+    private static final Object dataSetLock = new Object();
 
-    private static Path saveFile()    { return testModeEnabled ? TEST_SAVE_FILE    : LIVE_SAVE_FILE; }
-    private static Path saveFileTmp() { return testModeEnabled ? TEST_SAVE_FILE_TMP : LIVE_SAVE_FILE_TMP; }
+    // Bumped on every switch, so background work started for one data set can tell it has gone stale.
+    private static volatile int dataSetGeneration = 0;
 
-    public static boolean isTestModeEnabled() { return testModeEnabled; }
+    /** The id of the data set being recorded into, see {@link FuelDataSets}. */
+    public static String getActiveDataSetId() { return FuelDataSets.activeId(); }
 
     /**
-     * Switches between the live and test data files, persisting the toggle itself and
-     * reloading all in-memory state (day records, per-minion expiries, etc.) from
-     * whichever file is now active. Any active fuel-cycle state before the switch is
-     * discarded in memory (it's still safely saved in the previous mode's file).
+     * Makes {@code id} the data set the tracker records into and reloads all in-memory state (day
+     * records, per-minion expiries, etc.) from its file. The set being left is saved first, and any
+     * active fuel-cycle state it had is discarded from memory (it's still safely in its file). A set
+     * with no file yet starts empty, but keeps the current mob-kill baseline.
+     *
+     * @return null when switched (or already active), otherwise why it could not be
      */
-    public static void setTestModeEnabled(boolean enabled) {
-        if (testModeEnabled == enabled) return;
-        testModeEnabled = enabled;
-        saveTestModeFlag();
+    public static String switchDataSet(String id) {
+        synchronized (dataSetLock) {
+            if (FuelDataSets.get(id) == null) return "That data set no longer exists.";
+            if (FuelDataSets.isActive(id)) return null;
 
-        // Reset in-memory state before reloading, so switching mid-session never bleeds
-        // live data into the test file (or vice versa).
+            save();
+            flushPendingSaves();
+            if (!FuelDataSets.setActive(id)) return "That data set no longer exists.";
+            dataSetGeneration++;
+
+            double carriedBaseline = mobKillCoinsAt100Baseline;
+            // Reset before loading, so switching mid-session never bleeds one set's data into another's file.
+            resetInMemoryState();
+            boolean hadFile = Files.exists(saveFile()) || Files.exists(saveFileTmp());
+            loadActiveSet();
+            if (!hadFile) mobKillCoinsAt100Baseline = carriedBaseline;
+            return null;
+        }
+    }
+
+    private static void resetInMemoryState() {
         dayRecords.clear();
         minionExpiries.clear();
         cohortStartMs = 0;
@@ -123,27 +133,46 @@ public class FuelCycleTracker {
         minionFuelUnitsQueued.clear();
         timeWarps.clear();
         mobKillCoinsAt100Baseline = 0.0;
-
-        load();
+        lastBackupTime = 0;
+        cachedFuelUnitCostCohortStart = -1;
+        java.util.Arrays.fill(cachedFuelUnitCosts, -1);
+        wasOnIslandLastTick = false;
     }
 
-    private static void saveTestModeFlag() {
+    /** Waits for the writes already queued, so a set's file is complete before one is loaded from it. */
+    private static void flushPendingSaves() {
         try {
-            Files.createDirectories(TEST_MODE_FLAG_FILE.getParent());
-            Files.writeString(TEST_MODE_FLAG_FILE, String.valueOf(testModeEnabled));
-        } catch (IOException e) {
-            System.err.println("[FuelCycleTracker] Failed to save test-mode flag: " + e.getMessage());
+            saveExecutor.submit(() -> { }).get(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            System.err.println("[FuelCycleTracker] Could not wait for pending saves: " + e.getMessage());
         }
     }
 
-    private static void loadTestModeFlag() {
-        if (Files.exists(TEST_MODE_FLAG_FILE)) {
-            try {
-                testModeEnabled = Boolean.parseBoolean(Files.readString(TEST_MODE_FLAG_FILE).trim());
-            } catch (IOException e) {
-                System.err.println("[FuelCycleTracker] Failed to load test-mode flag: " + e.getMessage());
+    /**
+     * The day records of a data set, most recent first, for browsing a set that isn't the active one: they are
+     * read straight from its file and nothing in memory is touched. For the active set this is the live data.
+     */
+    public static List<DayRecord> readDayRecordsDescending(String id) {
+        if (FuelDataSets.isActive(id)) return getDayRecordsDescending();
+
+        List<DayRecord> records = new ArrayList<>();
+        Path file = FuelDataSets.dataFile(id);
+        if (!Files.exists(file)) file = FuelDataSets.tmpFile(id);
+        if (!Files.exists(file)) return records;
+        try {
+            SaveData data = GSON.fromJson(Files.readString(file), SaveData.class);
+            if (data != null && data.days != null) {
+                for (DayRecord record : data.days.values()) {
+                    if (record != null && record.date != null) records.add(record);
+                }
             }
+        } catch (Exception e) {
+            System.err.println("[FuelCycleTracker] Could not read data set " + id + ": " + e.getMessage());
         }
+        records.sort(Comparator.comparingLong(FuelCycleTracker::recordStartForSorting).reversed());
+        return records;
     }
 
     static final long DAY_MS = 24 * 60 * 60 * 1000L;
@@ -154,8 +183,7 @@ public class FuelCycleTracker {
 
     // Rolling backups of the day-record data, taken whenever new fuel data is added
     // (not on every save) provided at least BACKUP_INTERVAL_MS has passed since the
-    // last one. Only the most recent MAX_BACKUPS are kept.
-    private static final Path BACKUP_DIR = Paths.get("config/IslandTime/backups");
+    // last one. Only the most recent MAX_BACKUPS are kept per data set.
     private static final long BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000L;
     private static final int MAX_BACKUPS = 7;
     private static long lastBackupTime = 0;
@@ -194,6 +222,9 @@ public class FuelCycleTracker {
     // was opened, so refueling a full set cannot split one cycle across several day records
     // merely because the minions were clicked in sequence.
     private static final ConcurrentHashMap<String, Integer> minionFuelUnitsQueued = new ConcurrentHashMap<>();
+    /** The grade of fuel last placed in each minion, only so removing the minion can take its grade back off the
+     *  days it was counted on. Not saved: after a restart the day's most used grade is taken off instead. */
+    private static final ConcurrentHashMap<String, Integer> minionFuelGrades = new ConcurrentHashMap<>();
 
     // Every Enchanted Clock "time warp" (see onTimeWarp()), oldest first. The cohort's
     // day-slots are nominal 24h steps from cohortStartMs; these say how far each slot
@@ -221,7 +252,9 @@ public class FuelCycleTracker {
     // the live bazaar between fuelings. Naturally invalidates itself once a new cohort
     // starts (cohortStartMs changes), since the guard below compares against it.
     private static volatile long   cachedFuelUnitCostCohortStart = -1;
-    private static volatile double cachedFuelUnitCost           = -1;
+    /** The snapshotted unit price of each grade of fuel (Rare, Epic, Legendary), -1 where not captured yet. */
+    private static final double[] cachedFuelUnitCosts = {-1, -1, -1};
+    private static final int FUEL_GRADES = 3;
 
     /** Default mob-kill coins/day at 100% AFK, used as the snapshot baseline for newly created days. */
     private static double mobKillCoinsAt100Baseline = 0.0;
@@ -240,6 +273,139 @@ public class FuelCycleTracker {
         t.setName("FuelCycle-Saver");
         return t;
     });
+
+    // A separate thread for the Bazaar fetch behind the end-of-day prices, so a slow or hung request
+    // can never hold up the saves on saveExecutor.
+    private static final ExecutorService priceSnapshotExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("FuelCycle-PriceSnapshot");
+        return t;
+    });
+
+    // Days closed together (or a snapshot fetched a moment ago) share one Bazaar request.
+    private static final long END_PRICE_MAX_AGE_MS = 15_000L;
+    // How often the days still waiting for their end-of-day prices try the Bazaar again.
+    private static final long END_PRICE_RETRY_INTERVAL_MS = 30_000L;
+    private static volatile long lastEndPriceRetryMs = 0;
+    private static final java.util.concurrent.atomic.AtomicBoolean endPriceSnapshotRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Records the Bazaar sell offers of the loot (see {@link InfernoReturnCalculator#priceIds()}) on days
+     * that have just closed, so their estimated return uses what the loot was worth when the day ended
+     * rather than a price from some other day. A day that closed while the game was off simply gets the
+     * prices of the moment the game is next open: it stays marked as waiting for them until the Bazaar
+     * answers, also across restarts. The Bazaar is fetched on a background thread.
+     */
+    private static void captureEndOfDayPrices(List<DayRecord> closed) {
+        boolean any = false;
+        for (DayRecord record : closed) {
+            if (record.endPricesMs > 0) continue;
+            record.endPricesPending = true;
+            any = true;
+        }
+        if (any) submitEndOfDayPriceSnapshot();
+    }
+
+    /** Tries again for the days that are still waiting for their end-of-day prices. Called every second. */
+    private static void retryPendingEndOfDayPrices(long now) {
+        if (now - lastEndPriceRetryMs < END_PRICE_RETRY_INTERVAL_MS) return;
+        lastEndPriceRetryMs = now;
+        for (DayRecord record : dayRecords.values()) {
+            if (record.endPricesPending) {
+                submitEndOfDayPriceSnapshot();
+                return;
+            }
+        }
+    }
+
+    /**
+     * Locks in the prices of the closed days that don't have all of them saved, so a day's profit stops
+     * following the live Bazaar: a day from before the prices were tracked (or one whose price was never
+     * captured) gets the current ones once, and one that has some but not all gets the missing ones.
+     * Each day is only backfilled once; a day that was captured in full when it closed is left alone.
+     */
+    private static void queueEndOfDayPriceBackfill() {
+        boolean any = false;
+        for (DayRecord record : dayRecords.values()) {
+            if (record.endPricesPending || record.endPricesBackfilled || !isClosed(record)) continue;
+            if (record.endPricesMs <= 0 || !missingEndPrices(record).isEmpty()) {
+                record.endPricesPending = true;
+                record.endPricesBackfilled = true;
+                any = true;
+            }
+        }
+        if (any) submitEndOfDayPriceSnapshot();
+    }
+
+    /** The loot and eyedrop ingredients that a day has no saved price for. */
+    private static List<String> missingEndPrices(DayRecord record) {
+        List<String> missing = new ArrayList<>();
+        for (String id : InfernoReturnCalculator.priceIds()) {
+            boolean has;
+            if (InfernoReturnCalculator.CRUDE_GABAGOOL_ID.equals(id)) has = record.endCrudeSellOffer != null;
+            else if (InfernoReturnCalculator.VERY_CRUDE_GABAGOOL_ID.equals(id)) has = record.endVeryCrudeSellOffer != null;
+            else has = record.endRarePrices != null && record.endRarePrices.get(id) != null;
+            if (!has) missing.add(id);
+        }
+        return missing;
+    }
+
+    private static void submitEndOfDayPriceSnapshot() {
+        if (!endPriceSnapshotRunning.compareAndSet(false, true)) return;
+        int generation = dataSetGeneration;
+        try {
+            priceSnapshotExecutor.submit(() -> snapshotPendingEndOfDayPrices(generation));
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            endPriceSnapshotRunning.set(false); // shutting down
+        }
+    }
+
+    private static void snapshotPendingEndOfDayPrices(int generation) {
+        try {
+            JsonObject products = PriceCache.getBazaarNoOlderThan(END_PRICE_MAX_AGE_MS);
+            if (products == null) return;
+            Map<String, Double> prices = new HashMap<>();
+            for (String id : InfernoReturnCalculator.priceIds()) {
+                double price = PriceCache.getSellOfferPrice(products, id);
+                if (price > 0 && Double.isFinite(price)) prices.put(id, price);
+            }
+            Double crude = prices.remove(InfernoReturnCalculator.CRUDE_GABAGOOL_ID);
+            Double veryCrude = prices.remove(InfernoReturnCalculator.VERY_CRUDE_GABAGOOL_ID);
+            if (crude == null && veryCrude == null) return;
+            long fetchedAt = PriceCache.peekBazaarTimeMs();
+            if (fetchedAt <= 0) fetchedAt = System.currentTimeMillis();
+
+            boolean changed = false;
+            synchronized (dataSetLock) {
+                // The data set was switched while the Bazaar was being fetched: these records are no longer loaded.
+                if (generation != dataSetGeneration) return;
+                for (DayRecord record : dayRecords.values()) {
+                    if (!record.endPricesPending) continue;
+                    if (record.endPricesMs <= 0) {
+                        record.endCrudeSellOffer = crude;
+                        record.endVeryCrudeSellOffer = veryCrude;
+                        record.endRarePrices = new HashMap<>(prices);
+                        record.endPricesMs = fetchedAt;
+                    } else {
+                        // Already has prices from when the day ended: keep those, and only add the ones it lacks.
+                        if (record.endCrudeSellOffer == null) record.endCrudeSellOffer = crude;
+                        if (record.endVeryCrudeSellOffer == null) record.endVeryCrudeSellOffer = veryCrude;
+                        if (record.endRarePrices == null) record.endRarePrices = new HashMap<>();
+                        prices.forEach(record.endRarePrices::putIfAbsent);
+                    }
+                    record.endPricesPending = false;
+                    changed = true;
+                }
+            }
+            if (changed) save();
+        } catch (Exception e) {
+            System.err.println("[FuelCycleTracker] Could not capture end-of-day prices: " + e.getMessage());
+        } finally {
+            endPriceSnapshotRunning.set(false);
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Tracking toggle
@@ -295,11 +461,19 @@ public class FuelCycleTracker {
         /** True when this day's start/end are set explicitly rather than being start + 24h:
          *  either corrected by hand, or moved by an Enchanted Clock time warp. */
         public boolean manualCycleTimes = false;
+        /** How much of this day's 24 hours an Enchanted Clock warp took off its start-to-end span. The
+         *  minions still ran for the full day, so this is added back for production (see
+         *  {@link #getProductionMs()}). 0 for a day that was never warped. */
+        public long timeWarpedMs = 0;
         /** Internal marker distinguishing a manually-entered end from a completed day. */
         public boolean cycleClosed = false;
 
         /** Minions refueled today, auto-detected from fuel placements. */
         public int minionsRefueledAuto = 0;
+
+        /** Fuel units placed this day by grade, indexed {@code 0} Rare, {@code 1} Epic, {@code 2} Legendary,
+         *  taken from the colour of the fuel in the fueling message. Null when no grade was seen. */
+        public int[] fuelGradeCounts = null;
 
         /** Manual override for minions refueled — null means "use the auto-detected value".
          *  Useful when lag desyncs the automatic fuel-placement detection. */
@@ -343,6 +517,28 @@ public class FuelCycleTracker {
         public Double manualGabagoolAmount = null;
 
         public String notes = "";
+
+        /** Bazaar sell offer of Crude Gabagool when this day closed, or null if it wasn't captured
+         *  (see {@link FuelCycleTracker#captureEndOfDayPrices}). Used by the estimated return. */
+        public Double endCrudeSellOffer = null;
+
+        /** Same as {@link #endCrudeSellOffer}, for Very Crude Gabagool. */
+        public Double endVeryCrudeSellOffer = null;
+
+        /** The same again for the rare drops of Hypergolic fuel, by Bazaar product id. Null if not captured. */
+        public Map<String, Double> endRarePrices = null;
+
+        /** When the prices above were fetched, or 0 if they weren't captured. */
+        public long endPricesMs = 0;
+
+        /** True from when the day closed (or, for a day that is missing prices, from the backfill) until its
+         *  prices have been captured. */
+        public boolean endPricesPending = false;
+
+        /** True when some or all of the saved prices were taken after the day ended, because they hadn't been saved
+         *  when it closed (a day from before they were tracked, or one the game missed). They are still saved once and
+         *  then kept, so the day stops following the live price. */
+        public boolean endPricesBackfilled = false;
 
         public DayRecord() {}
 
@@ -423,6 +619,52 @@ public class FuelCycleTracker {
             }
             double percent = (activeMs * 100.0) / elapsed;
             return Math.min(100.0, percent);
+        }
+
+        /** How long this fuel-day lasts: its edited start-to-end span, otherwise 24h. */
+        public long getCycleDurationMs() {
+            boolean manuallyTimed = manualCycleTimes && cycleEndMs > cycleStartMs;
+            return manuallyTimed ? cycleEndMs - cycleStartMs : DAY_MS;
+        }
+
+        /**
+         * How long the minions produced on this day: the span plus any time a warp took off it, and a day typed
+         * in by hand that crossed a clock change counts as its whole days (see {@link FuelDayTime#productionMs}).
+         */
+        public long getProductionMs() {
+            if (!(manualCycleTimes && cycleEndMs > cycleStartMs)) return DAY_MS;
+            return FuelDayTime.productionMs(cycleStartMs, cycleEndMs, timeWarpedMs, ZoneId.systemDefault());
+        }
+
+        /** Whether {@code now} falls inside this fuel-day: it has started and not yet ended. */
+        public boolean isInProgress(long now) {
+            if (cycleStartMs <= 0 || now < cycleStartMs) return false;
+            long end = cycleEndMs > cycleStartMs ? cycleEndMs : cycleStartMs + DAY_MS;
+            return now < end;
+        }
+
+        /** Whether an Enchanted Clock warp shortened this day. */
+        public boolean isTimeWarped() {
+            return timeWarpedMs > 0;
+        }
+
+        /** The grade of fuel used for most of this day's minions ({@code 0} Rare to {@code 2} Legendary), or -1. */
+        public int getFuelGrade() {
+            return FuelDayTime.majorityGrade(fuelGradeCounts);
+        }
+
+        /** Whether the minions of this day were fueled with more than one grade. */
+        public boolean hasMixedFuelGrades() {
+            return FuelDayTime.mixedGrades(fuelGradeCounts);
+        }
+
+        void addFuelGrade(int grade, int delta) {
+            if (grade < 0 || grade > 2) return;
+            if (fuelGradeCounts == null || fuelGradeCounts.length < 3) {
+                fuelGradeCounts = java.util.Arrays.copyOf(fuelGradeCounts == null ? new int[0] : fuelGradeCounts, 3);
+            }
+            fuelGradeCounts[grade] = Math.max(0, fuelGradeCounts[grade] + delta);
+            if (fuelGradeCounts[0] + fuelGradeCounts[1] + fuelGradeCounts[2] == 0) fuelGradeCounts = null;
         }
 
         /**
@@ -556,12 +798,12 @@ public class FuelCycleTracker {
     /**
      * Computes the DayRecord key for the given day-slot index within a cohort that
      * started at {@code cohortStart} — the calendar date that particular 24h span
-     * started on. Since each slot is exactly 24h after the last, this normally advances
-     * by exactly one calendar day per index (aside from rare DST edge cases).
+     * started on. Slots are exactly 24h apart, but the key advances by exactly one calendar day
+     * per index even when the clocks change in between (where 24h steps would repeat or skip a
+     * date and two days would share a record).
      */
     private static String daySlotKey(long cohortStart, int dayIndex) {
-        long slotStartMs = cohortStart + (long) dayIndex * DAY_MS;
-        return LocalDate.ofInstant(Instant.ofEpochMilli(slotStartMs), ZoneId.systemDefault()).toString();
+        return FuelDayTime.slotDate(cohortStart, dayIndex, ZoneId.systemDefault());
     }
 
     /** Matches a modern armor-stand key from {@code MinionFuelTracker.buildArmorStandKey()}: a
@@ -652,6 +894,9 @@ public class FuelCycleTracker {
             changed = true;
         }
 
+        Integer migratedGrade = minionFuelGrades.remove(oldKey);
+        if (migratedGrade != null) minionFuelGrades.putIfAbsent(newKey, migratedGrade);
+
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(oldKey)) continue;
             changed = true;
@@ -659,7 +904,10 @@ public class FuelCycleTracker {
                 // Both keys were counted toward this day slot, but they are the same
                 // physical minion — drop the now-duplicated count.
                 DayRecord record = dayRecords.get(entry.getKey());
-                if (record != null && record.minionsRefueledAuto > 0) record.minionsRefueledAuto--;
+                if (record != null && record.minionsRefueledAuto > 0) {
+                    record.minionsRefueledAuto--;
+                    removeFuelGrade(record, migratedGrade);
+                }
             }
         }
 
@@ -711,12 +959,14 @@ public class FuelCycleTracker {
         for (String legacyKey : legacyKeys) {
             minionExpiries.remove(legacyKey);
             minionFuelUnitsQueued.remove(legacyKey);
+            Integer legacyGrade = minionFuelGrades.remove(legacyKey);
             changed = true;
             for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
                 if (entry.getValue().remove(legacyKey)) {
                     DayRecord record = dayRecords.get(entry.getKey());
                     if (record != null && record.minionsRefueledAuto > 0) {
                         record.minionsRefueledAuto -= 1;
+                        removeFuelGrade(record, legacyGrade);
                     }
                 }
             }
@@ -733,12 +983,14 @@ public class FuelCycleTracker {
 
         for (String queuedKey : queuedOnlyKeys) {
             minionFuelUnitsQueued.remove(queuedKey);
+            Integer queuedGrade = minionFuelGrades.remove(queuedKey);
             changed = true;
             for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
                 if (entry.getValue().remove(queuedKey)) {
                     DayRecord record = dayRecords.get(entry.getKey());
                     if (record != null && record.minionsRefueledAuto > 0) {
                         record.minionsRefueledAuto -= 1;
+                        removeFuelGrade(record, queuedGrade);
                     }
                 }
             }
@@ -841,6 +1093,7 @@ public class FuelCycleTracker {
             FuelExpiredAlertTracker.onFuelDayUp(activeRecord.minionsRefueledAuto,
                     hasFuelQueuedAfter(activeRecord, now));
         }
+        if (closedActiveDay) captureEndOfDayPrices(List.of(activeRecord));
         save();
     }
 
@@ -1004,6 +1257,8 @@ public class FuelCycleTracker {
         selected.cycleStartMs = startMs;
         selected.cycleEndMs = endMs;
         selected.manualCycleTimes = true;
+        // The span is now what was typed in, so a warp's credit no longer applies to it
+        selected.timeWarpedMs = 0;
         // Only a day whose alert already fired stays closed, and only while its new end is
         // still in the past. A manually-timed record always has an end set, so using that
         // as the "closed" marker would silently swallow the alert of an active/queued day.
@@ -1126,6 +1381,9 @@ public class FuelCycleTracker {
         record.cycleStartMs = nextCycleStart;
         record.manualMinionCount = minionCount;
         record.manualFuelCost = fuelCost;
+        if (!existing.isEmpty() && existing.get(0).fuelGradeCounts != null) {
+            record.fuelGradeCounts = existing.get(0).fuelGradeCounts.clone();
+        }
         save();
         return record;
     }
@@ -1171,6 +1429,8 @@ public class FuelCycleTracker {
         if (end - start != DAY_MS) {
             record.cycleEndMs = Math.max(end, start + 1);
             record.manualCycleTimes = true;
+            // A slot cut short by a warp that happened before it was queued still gets its full 24 hours
+            if (end - start < DAY_MS) record.timeWarpedMs = DAY_MS - (end - start);
         }
     }
 
@@ -1210,12 +1470,16 @@ public class FuelCycleTracker {
         for (DayRecord record : dayRecords.values()) {
             if (record.cycleStartMs <= 0 || isClosed(record)) continue;
 
+            long oldSpan = effectiveEndMs(record) - record.cycleStartMs;
             long newStart = MinionTimeWarp.shiftBoundary(record.cycleStartMs, now, amountMs);
             long newEnd = MinionTimeWarp.shiftBoundary(effectiveEndMs(record), now, amountMs);
             record.cycleStartMs = newStart;
             record.cycleEndMs = Math.max(newEnd, newStart + 1);
             record.manualCycleTimes = true;
             record.cycleClosed = false;
+            // The day got shorter, but the minions still run for all of it
+            long lost = oldSpan - (record.cycleEndMs - record.cycleStartMs);
+            if (lost > 0) record.timeWarpedMs += lost;
         }
 
         timeWarps.add(new MinionTimeWarp.Warp(now, amountMs));
@@ -1260,15 +1524,23 @@ public class FuelCycleTracker {
     private static boolean removeMinionFuelState(String minionKey) {
         if (minionExpiries.remove(minionKey) == null) return false;
         minionFuelUnitsQueued.remove(minionKey);
+        Integer minionGrade = minionFuelGrades.remove(minionKey);
 
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(minionKey)) continue;
             DayRecord record = dayRecords.get(entry.getKey());
             if (record != null && !isClosed(record) && record.minionsRefueledAuto > 0) {
                 record.minionsRefueledAuto--;
+                removeFuelGrade(record, minionGrade);
             }
         }
         return true;
+    }
+
+    /** Takes one minion's fuel grade off a day: its own when known, otherwise the one the day used most. */
+    private static void removeFuelGrade(DayRecord record, Integer minionGrade) {
+        int grade = minionGrade != null ? minionGrade : record.getFuelGrade();
+        record.addFuelGrade(grade, -1);
     }
 
     /** Removes expired state left behind when a minion was not opened as its fuel ran out. */
@@ -1308,6 +1580,7 @@ public class FuelCycleTracker {
     /** Removes expired state without changing counts for day-slots that already started. */
     private static boolean removeExpiredMinionState(String minionKey, long now) {
         if (minionExpiries.remove(minionKey) == null) return false;
+        Integer minionGrade = minionFuelGrades.remove(minionKey);
 
         for (Map.Entry<String, Set<String>> entry : minionsCountedByDaySlot.entrySet()) {
             if (!entry.getValue().remove(minionKey)) continue;
@@ -1315,6 +1588,7 @@ public class FuelCycleTracker {
             if (record != null && record.cycleStartMs > now && !isClosed(record)
                     && record.minionsRefueledAuto > 0) {
                 record.minionsRefueledAuto--;
+                removeFuelGrade(record, minionGrade);
             }
         }
         return true;
@@ -1327,6 +1601,7 @@ public class FuelCycleTracker {
         activeDaySlotIndex = 0;
         minionsCountedByDaySlot.clear();
         minionFuelUnitsQueued.clear();
+        minionFuelGrades.clear();
         wasOnIslandLastTick = false;
     }
 
@@ -1372,6 +1647,15 @@ public class FuelCycleTracker {
      * running/extending regardless of the toggle — we never abandon data mid-cohort.
      */
     public static void onMinionFueled(String minionKey, int fuelCount) {
+        onMinionFueled(minionKey, fuelCount, -1);
+    }
+
+    /**
+     * As {@link #onMinionFueled(String, int)}, also recording which grade of fuel was placed
+     * ({@code 0} Rare, {@code 1} Epic, {@code 2} Legendary, or -1 when it isn't known) on each
+     * day it covers, so the estimated return can use the grade that was really used.
+     */
+    public static void onMinionFueled(String minionKey, int fuelCount, int fuelGrade) {
         if (fuelCount <= 0) return;
         if (minionKey == null || minionKey.isEmpty()) minionKey = "unknown";
         long now = System.currentTimeMillis();
@@ -1401,6 +1685,7 @@ public class FuelCycleTracker {
             activeDaySlotIndex = 0;
             minionsCountedByDaySlot.clear();
             minionFuelUnitsQueued.clear();
+            minionFuelGrades.clear();
         }
 
         // The wall-clock moment the FIRST of these newly-added units starts burning:
@@ -1447,8 +1732,10 @@ public class FuelCycleTracker {
             Set<String> counted = minionsCountedByDaySlot.computeIfAbsent(daySlot, k -> ConcurrentHashMap.newKeySet());
             if (counted.add(minionKey)) {
                 record.minionsRefueledAuto += 1;
+                record.addFuelGrade(fuelGrade, 1);
             }
         }
+        if (fuelGrade >= 0) minionFuelGrades.put(minionKey, fuelGrade);
 
         // Estimate the per-minion recipe price from the bazaar in the background so we
         // never block the client thread while a container screen is open. Each day gets
@@ -1460,18 +1747,19 @@ public class FuelCycleTracker {
         final int firstDayIndexFinal = firstDayIndex;
         saveExecutor.submit(() -> {
             try {
-                double unitCost = getCohortFuelUnitCost(cohortStartFinal);
-                if (unitCost > 0) {
-                    for (int u = 0; u < fuelCount; u++) {
-                        int dayIndex = firstDayIndexFinal + u;
-                        DayRecord r = dayRecords.get(daySlotKey(cohortStartFinal, dayIndex));
-                        if (r != null) {
-                            r.lockedFuelCostPerMinion = unitCost;
-                            r.fuelCost = unitCost * r.minionsRefueledAuto;
-                        }
+                boolean priced = false;
+                for (int u = 0; u < fuelCount; u++) {
+                    int dayIndex = firstDayIndexFinal + u;
+                    DayRecord r = dayRecords.get(daySlotKey(cohortStartFinal, dayIndex));
+                    if (r == null) continue;
+                    double unitCost = getDayFuelUnitCost(r, cohortStartFinal);
+                    if (unitCost > 0) {
+                        r.lockedFuelCostPerMinion = unitCost;
+                        r.fuelCost = unitCost * r.minionsRefueledAuto;
+                        priced = true;
                     }
-                    save();
                 }
+                if (priced) save();
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Fuel cost estimate failed: " + e.getMessage());
             }
@@ -1482,8 +1770,26 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Returns the buy-order unit price to use for every fuel-cost calculation within the
-     * cohort that started at {@code cohortStart}, fetching and caching it from the live
+     * The recipe cost of one minion's fuel on a day: each grade placed is costed at its own recipe, averaged over
+     * the grades the day used. A day with no grade seen is costed as Epic fuel, which is what every day used to be.
+     */
+    private static double getDayFuelUnitCost(DayRecord record, long cohortStart) {
+        double sum = 0;
+        int units = 0;
+        int[] counts = record.fuelGradeCounts;
+        for (int grade = 0; counts != null && grade < counts.length && grade < FUEL_GRADES; grade++) {
+            if (counts[grade] <= 0) continue;
+            double cost = getCohortFuelUnitCost(cohortStart, grade);
+            if (cost <= 0) return -1;
+            sum += cost * counts[grade];
+            units += counts[grade];
+        }
+        return units > 0 ? sum / units : getCohortFuelUnitCost(cohortStart, InfernoReturnCalculator.GRADE_HEAVY);
+    }
+
+    /**
+     * Returns the buy-order unit price of one fuel of {@code grade} to use for every fuel-cost calculation within
+     * the cohort that started at {@code cohortStart}, fetching and caching it from the live
      * bazaar the first time it's needed for that cohort and simply returning the cached
      * value for every later call (from the same or a different fueling event) within
      * that same cohort — so a day's recorded fuel cost is never affected by however the
@@ -1491,16 +1797,19 @@ public class FuelCycleTracker {
      * (different {@code cohortStart}) always re-fetches a fresh price. If the live fetch
      * fails (returns <= 0, e.g. no network), nothing is cached, so the next call retries.
      */
-    private static synchronized double getCohortFuelUnitCost(long cohortStart) {
-        if (cachedFuelUnitCostCohortStart == cohortStart && cachedFuelUnitCost > 0) {
-            return cachedFuelUnitCost;
+    private static synchronized double getCohortFuelUnitCost(long cohortStart, int grade) {
+        if (cachedFuelUnitCostCohortStart != cohortStart) {
+            cachedFuelUnitCostCohortStart = cohortStart;
+            java.util.Arrays.fill(cachedFuelUnitCosts, -1);
+        }
+        if (cachedFuelUnitCosts[grade] > 0) {
+            return cachedFuelUnitCosts[grade];
         }
         IslandTimeConfig config = ConfigManager.getConfig();
         boolean gabagoolOnly = config != null && config.fuelCycles.gabagoolDistillateOnly;
-        double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar(), gabagoolOnly);
+        double unitCost = PriceCache.getInfernoFuelUnitCost(PriceCache.getBazaar(), gabagoolOnly, grade);
         if (unitCost > 0) {
-            cachedFuelUnitCost = unitCost;
-            cachedFuelUnitCostCohortStart = cohortStart;
+            cachedFuelUnitCosts[grade] = unitCost;
         }
         return unitCost;
     }
@@ -1522,6 +1831,7 @@ public class FuelCycleTracker {
             lastDueRecordsCheckMs = now;
             checkDueDayRecords(now);
             checkHeldBackFuelAlert(now);
+            retryPendingEndOfDayPrices(now);
         }
 
         if (minionExpiries.isEmpty()) {
@@ -1611,6 +1921,7 @@ public class FuelCycleTracker {
         minionsCountedByDaySlot.remove(daySlot);
         FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto,
                 hasFuelQueuedAfter(record, System.currentTimeMillis()));
+        captureEndOfDayPrices(List.of(record));
     }
 
     private static boolean isClosed(DayRecord record) {
@@ -1711,7 +2022,10 @@ public class FuelCycleTracker {
         // Persist immediately (rather than waiting for the periodic tick-based save)
         // so the closed/alerted state survives a crash or shutdown moments later —
         // otherwise re-launching before the next autosave would replay the same alert.
-        if (anyClosed) save();
+        if (anyClosed) {
+            captureEndOfDayPrices(due);
+            save();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1781,6 +2095,21 @@ public class FuelCycleTracker {
                         .append(Component.literal(String.format("%.1f%%", record.getAfkPercent())).withStyle(ChatFormatting.WHITE))
                         .append(Component.literal(" | Fuel Cost: ").withStyle(ChatFormatting.GRAY))
                         .append(Component.literal(PriceCache.formatCoins(record.getEffectiveFuelCost())).withStyle(ChatFormatting.WHITE)));
+        if (FuelDataSets.isEstimated(FuelDataSets.active().id())) {
+            IslandTimeConfig config = ConfigManager.getConfig();
+            FuelDayEstimates.DayEstimate day = FuelDayEstimates.estimate(record,
+                    InfernoProfitsCommand.settingsFrom(config != null ? config.profitCalculators : null), PriceCache.peekBazaar());
+            double profit = day.profit();
+            client.player.sendSystemMessage(
+                    Component.literal("  Est. return: ").withStyle(ChatFormatting.GRAY)
+                            .append(Component.literal(day.estimate().priced()
+                                    ? PriceCache.formatCoins(day.estimate().value()) : "n/a").withStyle(ChatFormatting.WHITE))
+                            .append(Component.literal(" | Est. Profit: ").withStyle(ChatFormatting.GRAY))
+                            .append(Component.literal(Double.isNaN(profit) ? "n/a" : PriceCache.formatCoins(profit))
+                                    .withStyle(Double.isNaN(profit) ? ChatFormatting.GRAY
+                                            : profit >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED)));
+            return;
+        }
         client.player.sendSystemMessage(
                 Component.literal("  Coins: ").withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(PriceCache.formatCoins(record.getMobKillCoins())).withStyle(ChatFormatting.WHITE))
@@ -1928,14 +2257,17 @@ public class FuelCycleTracker {
     }
 
     public static void save() {
-        SaveData data = buildSaveData();
-
-        // Snapshot the target file at submit-time (not inside the async lambda) so a
-        // save queued just before a test-mode toggle still writes to the file it was
-        // meant for, instead of racing the mode switch and writing live data into the
-        // test file (or vice versa).
-        Path file = saveFile();
-        Path tmp  = saveFileTmp();
+        SaveData data;
+        Path file;
+        Path tmp;
+        // Snapshot the data and the target file together, at submit-time (not inside the async
+        // lambda), so a save queued just before a data set switch still writes to the file it was
+        // meant for, instead of racing the switch and writing one set's data into another's file.
+        synchronized (dataSetLock) {
+            data = buildSaveData();
+            file = saveFile();
+            tmp  = saveFileTmp();
+        }
 
         saveExecutor.submit(() -> {
             try {
@@ -1964,15 +2296,20 @@ public class FuelCycleTracker {
         if (lastBackupTime != 0 && now - lastBackupTime < BACKUP_INTERVAL_MS) return;
         lastBackupTime = now;
 
-        SaveData data = buildSaveData();
-        String prefix = testModeEnabled ? "fuel_days_test_backup-" : "fuel_days_backup-";
-        Path backupFile = BACKUP_DIR.resolve(prefix + now + ".json");
+        SaveData data;
+        String prefix;
+        synchronized (dataSetLock) {
+            data = buildSaveData();
+            prefix = FuelDataSets.backupPrefix(FuelDataSets.activeId());
+        }
+        Path backupDir = FuelDataSets.backupDir();
+        Path backupFile = backupDir.resolve(prefix + now + ".json");
 
         saveExecutor.submit(() -> {
             try {
-                Files.createDirectories(BACKUP_DIR);
+                Files.createDirectories(backupDir);
                 Files.writeString(backupFile, GSON.toJson(data));
-                pruneOldBackups(prefix);
+                pruneOldBackups(backupDir, prefix);
             } catch (IOException e) {
                 System.err.println("[FuelCycleTracker] Backup failed: " + e.getMessage());
                 e.printStackTrace();
@@ -1981,11 +2318,11 @@ public class FuelCycleTracker {
     }
 
     /** Deletes the oldest backups beyond MAX_BACKUPS for the given file-name prefix. */
-    private static void pruneOldBackups(String prefix) {
+    private static void pruneOldBackups(Path backupDir, String prefix) {
         try {
-            if (!Files.isDirectory(BACKUP_DIR)) return;
+            if (!Files.isDirectory(backupDir)) return;
             List<Path> backups;
-            try (var stream = Files.list(BACKUP_DIR)) {
+            try (var stream = Files.list(backupDir)) {
                 backups = stream
                         .filter(p -> p.getFileName().toString().startsWith(prefix)
                                   && p.getFileName().toString().endsWith(".json"))
@@ -2001,9 +2338,13 @@ public class FuelCycleTracker {
         }
     }
 
+    /** Loads the data set registry, then the data set it says is active. Called once at startup. */
     public static void load() {
-        loadTestModeFlag();
+        FuelDataSets.load();
+        loadActiveSet();
+    }
 
+    private static void loadActiveSet() {
         Path file = saveFile();
         Path tmp  = saveFileTmp();
 
@@ -2063,6 +2404,7 @@ public class FuelCycleTracker {
 
                     reopenWronglyClosedDays(now);
                     purgeStaleLegacyMinionKeys();
+                    queueEndOfDayPriceBackfill();
                 }
             } catch (Exception e) {
                 System.err.println("[FuelCycleTracker] Load failed: " + e.getMessage());
@@ -2071,10 +2413,10 @@ public class FuelCycleTracker {
             return;
         }
 
-        // No new-format file yet for the active mode. Legacy migration only ever applies
-        // to real (live) data — test mode simply starts empty instead of pulling in the
-        // legacy live history.
-        if (!testModeEnabled) {
+        // No new-format file yet for the active data set. Legacy migration only ever applies
+        // to the main (real) data — every other set simply starts empty instead of pulling in
+        // the legacy history.
+        if (FuelDataSets.MAIN_ID.equals(FuelDataSets.activeId())) {
             migrateLegacyFile();
         }
     }
@@ -2178,6 +2520,7 @@ public class FuelCycleTracker {
 
     public static void shutdown() {
         save();
+        priceSnapshotExecutor.shutdownNow();
         saveExecutor.shutdown();
         try {
             if (!saveExecutor.awaitTermination(5, TimeUnit.SECONDS)) {

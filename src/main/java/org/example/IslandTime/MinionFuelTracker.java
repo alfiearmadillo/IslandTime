@@ -811,7 +811,7 @@ public class MinionFuelTracker {
                 if (initialWasEmpty) {
                     FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
                 }
-                FuelCycleTracker.onMinionFueled(currentMinionKey, newFuelUnits);
+                FuelCycleTracker.onMinionFueled(currentMinionKey, newFuelUnits, fuelGradeOf(currentItem));
             }
 
             // Update the initial state to the current state
@@ -823,6 +823,18 @@ public class MinionFuelTracker {
             pendingChangedItem = ItemStack.EMPTY;
             pendingChangedTickCount = 0;
         }
+    }
+
+    /**
+     * The Inferno fuel grade of a fuel item, from the colour of its name (its rarity): Rare is blue, Epic is
+     * dark purple and Legendary is gold. Any other colour is not one of the grades, which gives -1.
+     */
+    private static int fuelGradeOf(ItemStack item) {
+        ChatFormatting color = getFuelColor(item);
+        if (color == ChatFormatting.BLUE) return InfernoReturnCalculator.GRADE_FUEL;
+        if (color == ChatFormatting.DARK_PURPLE) return InfernoReturnCalculator.GRADE_HEAVY;
+        if (color == ChatFormatting.GOLD) return InfernoReturnCalculator.GRADE_HYPERGOLIC;
+        return -1;
     }
 
     private static ChatFormatting getFuelColor(ItemStack item) {

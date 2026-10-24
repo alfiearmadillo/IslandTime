@@ -287,6 +287,23 @@ public class IslandTimeCommand {
                             HuntrapProfitCommand.execute(ctx.getSource().getClient());
                             return 1;
                         }))
+                .then(literal("infernoProfits")
+                        .executes(ctx -> {
+                            InfernoProfitsCommand.execute(ctx.getSource().getClient(), null);
+                            return 1;
+                        })
+                        .then(argument("minions", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                                .executes(ctx -> {
+                                    int minions = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "minions");
+                                    InfernoProfitsCommand.execute(ctx.getSource().getClient(), minions);
+                                    return 1;
+                                })))
+                .then(literal("huntrapEditor")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new HuntrapEditorScreen()));
+                            return 1;
+                        }))
                 .then(literal("players")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
@@ -303,6 +320,12 @@ public class IslandTimeCommand {
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
                             client.execute(() -> client.setScreen(new FuelDayScreen()));
+                            return 1;
+                        }))
+                .then(literal("datasets")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new FuelDataSetsScreen()));
                             return 1;
                         }))
                 .then(literal("settingssave")
@@ -752,7 +775,9 @@ public class IslandTimeCommand {
                 {"/it trackedIslandTime <DD-MM-YY>", "Show specific date (e.g., /it trackedIslandTime 1-1-26)"},
                 {"/it fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
                 {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
+                {"/it datasets", "Open the fuel data sets menu: create, browse and switch between sets of fuel day data (Main, Debug, your own). The one in use is remembered"},
                 {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate (or only Gabagool Distillate if that setting is on)"},
+                {"/it infernoProfits [MINIONS]", "Show what your current cohort (or MINIONS minions) earns per fuel day on Rare, Epic and Legendary fuel: loot at the Bazaar sell offer (Legendary with its rare drops, partial ones included) less the fuel at buy orders and, on Legendary, the eyedrops. Uses the speed and eyedrop settings of Profit Calculators > Inferno Profits"},
 
                 // Page 2 - Discord webhook & pings
                 {"/it webhook", "Show current webhook URL"},
@@ -802,20 +827,21 @@ public class IslandTimeCommand {
                 {"/it highlight add <target>", "Add a block or any registered entity type to highlights. Use entity:item_frame or entity:armor_stand; filter entities by name with entity:armor_stand[name=TEXT] or entity:*[name=TEXT] (any type); sb:DITTO_SKULL and skull:HASH are also supported. Optionally add a color, plus partial (IDs and names only need to contain the text, e.g. entity:ca) and/or minsize (1 block box for entities with no hitbox)."},
                 {"/it highlight remove <id>", "Remove a highlight entry by target name"},
                 {"/it waila", "Inspect the block or entity you're aiming at, even out of reach or untargetable (like marker armor stands). Can be bound to a key in /it > WAILA — shows IDs, position, state, NBT, equipment, skull textures, and SkyBlock custom ID, with buttons to add it to highlights"},
-                {"/it help [page]", "Show this help (pages 1-13)"},
+                {"/it help [page]", "Show this help (pages 1-14)"},
 
                 // Page 9 - Aging Items
                 {"/it agingItems", "Compare profit/hour for all configured aging items using live Bazaar prices"},
                 {"/it agingItems add <agingId> <agedId>", "Add a custom aging item pair by SkyBlock IDs (e.g. BOTTLE_OF_JYRRE REFINED_BOTTLE_OF_JYRRE)"},
                 {"/it agingItems remove <agingId>", "Remove an aging item pair by its aging SkyBlock ID"},
                 {"/it agingItems list", "List all configured aging item pairs"},
-                {"Time Bag / Inventory Slots", "Configure slot counts under Misc > Aging Items in /it GUI"},
+                {"Time Bag / Inventory Slots", "Configure slot counts under Profit Calculators > Aging Items in /it GUI"},
 
                 // Page 10 - Cookie Profit & Settings Loadouts
                 {"/it cookieProfit", "Compare profit/bit for spending cookie bits on various BZ items"},
-                {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Misc > Cookie Profit in /it GUI"},
+                {"Bits Per Cookie", "Set your bits/cookie (with Fame multiplier) under Profit Calculators > Cookie Profit in /it GUI"},
                 {"/it huntrapProfit", "Rank Huntrap locations by estimated shard profit/hour (5 traps) using live Bazaar prices"},
-                {"Huntrap Settings", "Set trap type, Hunter Fortune, Desert Temple buff, Forest/Combat Trap levels and how many locations to show under Misc > Huntrap Profit in /it GUI"},
+                {"/it huntrapEditor", "Open the Huntrap data editor: edit each location's shards and weights, disable, add or remove locations and shards, or reset to the built-in data"},
+                {"Huntrap Settings", "Set trap type, Hunter Fortune, Desert Temple buff, Forest/Combat Trap levels and how many locations to show under Profit Calculators > Huntrap Profit in /it GUI"},
                 {"/it settingssave <name>", "Save current settings as a named loadout"},
                 {"/it settingsload <name>", "Load a saved settings loadout (replaces current settings)"},
                 {"/it settingsdelete <name>", "Delete a saved settings loadout"},
@@ -1135,8 +1161,12 @@ public class IslandTimeCommand {
                     client.player.sendSystemMessage(
                             Component.literal("Inferno Minion Fuel cost (" + breakdown.fuelCount + "):")
                                     .withStyle(ChatFormatting.GOLD));
-                    sendFuelCostLine(client, "25x Sulphuric Coal",
-                            breakdown.sulphuricCoalPrice, 25, breakdown.fuelCount);
+                    sendFuelCostLine(client, PriceCache.enchantedCoalQty(breakdown.grade) + "x Enchanted Coal",
+                            breakdown.enchantedCoalPrice, PriceCache.enchantedCoalQty(breakdown.grade), breakdown.fuelCount);
+                    sendFuelCostLine(client, InfernoProfits.formatAmount(PriceCache.enchantedSulphurQty(breakdown.grade))
+                                    + "x Enchanted Sulphur",
+                            breakdown.enchantedSulphurPrice, PriceCache.enchantedSulphurQty(breakdown.grade),
+                            breakdown.fuelCount);
                     sendFuelCostLine(client, "3x Very Crude Gabagool",
                             breakdown.veryCrudeGabagoolPrice, 3, breakdown.fuelCount);
                     for (Map.Entry<String, Double> entry : breakdown.distillatePrices.entrySet()) {
@@ -1163,21 +1193,21 @@ public class IslandTimeCommand {
     }
 
     private static void sendFuelCostLine(Minecraft client, String label, double unitPrice,
-                                         int quantityPerFuel, int fuelCount) {
+                                         double quantityPerFuel, int fuelCount) {
         if (unitPrice <= 0) {
             client.player.sendSystemMessage(
                     Component.literal("  " + label + ": unavailable")
                             .withStyle(ChatFormatting.DARK_RED));
             return;
         }
-        int totalQuantity = quantityPerFuel * fuelCount;
+        double totalQuantity = quantityPerFuel * fuelCount;
         double totalPrice = unitPrice * totalQuantity;
         client.player.sendSystemMessage(
                 Component.literal("  " + label + " @ ")
                         .withStyle(ChatFormatting.GRAY)
                         .append(Component.literal(PriceCache.formatCoinsPrecise(unitPrice))
                                 .withStyle(ChatFormatting.WHITE))
-                        .append(Component.literal(" = " + totalQuantity + "x ")
+                        .append(Component.literal(" = " + InfernoProfits.formatAmount(totalQuantity) + "x ")
                                 .withStyle(ChatFormatting.GRAY))
                         .append(Component.literal(PriceCache.formatCoins(totalPrice))
                                 .withStyle(ChatFormatting.AQUA)));

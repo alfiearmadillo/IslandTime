@@ -19,6 +19,7 @@ public class IslandTimeMod implements ClientModInitializer {
         DisconnectAlertTracker.load();
         FuelExpiredAlertTracker.load();
         FavouriteGuiManager.load();
+        HuntrapLocations.load();
         TrackingToggleConfig.load(); // applies toggle flags to trackers
         TooltipOverrideConfig.load(); // NEW: load tooltip override flag
         ResourcePackConfig.load();   // Load resource pack persistence config

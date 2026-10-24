@@ -27,18 +27,18 @@ public class HuntrapProfitCommand {
 
         IslandTimeConfig config = ConfigManager.getConfig();
         HuntrapCalculator.TrapType trap = HuntrapCalculator.TrapType.fromIndex(
-                config != null ? config.misc.huntrapType : HuntrapCalculator.TrapType.ASTRAL.ordinal());
-        String fortuneText = config != null ? config.misc.huntrapHunterFortune : "0";
-        boolean desertTemple = config != null && config.misc.huntrapDesertTemple;
-        int forestLevel = clampLevel(config != null ? config.misc.huntrapForestTrapLevel : 0);
-        int combatLevel = clampLevel(config != null ? config.misc.huntrapCombatTrapLevel : 0);
-        boolean useSellOffer = config != null && config.misc.huntrapUseSellOffer;
-        int topCount = config != null ? config.misc.huntrapTopCount : 5;
+                config != null ? config.profitCalculators.huntrapType : HuntrapCalculator.TrapType.ASTRAL.ordinal());
+        String fortuneText = config != null ? config.profitCalculators.huntrapHunterFortune : "0";
+        boolean desertTemple = config != null && config.profitCalculators.huntrapDesertTemple;
+        int forestLevel = clampLevel(config != null ? config.profitCalculators.huntrapForestTrapLevel : 0);
+        int combatLevel = clampLevel(config != null ? config.profitCalculators.huntrapCombatTrapLevel : 0);
+        boolean useSellOffer = config != null && config.profitCalculators.huntrapUseSellOffer;
+        int topCount = config != null ? config.profitCalculators.huntrapTopCount : 5;
 
         double hunterFortune = HuntrapCalculator.parseHunterFortune(fortuneText);
         if (Double.isNaN(hunterFortune)) {
             client.player.sendSystemMessage(
-                    Component.literal(PREFIX + "Hunter Fortune must be a number of 0 or more. Set it in /islandtime under Misc > Huntrap Profit.")
+                    Component.literal(PREFIX + "Hunter Fortune must be a number of 0 or more. Set it in /islandtime under Profit Calculators > Huntrap Profit.")
                             .withStyle(ChatFormatting.RED));
             return;
         }
@@ -84,8 +84,10 @@ public class HuntrapProfitCommand {
                     client.player.sendSystemMessage(settingsLine(settings, sellLabel));
 
                     if (finalShown.isEmpty()) {
-                        client.player.sendSystemMessage(
-                                Component.literal("No Huntrap shard prices available on the Bazaar.").withStyle(ChatFormatting.RED));
+                        String message = ranked.isEmpty()
+                                ? "Every Huntrap location or shard is disabled or empty. Turn some on in /it huntrapEditor."
+                                : "No Huntrap shard prices available on the Bazaar.";
+                        client.player.sendSystemMessage(Component.literal(message).withStyle(ChatFormatting.RED));
                     }
 
                     int rank = 1;

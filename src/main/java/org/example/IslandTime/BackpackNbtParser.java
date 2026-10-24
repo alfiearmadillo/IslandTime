@@ -66,6 +66,25 @@ public class BackpackNbtParser {
         ITEM_ID_OVERRIDES.put(410, "prismarine_crystals");
     }
 
+    /**
+     * One slot of a backpack. {@code count} is what the backpack says and can be any int, negative or 0 too. The
+     * {@code stack} has that count when it is 1 to 99 (so the game draws it as usual) and is a single item
+     * otherwise, as an {@code ItemStack} can't hold, and an empty or negative one wouldn't even be drawn.
+     */
+    public record BackpackItem(ItemStack stack, int count) {
+
+        public static final BackpackItem EMPTY = new BackpackItem(ItemStack.EMPTY, 0);
+
+        public boolean isEmpty() {
+            return stack.isEmpty();
+        }
+
+        /** True when the count is one the stack can't show, so it has to be drawn separately. */
+        public boolean hasOwnCountText() {
+            return !stack.isEmpty() && !BackpackCounts.fitsStack(count);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
@@ -83,7 +102,7 @@ public class BackpackNbtParser {
     }
 
     /** Synchronous parse — for backward compatibility; prefer parseAsync(). */
-    public static List<ItemStack> parse(ItemStack stack) {
+    public static List<BackpackItem> parse(ItemStack stack) {
         Minecraft client = Minecraft.getInstance();
         byte[] data = extractData(stack);
         if (data == null || data.length < 4) return null;
@@ -100,7 +119,7 @@ public class BackpackNbtParser {
      *
      * @return a future that completes with the slot list (or null on failure).
      */
-    public static CompletableFuture<List<ItemStack>> parseAsync(ItemStack stack) {
+    public static CompletableFuture<List<BackpackItem>> parseAsync(ItemStack stack) {
         // ── Capture everything we need on the main thread ──────────────────
         Minecraft    client     = Minecraft.getInstance();
         DataFixer          fixer      = DataFixers.getDataFixer();
@@ -139,11 +158,11 @@ public class BackpackNbtParser {
         return RegistryAccess.EMPTY;
     }
 
-    private static List<ItemStack> parseBytes(byte[] data,
-                                              DataFixer fixer,
-                                              int currentVer,
-                                              RegistryAccess reg) {
-        List<ItemStack> result = new ArrayList<>();
+    private static List<BackpackItem> parseBytes(byte[] data,
+                                                 DataFixer fixer,
+                                                 int currentVer,
+                                                 RegistryAccess reg) {
+        List<BackpackItem> result = new ArrayList<>();
         try {
             CompoundTag root = NbtIo.readCompressed(
                     new ByteArrayInputStream(data),
@@ -154,7 +173,7 @@ public class BackpackNbtParser {
                 CompoundTag itemNbt = items.getCompoundOrEmpty(i);
                 short rawId = itemNbt.getShortOr("id", (short) 0);
                 result.add((itemNbt.isEmpty() || rawId == 0)
-                        ? ItemStack.EMPTY
+                        ? BackpackItem.EMPTY
                         : parseItem(itemNbt, fixer, currentVer, reg));
             }
         } catch (IOException e) {
@@ -166,14 +185,26 @@ public class BackpackNbtParser {
         return result;
     }
 
-    private static ItemStack parseItem(CompoundTag legacyNbt,
-                                       DataFixer fixer,
-                                       int currentVer,
-                                       RegistryAccess reg) {
+    /**
+     * The count the backpack stores for an item: any int, so negative and 0 included. A byte, short or int
+     * count is read as it is signed, and a missing one means a single item.
+     */
+    private static int readCount(CompoundTag itemNbt) {
+        return itemNbt.getInt("Count").orElseGet(() -> itemNbt.getIntOr("count", 1));
+    }
+
+    private static BackpackItem parseItem(CompoundTag legacyNbt,
+                                          DataFixer fixer,
+                                          int currentVer,
+                                          RegistryAccess reg) {
         try {
             short numId = legacyNbt.getShortOr("id", (short) 0);
+            int count = readCount(legacyNbt);
 
+            // The fixer and the stack codec only take a count of 1 to 99 and drop the item otherwise, so the
+            // item is made as a single one and the real count is kept next to it.
             CompoundTag dfuInput = legacyNbt.copy();
+            dfuInput.putByte("Count", (byte) 1);
             Dynamic<Tag> dynamic = new Dynamic<>(NbtOps.INSTANCE, dfuInput);
             Dynamic<Tag> updated = fixer.update(
                     References.ITEM_STACK, dynamic, LEGACY_DATA_VERSION, currentVer);
@@ -194,8 +225,7 @@ public class BackpackNbtParser {
                     net.minecraft.world.item.Item item =
                             BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", override)).orElse(null);
                     if (item != null && item != Items.AIR) {
-                        int count = legacyNbt.getByteOr("Count", (byte) 1) & 0xFF;
-                        stack = new ItemStack(item, Math.max(1, count));
+                        stack = new ItemStack(item);
                     }
                 }
             }
@@ -208,15 +238,14 @@ public class BackpackNbtParser {
                     net.minecraft.world.item.Item eggItem =
                             BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", override)).orElse(null);
                     if (eggItem != null && eggItem != Items.AIR) {
-                        int count = stack.isEmpty()
-                                ? (legacyNbt.getByteOr("Count", (byte) 1) & 0xFF)
-                                : stack.getCount();
-                        stack = new ItemStack(eggItem, Math.max(1, count));
+                        stack = new ItemStack(eggItem);
                     }
                 }
             }
 
-            if (stack.isEmpty()) return ItemStack.EMPTY;
+            if (stack.isEmpty()) return BackpackItem.EMPTY;
+
+            if (BackpackCounts.fitsStack(count)) stack.setCount(count);
 
             // ── Layer Hypixel-specific data ──────────────────────────────────
             CompoundTag tag = legacyNbt.getCompoundOrEmpty("tag");
@@ -245,11 +274,11 @@ public class BackpackNbtParser {
                 applySkullTexture(stack, skullOwner);
             }
 
-            return stack;
+            return new BackpackItem(stack, count);
 
         } catch (Exception e) {
             System.err.println("[IslandTime] parseItem failed: " + e.getMessage());
-            return ItemStack.EMPTY;
+            return BackpackItem.EMPTY;
         }
     }
 
