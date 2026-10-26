@@ -120,6 +120,11 @@ public class MinionFuelTracker {
     private static int pendingChangedTickCount = 0;
     private static final int CHANGE_SETTLING_TICKS = 3;
 
+    // The minion menu currently on screen. The menu object keeps its last slot contents after
+    // it is closed, which is what lets a click made just before closing still be read (see
+    // flushUnsettledFuelChange()).
+    private static AbstractContainerMenu lastMinionMenu = null;
+
     // Keep the last confirmed slot contents for every physical minion. A single global
     // baseline loses an insertion when the player closes one GUI and later reopens it
     // after adding fuel, especially when cycling quickly through identical minions.
@@ -517,8 +522,15 @@ public class MinionFuelTracker {
         System.out.println(message);
     }
 
+    /** Counts any fuel placed just before the minion GUI closed, then clears all per-GUI state. */
+    private static void leaveMinionGui(Minecraft client) {
+        flushUnsettledFuelChange(client);
+        resetMinionGuiState();
+    }
+
     /** Clears all per-GUI state once we're no longer looking at a minion GUI. */
     private static void resetMinionGuiState() {
+        lastMinionMenu = null;
         initialFuelSlotItem = ItemStack.EMPTY;
         currentMinionName = "";
         currentMinionKey = "";
@@ -535,13 +547,17 @@ public class MinionFuelTracker {
 
     public static void checkFuelSlot() {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) return;
+        if (client.player == null) {
+            // Whatever menu we were watching belongs to a session that is gone.
+            lastMinionMenu = null;
+            return;
+        }
 
         // Check if we're currently in a GUI
         if (client.screen == null) {
             // We're not in any GUI - reset if we were previously in a minion GUI
             if (wasInMinionGui) {
-                resetMinionGuiState();
+                leaveMinionGui(client);
             }
             return;
         }
@@ -550,7 +566,7 @@ public class MinionFuelTracker {
         if (!(client.screen instanceof AbstractContainerScreen containerScreen)) {
             // We're in some other GUI - reset if we were in a minion GUI
             if (wasInMinionGui) {
-                resetMinionGuiState();
+                leaveMinionGui(client);
             }
             return;
         }
@@ -577,7 +593,7 @@ public class MinionFuelTracker {
         if (!normalizedTitle.contains("minion") || normalizedTitle.contains("minion fuel")) {
             // We're in a container but not a minion - reset if we were in a minion GUI
             if (wasInMinionGui) {
-                resetMinionGuiState();
+                leaveMinionGui(client);
             }
             return;
         }
@@ -599,6 +615,9 @@ public class MinionFuelTracker {
         boolean switchedMinion = !title.equals(currentMinionName)
                 || (pendingArmorStandKey != null && !pendingArmorStandKey.equals(currentArmorStandKey));
         if (switchedMinion) {
+            // Fuel placed in the previous minion just before switching must still count.
+            flushUnsettledFuelChange(client);
+
             // RESET EVERYTHING for the new minion
             currentMinionName = title;
             // Prefer the position+equipment key of whichever armor stand was just
@@ -622,8 +641,10 @@ public class MinionFuelTracker {
             pendingChangedTickCount = 0;
 
             // DON'T store initial state yet - wait for next tick
+            lastMinionMenu = containerHandler;
             return;
         }
+        lastMinionMenu = containerHandler;
 
         // The right-click that selected this minion can land a tick or two before the
         // server actually swaps in its GUI, leaving the PREVIOUS minion's menu on screen.
@@ -695,134 +716,165 @@ public class MinionFuelTracker {
         ItemStack currentItem = fuelSlot.getItem();
 
         // Check if the slot changed
-        if (!ItemStack.matches(currentItem, initialFuelSlotItem)) {
-            // Container synchronization can expose an intermediate stack count while a
-            // player is inserting a larger stack (for example 2 -> 10 -> 12). Wait for
-            // the visible result to settle before comparing it with the last confirmed
-            // state, otherwise one insertion is incorrectly reported as two additions.
-            if (!ItemStack.matches(currentItem, pendingChangedItem)) {
-                pendingChangedItem = currentItem.copy();
-                pendingChangedTickCount = 1;
-                return;
-            }
-            pendingChangedTickCount++;
-            if (pendingChangedTickCount < CHANGE_SETTLING_TICKS) return;
+        if (ItemStack.matches(currentItem, initialFuelSlotItem)) {
             pendingChangedItem = ItemStack.EMPTY;
             pendingChangedTickCount = 0;
+            return;
+        }
 
-            // Determine what the initial item was
-            boolean initialWasGlassPane = !initialFuelSlotItem.isEmpty() &&
-                    initialFuelSlotItem.getItem() == Items.ORANGE_STAINED_GLASS_PANE &&
-                    initialFuelSlotItem.getHoverName().getString().equals("Fuel");
+        // A stack on the cursor means a click on the slot is still in flight: until the server
+        // answers, the client shows its own prediction — the placed fuel (count 1) in the slot
+        // and the stack it displaced on the cursor. Taking that dip as the new baseline makes
+        // the server's real count look like the old stack was added a second time (the second
+        // fuel placed in a minion was reported as "2x"), so wait for the cursor to clear.
+        if (!containerHandler.getCarried().isEmpty()) {
+            pendingChangedItem = ItemStack.EMPTY;
+            pendingChangedTickCount = 0;
+            return;
+        }
 
-            // Determine what the current item is
-            boolean currentIsGlassPane = !currentItem.isEmpty() &&
-                    currentItem.getItem() == Items.ORANGE_STAINED_GLASS_PANE &&
-                    currentItem.getHoverName().getString().equals("Fuel");
+        // Container synchronization can expose an intermediate stack count while a
+        // player is inserting a larger stack (for example 2 -> 10 -> 12). Wait for
+        // the visible result to settle before comparing it with the last confirmed
+        // state, otherwise one insertion is incorrectly reported as two additions.
+        if (!ItemStack.matches(currentItem, pendingChangedItem)) {
+            pendingChangedItem = currentItem.copy();
+            pendingChangedTickCount = 1;
+            return;
+        }
+        pendingChangedTickCount++;
+        if (pendingChangedTickCount < CHANGE_SETTLING_TICKS) return;
+        pendingChangedItem = ItemStack.EMPTY;
+        pendingChangedTickCount = 0;
 
-            boolean currentIsEmpty = currentItem.isEmpty() || currentIsGlassPane;
-            boolean initialWasEmpty = initialFuelSlotItem.isEmpty() || initialWasGlassPane;
-            boolean currentIsActualFuel = !currentIsEmpty;
-            boolean initialWasActualFuel = !initialWasEmpty;
+        applyFuelChange(client, currentItem, evaluateFuelChange(initialFuelSlotItem, currentItem));
+    }
 
-            // Whether the current fuel item is the same fuel type as whatever was
-            // previously in the slot (compared by display name, since fuel items
-            // share the same base Item but differ by SkyBlock NBT/hover name).
-            boolean sameFuelType = initialWasActualFuel && currentIsActualFuel &&
-                    currentItem.getHoverName().getString().equals(initialFuelSlotItem.getHoverName().getString());
+    /**
+     * Counts fuel that was placed so shortly before the GUI closed (or before another minion
+     * was selected) that the slot never got to settle. The change is read from the menu
+     * itself, which keeps what it last showed after closing — so even a click made in the same
+     * tick as the close is seen. Only additions are counted here: anything that could still be
+     * an unconfirmed intermediate state is left to the next time this minion is opened, which
+     * compares its slot against the last confirmed one.
+     */
+    private static void flushUnsettledFuelChange(Minecraft client) {
+        AbstractContainerMenu menu = lastMinionMenu;
+        if (!canTrackChanges || menu == null || currentMinionKey.isEmpty()) return;
+        if (FUEL_SLOT_INDEX >= menu.slots.size()) return;
 
-            int newFuelUnits = 0;
-            if (initialWasEmpty && currentIsActualFuel) {
-                // Slot went from empty (glass pane placeholder) to holding fuel:
-                // the whole stack is newly placed fuel.
-                newFuelUnits = Math.max(1, currentItem.getCount());
-            } else if (initialWasActualFuel && currentIsActualFuel) {
-                // Fuel was topped up while the minion was still actively fueled
-                // (placing fuel into a slot that already has fuel, instead of glass).
-                // Only the increase in count is newly added fuel; a same-or-lower
-                // count just reflects the existing fuel depleting over time and
-                // shouldn't be counted again.
-                int currentCount = currentItem.getCount();
-                int initialCount = initialFuelSlotItem.getCount();
-                if (sameFuelType) {
-                    if (currentCount > initialCount) {
-                        newFuelUnits = currentCount - initialCount;
-                    } else {
-                        // The visible stack count drops as fuel units expire. If the
-                        // player added fuel while this GUI was closed, that addition can
-                        // be hidden by one or more units expiring in the meantime.
-                        long observedAt = lastObservedFuelSlotTimes.getOrDefault(
-                                currentMinionKey, System.currentTimeMillis());
-                        // Enchanted Clock time warps made the fuel run out sooner than the
-                        // wall clock alone says, so count that time as elapsed too.
-                        long elapsedMs = Math.max(0L, System.currentTimeMillis() - observedAt)
-                                + FuelCycleTracker.warpedMsSince(observedAt);
-                        int unitsExpired = (int) Math.min(Integer.MAX_VALUE,
-                                elapsedMs / FuelCycleTracker.DAY_MS);
-                        newFuelUnits = Math.max(0, currentCount - initialCount + unitsExpired);
-                    }
-                } else {
-                    // Different fuel type placed on top of remaining fuel - treat
-                    // the whole new stack as freshly added fuel. The previous
-                    // cycle info (minions refueled, expiry so far) is preserved while
-                    // fuel remains active; an expired minion starts at the refuel time.
-                    newFuelUnits = Math.max(1, currentCount);
-                }
-            } else if (initialWasActualFuel && currentIsEmpty) {
+        ItemStack slotItem = menu.getSlot(FUEL_SLOT_INDEX).getItem();
+        if (ItemStack.matches(slotItem, initialFuelSlotItem)) return;
+
+        ItemStack finalItem = projectedFuelStack(slotItem, menu.getCarried());
+        if (finalItem == null) return;
+
+        FuelSlotChange.Result change = evaluateFuelChange(initialFuelSlotItem, finalItem);
+        if (change.newFuelUnits() <= 0) return;
+
+        System.out.println("[MinionFuelTracker] Minion GUI left before the fuel slot settled; counting the "
+                + "placement seen on close for \"" + currentMinionKey + "\"");
+        applyFuelChange(client, finalItem, change);
+    }
+
+    /**
+     * What the fuel slot will hold once the server has answered the click that is still in
+     * flight, or null when that can't be told. With nothing on the cursor the slot already is
+     * the result. With fuel of the same name on the cursor, the client has swapped the placed
+     * fuel into the slot and the displaced stack is what's on the cursor; the server merges
+     * the two into one stack.
+     */
+    private static ItemStack projectedFuelStack(ItemStack slotItem, ItemStack carried) {
+        if (carried.isEmpty()) return slotItem;
+
+        FuelSlotChange.Reading slot = readingOf(slotItem);
+        FuelSlotChange.Reading cursor = readingOf(carried);
+        if (slot.empty() || cursor.empty() || !slot.name().equals(cursor.name())) return null;
+
+        ItemStack merged = slotItem.copy();
+        merged.setCount(slot.count() + cursor.count());
+        return merged;
+    }
+
+    private static FuelSlotChange.Reading readingOf(ItemStack stack) {
+        boolean isPlaceholder = stack.getItem() == Items.ORANGE_STAINED_GLASS_PANE
+                && stack.getHoverName().getString().equals("Fuel");
+        if (stack.isEmpty() || isPlaceholder) return FuelSlotChange.Reading.EMPTY;
+        // Fuel items share the same base Item but differ by SkyBlock NBT/hover name, so the
+        // display name is what tells one fuel type from another.
+        return FuelSlotChange.Reading.of(stack.getHoverName().getString(), stack.getCount());
+    }
+
+    private static FuelSlotChange.Result evaluateFuelChange(ItemStack initial, ItemStack current) {
+        // The visible stack count drops as fuel units expire. If the player added fuel while
+        // this GUI was closed, that addition can be hidden by one or more units expiring in the
+        // meantime, so units that have run out since the last confirmed reading are added back.
+        long observedAt = lastObservedFuelSlotTimes.getOrDefault(currentMinionKey, System.currentTimeMillis());
+        // Enchanted Clock time warps made the fuel run out sooner than the wall clock alone
+        // says, so count that time as elapsed too.
+        long elapsedMs = Math.max(0L, System.currentTimeMillis() - observedAt)
+                + FuelCycleTracker.warpedMsSince(observedAt);
+        int unitsExpired = (int) Math.min(Integer.MAX_VALUE, elapsedMs / FuelCycleTracker.DAY_MS);
+
+        return FuelSlotChange.evaluate(readingOf(initial), readingOf(current), unitsExpired);
+    }
+
+    /** Reports a settled change in the fuel slot and makes it the new confirmed state. */
+    private static void applyFuelChange(Minecraft client, ItemStack currentItem, FuelSlotChange.Result change) {
+        boolean initialWasEmpty = readingOf(initialFuelSlotItem).empty();
+        int newFuelUnits = change.newFuelUnits();
+
+        if (change.fuelRemoved()) {
+            FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
+        }
+
+        // Diagnostic logging (console only, not chat) for every detected fuel-slot
+        // change, regardless of whether it resulted in any counted fuel units — this
+        // is intentionally always-on (not gated behind a debug flag) since it only
+        // writes to the log file, not chat, and is the only way to retroactively
+        // diagnose a placement that silently failed to register (e.g. topping up an
+        // already-active minion whose remaining fuel item's count/hover-name
+        // comparison didn't behave as expected).
+        System.out.println("[MinionFuelTracker] Fuel slot changed for \"" + currentMinionKey + "\": "
+                + "initial=[" + (initialFuelSlotItem.isEmpty() ? "empty" : initialFuelSlotItem.getCount() + "x " + initialFuelSlotItem.getHoverName().getString()) + "]"
+                + " -> current=[" + (currentItem.isEmpty() ? "empty" : currentItem.getCount() + "x " + currentItem.getHoverName().getString()) + "]"
+                + " sameFuelType=" + change.sameFuelType() + " newFuelUnits=" + newFuelUnits);
+
+        if (newFuelUnits > 0) {
+            // The fuel was placed! Send the message (if enabled)
+            if (showFuelMessages) {
+                String fuelName = currentItem.getHoverName().getString();
+                ChatFormatting fuelColor = getFuelColor(currentItem);
+
+                Component message = Component.empty()
+                        .append(Component.literal(currentMinionName).withStyle(ChatFormatting.BLUE))
+                        .append(Component.literal(" fueled with ").withStyle(ChatFormatting.GREEN))
+                        .append(Component.literal(newFuelUnits > 1 ? (newFuelUnits + "x ") : "").withStyle(ChatFormatting.GREEN))
+                        .append(Component.literal(fuelName).withStyle(fuelColor));
+
+                client.player.sendSystemMessage(message);
+            }
+
+            // Notify FuelCycleTracker - this extends this specific minion's own
+            // fuel expiry (preserving prior cycle info) rather than resetting it,
+            // so topping up mid-cycle just queues more fuel-days for this minion.
+            // Uses the per-minion key (currentMinionKey — a permanent upgrade uuid
+            // where available, otherwise the armor-stand position+equipment key), not
+            // the raw GUI title, so multiple minions of the same type/tier are tracked
+            // independently instead of being merged into one.
+            // If the slot was empty when the GUI stabilized, discard any stale
+            // saved expiry before starting the newly placed fuel.
+            if (initialWasEmpty) {
                 FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
             }
-
-            // Diagnostic logging (console only, not chat) for every detected fuel-slot
-            // change, regardless of whether it resulted in any counted fuel units — this
-            // is intentionally always-on (not gated behind a debug flag) since it only
-            // writes to the log file, not chat, and is the only way to retroactively
-            // diagnose a placement that silently failed to register (e.g. topping up an
-            // already-active minion whose remaining fuel item's count/hover-name
-            // comparison didn't behave as expected).
-            System.out.println("[MinionFuelTracker] Fuel slot changed for \"" + currentMinionKey + "\": "
-                    + "initial=[" + (initialFuelSlotItem.isEmpty() ? "empty" : initialFuelSlotItem.getCount() + "x " + initialFuelSlotItem.getHoverName().getString()) + "]"
-                    + " -> current=[" + (currentItem.isEmpty() ? "empty" : currentItem.getCount() + "x " + currentItem.getHoverName().getString()) + "]"
-                    + " sameFuelType=" + sameFuelType + " newFuelUnits=" + newFuelUnits);
-
-            if (newFuelUnits > 0) {
-                // The fuel was placed! Send the message (if enabled)
-                if (showFuelMessages) {
-                    String fuelName = currentItem.getHoverName().getString();
-                    ChatFormatting fuelColor = getFuelColor(currentItem);
-
-                    Component message = Component.empty()
-                            .append(Component.literal(currentMinionName).withStyle(ChatFormatting.BLUE))
-                            .append(Component.literal(" fueled with ").withStyle(ChatFormatting.GREEN))
-                            .append(Component.literal(newFuelUnits > 1 ? (newFuelUnits + "x ") : "").withStyle(ChatFormatting.GREEN))
-                            .append(Component.literal(fuelName).withStyle(fuelColor));
-
-                    client.player.sendSystemMessage(message);
-                }
-
-                // Notify FuelCycleTracker - this extends this specific minion's own
-                // fuel expiry (preserving prior cycle info) rather than resetting it,
-                // so topping up mid-cycle just queues more fuel-days for this minion.
-                // Uses the per-minion key (currentMinionKey — a permanent upgrade uuid
-                // where available, otherwise the armor-stand position+equipment key), not
-                // the raw GUI title, so multiple minions of the same type/tier are tracked
-                // independently instead of being merged into one.
-                // If the slot was empty when the GUI stabilized, discard any stale
-                // saved expiry before starting the newly placed fuel.
-                if (initialWasEmpty) {
-                    FuelCycleTracker.onMinionFuelRemoved(currentMinionKey);
-                }
-                FuelCycleTracker.onMinionFueled(currentMinionKey, newFuelUnits, fuelGradeOf(currentItem));
-            }
-
-            // Update the initial state to the current state
-            // This prevents repeated messages
-            initialFuelSlotItem = currentItem.copy();
-            lastObservedFuelSlots.put(currentMinionKey, currentItem.copy());
-            lastObservedFuelSlotTimes.put(currentMinionKey, System.currentTimeMillis());
-        } else {
-            pendingChangedItem = ItemStack.EMPTY;
-            pendingChangedTickCount = 0;
+            FuelCycleTracker.onMinionFueled(currentMinionKey, newFuelUnits, fuelGradeOf(currentItem));
         }
+
+        // Update the initial state to the current state
+        // This prevents repeated messages
+        initialFuelSlotItem = currentItem.copy();
+        lastObservedFuelSlots.put(currentMinionKey, currentItem.copy());
+        lastObservedFuelSlotTimes.put(currentMinionKey, System.currentTimeMillis());
     }
 
     /**
