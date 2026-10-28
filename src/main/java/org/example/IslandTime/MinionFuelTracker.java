@@ -74,7 +74,7 @@ public class MinionFuelTracker {
     // Whether the identity of the currently open minion has been settled for this GUI.
     private static boolean identityResolved = false;
 
-    private static final int FUEL_SLOT_INDEX = 19; // The fuel slot (row 3, column 2)
+    static final int FUEL_SLOT_INDEX = 19; // The fuel slot (row 3, column 2)
 
     // The minion upgrade slots — row 5 and row 6, column 2 of the 6x9 minion GUI, i.e.
     // slots 38 and 47 counting the container's slots from 1. Minecraft's own slot indexes
@@ -137,6 +137,43 @@ public class MinionFuelTracker {
     public static void setShowFuelMessages(boolean value) { showFuelMessages = value; }
 
     // -------------------------------------------------------------------------
+    // GUI debug log trace points (see GuiDebugLog). Observation only: nothing here
+    // changes what gets counted, and everything is skipped while the log is off.
+    // -------------------------------------------------------------------------
+
+    // The last line written by traceTransition(), so a state that holds across many ticks
+    // (waiting for the cursor to clear, a slot that is still settling) is written once.
+    private static String lastTraceLine = "";
+
+    /** The tracker's settings, for the header of a GUI debug log. */
+    static String debugSettings() {
+        return "fuelSlot=" + FUEL_SLOT_INDEX + " stabilizationTicks=" + STABILIZATION_TICKS
+                + " changeSettlingTicks=" + CHANGE_SETTLING_TICKS + " showFuelMessages=" + showFuelMessages;
+    }
+
+    private static void trace(String message) {
+        GuiDebugLog.tracker(message);
+    }
+
+    /** Like {@link #trace} but writes a line identical to the previous transition only once. */
+    private static void traceTransition(String line) {
+        if (line.equals(lastTraceLine)) return;
+        lastTraceLine = line;
+        GuiDebugLog.tracker(line);
+    }
+
+    /** Ends a run of transition lines, so the next one is written even if it repeats an earlier line. */
+    private static void endTraceRun(String why) {
+        if (lastTraceLine.isEmpty()) return;
+        lastTraceLine = "";
+        GuiDebugLog.tracker(why);
+    }
+
+    private static String traceKey() {
+        return "minion=\"" + currentMinionName + "\" key=\"" + currentMinionKey + "\"";
+    }
+
+    // -------------------------------------------------------------------------
     // Armor stand interaction tracking
     // -------------------------------------------------------------------------
 
@@ -161,6 +198,10 @@ public class MinionFuelTracker {
             if (world.isClientSide() && entity instanceof ArmorStand armorStand) {
                 lastArmorStandKey = buildArmorStandKey(armorStand);
                 lastArmorStandInteractMs = System.currentTimeMillis();
+                if (GuiDebugLog.isActive()) {
+                    GuiDebugLog.event("MINION_CLICK", "entityId=" + entity.getId() + " hand=" + hand
+                            + " key=\"" + lastArmorStandKey + "\"");
+                }
             }
             return InteractionResult.PASS;
         });
@@ -290,6 +331,11 @@ public class MinionFuelTracker {
      * moving its data onto one specific minion could steal another minion's fuel-days.
      */
     private static void adoptMinionKey(String oldKey, String newKey) {
+        if (GuiDebugLog.isActive()) {
+            ItemStack baseline = lastObservedFuelSlots.get(oldKey);
+            trace("key adopted \"" + oldKey + "\" -> \"" + newKey + "\" baselineCarriedOver="
+                    + (baseline == null ? "none" : GuiDebugLog.describe(baseline)));
+        }
         // Carry the in-memory fuel-slot baseline across, otherwise the very next tick
         // would compare this minion's slot against "no baseline" and could mistake its
         // existing fuel for a brand new placement.
@@ -520,16 +566,27 @@ public class MinionFuelTracker {
                     .append(" [").append(read.itemName()).append("]: ").append(read.reason());
         }
         System.out.println(message);
+        if (GuiDebugLog.isActive()) trace(message.toString().replace("[MinionFuelTracker] ", ""));
     }
 
     /** Counts any fuel placed just before the minion GUI closed, then clears all per-GUI state. */
     private static void leaveMinionGui(Minecraft client) {
+        if (GuiDebugLog.isActive()) {
+            AbstractContainerMenu menu = lastMinionMenu;
+            trace("leaving minion GUI " + traceKey() + " canTrackChanges=" + canTrackChanges
+                    + " baseline=" + GuiDebugLog.describe(initialFuelSlotItem)
+                    + (menu != null && FUEL_SLOT_INDEX < menu.slots.size()
+                            ? " slot" + FUEL_SLOT_INDEX + "=" + GuiDebugLog.describe(menu.getSlot(FUEL_SLOT_INDEX).getItem())
+                                    + " carried=" + GuiDebugLog.describe(menu.getCarried())
+                            : " menu=none"));
+        }
         flushUnsettledFuelChange(client);
         resetMinionGuiState();
     }
 
     /** Clears all per-GUI state once we're no longer looking at a minion GUI. */
     private static void resetMinionGuiState() {
+        lastTraceLine = "";
         lastMinionMenu = null;
         initialFuelSlotItem = ItemStack.EMPTY;
         currentMinionName = "";
@@ -615,8 +672,16 @@ public class MinionFuelTracker {
         boolean switchedMinion = !title.equals(currentMinionName)
                 || (pendingArmorStandKey != null && !pendingArmorStandKey.equals(currentArmorStandKey));
         if (switchedMinion) {
+            if (GuiDebugLog.isActive()) {
+                trace("switched minion: title \"" + currentMinionName + "\" -> \"" + title + "\" previousStand=\""
+                        + currentArmorStandKey + "\" pendingStand=" + (pendingArmorStandKey == null
+                                ? "none" : "\"" + pendingArmorStandKey + "\"")
+                        + " clickAgeMs=" + (lastArmorStandInteractMs == 0 ? "n/a"
+                                : String.valueOf(System.currentTimeMillis() - lastArmorStandInteractMs)));
+            }
             // Fuel placed in the previous minion just before switching must still count.
             flushUnsettledFuelChange(client);
+            lastTraceLine = "";
 
             // RESET EVERYTHING for the new minion
             currentMinionName = title;
@@ -642,6 +707,11 @@ public class MinionFuelTracker {
 
             // DON'T store initial state yet - wait for next tick
             lastMinionMenu = containerHandler;
+            if (GuiDebugLog.isActive()) {
+                trace("now tracking " + traceKey() + " clickMsAgo="
+                        + (currentMinionClickMs == 0 ? "n/a" : String.valueOf(System.currentTimeMillis() - currentMinionClickMs))
+                        + " menu=" + containerHandler.containerId);
+            }
             return;
         }
         lastMinionMenu = containerHandler;
@@ -654,6 +724,9 @@ public class MinionFuelTracker {
         // click that never resulted in a new menu can't stall tracking indefinitely.
         if (currentMinionClickMs > 0 && menuOpenedAtMs < currentMinionClickMs
                 && System.currentTimeMillis() - currentMinionClickMs <= ARMOR_STAND_INTERACT_MAX_AGE_MS) {
+            if (GuiDebugLog.isActive()) {
+                traceTransition("waiting for the clicked minion's own menu; still showing menu#" + containerHandler.containerId);
+            }
             return;
         }
 
@@ -680,6 +753,10 @@ public class MinionFuelTracker {
                 pendingStableItem = current.copy();
                 stableTickCount = 1;
             }
+            if (GuiDebugLog.isActive() && stableTickCount < STABILIZATION_TICKS) {
+                traceTransition("stabilizing " + stableTickCount + "/" + STABILIZATION_TICKS + " slot" + FUEL_SLOT_INDEX
+                        + "=" + GuiDebugLog.describe(current) + " " + traceKey());
+            }
 
             if (stableTickCount >= STABILIZATION_TICKS) {
                 // The container has fully synced by now, so settle the minion's identity
@@ -695,12 +772,22 @@ public class MinionFuelTracker {
                     // normal tick will process the net change, including fuel added while
                     // this minion GUI was closed.
                     initialFuelSlotItem = lastObserved.copy();
+                    if (GuiDebugLog.isActive()) {
+                        trace("baseline locked " + traceKey() + " stable=" + GuiDebugLog.describe(stableItem)
+                                + " DIFFERS from the last confirmed " + GuiDebugLog.describe(lastObserved)
+                                + "; keeping the last confirmed one as baseline so the net change is processed next");
+                    }
                 } else {
                     initialFuelSlotItem = stableItem;
                     lastObservedFuelSlots.put(currentMinionKey, stableItem.copy());
                     lastObservedFuelSlotTimes.put(currentMinionKey, System.currentTimeMillis());
+                    if (GuiDebugLog.isActive()) {
+                        trace("baseline locked " + traceKey() + " baseline=" + GuiDebugLog.describe(stableItem)
+                                + (lastObserved == null ? " (first time seen)" : " (same as last confirmed)"));
+                    }
                 }
                 canTrackChanges = true; // Enable tracking for next tick
+                lastTraceLine = "";
                 pendingStableItem = ItemStack.EMPTY;
                 stableTickCount = 0;
                 pendingChangedItem = ItemStack.EMPTY;
@@ -719,6 +806,7 @@ public class MinionFuelTracker {
         if (ItemStack.matches(currentItem, initialFuelSlotItem)) {
             pendingChangedItem = ItemStack.EMPTY;
             pendingChangedTickCount = 0;
+            if (GuiDebugLog.isActive()) endTraceRun("slot equals the baseline again " + GuiDebugLog.describe(currentItem));
             return;
         }
 
@@ -730,6 +818,12 @@ public class MinionFuelTracker {
         if (!containerHandler.getCarried().isEmpty()) {
             pendingChangedItem = ItemStack.EMPTY;
             pendingChangedTickCount = 0;
+            if (GuiDebugLog.isActive()) {
+                traceTransition("cursor guard: slot" + FUEL_SLOT_INDEX + "=" + GuiDebugLog.describe(currentItem)
+                        + " differs from baseline " + GuiDebugLog.describe(initialFuelSlotItem)
+                        + " but the cursor holds " + GuiDebugLog.describe(containerHandler.getCarried())
+                        + "; waiting for it to clear");
+            }
             return;
         }
 
@@ -740,14 +834,29 @@ public class MinionFuelTracker {
         if (!ItemStack.matches(currentItem, pendingChangedItem)) {
             pendingChangedItem = currentItem.copy();
             pendingChangedTickCount = 1;
+            if (GuiDebugLog.isActive()) {
+                traceTransition("settling 1/" + CHANGE_SETTLING_TICKS + " slot" + FUEL_SLOT_INDEX + "="
+                        + GuiDebugLog.describe(currentItem) + " baseline=" + GuiDebugLog.describe(initialFuelSlotItem));
+            }
             return;
         }
         pendingChangedTickCount++;
-        if (pendingChangedTickCount < CHANGE_SETTLING_TICKS) return;
+        if (pendingChangedTickCount < CHANGE_SETTLING_TICKS) {
+            if (GuiDebugLog.isActive()) {
+                traceTransition("settling " + pendingChangedTickCount + "/" + CHANGE_SETTLING_TICKS + " slot"
+                        + FUEL_SLOT_INDEX + "=" + GuiDebugLog.describe(currentItem));
+            }
+            return;
+        }
         pendingChangedItem = ItemStack.EMPTY;
         pendingChangedTickCount = 0;
+        if (GuiDebugLog.isActive()) {
+            traceTransition("settled slot" + FUEL_SLOT_INDEX + "=" + GuiDebugLog.describe(currentItem)
+                    + " baseline=" + GuiDebugLog.describe(initialFuelSlotItem));
+        }
 
         applyFuelChange(client, currentItem, evaluateFuelChange(initialFuelSlotItem, currentItem));
+        lastTraceLine = "";
     }
 
     /**
@@ -760,18 +869,44 @@ public class MinionFuelTracker {
      */
     private static void flushUnsettledFuelChange(Minecraft client) {
         AbstractContainerMenu menu = lastMinionMenu;
-        if (!canTrackChanges || menu == null || currentMinionKey.isEmpty()) return;
+        if (!canTrackChanges || menu == null || currentMinionKey.isEmpty()) {
+            if (GuiDebugLog.isActive() && (menu != null || canTrackChanges)) {
+                trace("flush: nothing counted, " + (!canTrackChanges
+                        ? "the GUI closed before the baseline locked (canTrackChanges=false)"
+                        : menu == null ? "no menu" : "no minion key"));
+            }
+            return;
+        }
         if (FUEL_SLOT_INDEX >= menu.slots.size()) return;
 
         ItemStack slotItem = menu.getSlot(FUEL_SLOT_INDEX).getItem();
-        if (ItemStack.matches(slotItem, initialFuelSlotItem)) return;
+        if (ItemStack.matches(slotItem, initialFuelSlotItem)) {
+            if (GuiDebugLog.isActive()) trace("flush: slot equals the baseline, nothing to count");
+            return;
+        }
 
         ItemStack finalItem = projectedFuelStack(slotItem, menu.getCarried());
-        if (finalItem == null) return;
+        if (finalItem == null) {
+            if (GuiDebugLog.isActive()) {
+                trace("flush: slot=" + GuiDebugLog.describe(slotItem) + " with cursor="
+                        + GuiDebugLog.describe(menu.getCarried()) + " cannot be projected; nothing counted");
+            }
+            return;
+        }
 
         FuelSlotChange.Result change = evaluateFuelChange(initialFuelSlotItem, finalItem);
-        if (change.newFuelUnits() <= 0) return;
+        if (change.newFuelUnits() <= 0) {
+            if (GuiDebugLog.isActive()) {
+                trace("flush: slot=" + GuiDebugLog.describe(slotItem) + " projected=" + GuiDebugLog.describe(finalItem)
+                        + " is not an addition; nothing counted");
+            }
+            return;
+        }
 
+        if (GuiDebugLog.isActive()) {
+            trace("flush: counting a placement seen on close, slot=" + GuiDebugLog.describe(slotItem) + " cursor="
+                    + GuiDebugLog.describe(menu.getCarried()) + " projected=" + GuiDebugLog.describe(finalItem));
+        }
         System.out.println("[MinionFuelTracker] Minion GUI left before the fuel slot settled; counting the "
                 + "placement seen on close for \"" + currentMinionKey + "\"");
         applyFuelChange(client, finalItem, change);
@@ -816,7 +951,12 @@ public class MinionFuelTracker {
                 + FuelCycleTracker.warpedMsSince(observedAt);
         int unitsExpired = (int) Math.min(Integer.MAX_VALUE, elapsedMs / FuelCycleTracker.DAY_MS);
 
-        return FuelSlotChange.evaluate(readingOf(initial), readingOf(current), unitsExpired);
+        FuelSlotChange.Result result = FuelSlotChange.evaluate(readingOf(initial), readingOf(current), unitsExpired);
+        if (GuiDebugLog.isActive()) {
+            trace("evaluate " + traceKey() + " initial=" + readingOf(initial) + " current=" + readingOf(current)
+                    + " msSinceBaselineConfirmed=" + elapsedMs + " unitsExpired=" + unitsExpired + " -> " + result);
+        }
+        return result;
     }
 
     /** Reports a settled change in the fuel slot and makes it the new confirmed state. */
@@ -839,6 +979,12 @@ public class MinionFuelTracker {
                 + "initial=[" + (initialFuelSlotItem.isEmpty() ? "empty" : initialFuelSlotItem.getCount() + "x " + initialFuelSlotItem.getHoverName().getString()) + "]"
                 + " -> current=[" + (currentItem.isEmpty() ? "empty" : currentItem.getCount() + "x " + currentItem.getHoverName().getString()) + "]"
                 + " sameFuelType=" + change.sameFuelType() + " newFuelUnits=" + newFuelUnits);
+        if (GuiDebugLog.isActive()) {
+            trace("apply " + traceKey() + " initial=" + GuiDebugLog.describe(initialFuelSlotItem) + " -> current="
+                    + GuiDebugLog.describe(currentItem) + " newFuelUnits=" + newFuelUnits + " fuelRemoved="
+                    + change.fuelRemoved() + " initialWasEmpty=" + initialWasEmpty
+                    + (newFuelUnits > 0 ? "" : " (nothing to count; baseline updated)"));
+        }
 
         if (newFuelUnits > 0) {
             // The fuel was placed! Send the message (if enabled)
@@ -853,6 +999,9 @@ public class MinionFuelTracker {
                         .append(Component.literal(fuelName).withStyle(fuelColor));
 
                 client.player.sendSystemMessage(message);
+                if (GuiDebugLog.isActive()) trace("COUNTED, chat message sent: \"" + message.getString() + "\"");
+            } else if (GuiDebugLog.isActive()) {
+                trace("COUNTED " + newFuelUnits + " fuel unit(s); chat message is turned off");
             }
 
             // Notify FuelCycleTracker - this extends this specific minion's own

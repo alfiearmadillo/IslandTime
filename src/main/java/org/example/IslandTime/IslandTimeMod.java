@@ -43,6 +43,7 @@ public class IslandTimeMod implements ClientModInitializer {
 
         // Register tick events
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            GuiDebugLog.tick(client);  // Before anything reacts to the open menu's contents
             IslandTimeTracker.tick(client);
             MinionFuelTracker.checkFuelSlot();
             FavouriteGuiManager.tickScreenSnapshot(client);
@@ -78,6 +79,7 @@ public class IslandTimeMod implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+                GuiDebugLog.stop("disconnected");
                 IslandChatRelay.stopPolling();
                 // Hypixel never announces leaving the Safari, so end the run on disconnect.
                 CritterSafariTracker.reset();

@@ -54,6 +54,7 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it infernoProfits [MINIONS]` | Show what the minions of your current fuel cohort (or MINIONS minions) earn in a whole fuel day on Rare (Fuel Gabagool), Epic (Heavy Gabagool) and Legendary (Hypergolic Gabagool) fuel, using the minion tier, speed bonuses, Super Compactor, eyedrops and price settings of the Profit Calculators > Inferno Profits options (never AFK mode). Hover a fuel for the full breakdown |
 | `/it fueltime debug` | Inject a fake day record and attempt a save (diagnostics) |
 | `/it minionid` | With a minion's GUI open, show how that minion is being identified and what each upgrade slot contains, including why an upgrade's uuid was rejected (diagnostics) |
+| `/it guilog [start\|stop\|status\|note <text>]` | Record a diagnostic log of container GUI activity to `config/IslandTime/gui-debug/` while it runs (see [GUI debug log](#gui-debug-log)) |
 | `/it composter` | Show composter tracking status: last reading (tab widget or Composter menu), known upgrade levels, estimated time until empty and which resource runs out first |
 | `/it composter debug` | Copy the tab list lines and the last Composter menu contents to the clipboard, for troubleshooting when the composter is not found |
 | `/it trackitem set\|clear` | Track/untrack the held item |
@@ -100,6 +101,23 @@ All commands can also be configured from the GUI (`/islandtime`).
 | `/it help [page]` | View help pages |
 
 `/islandtime` is an alias for `/it`. All commands are available under both prefixes.
+
+## GUI debug log
+
+`/it guilog start` starts writing a log of everything that happens in container GUIs (minion menus, the Bazaar, chests...) to `config/IslandTime/gui-debug/gui-debug-<date>-<time>.log`; `/it guilog stop` ends it (so does disconnecting, or the file reaching 64 MB). It is off by default and costs nothing while off. It exists to pin down fuel counting bugs (a fuel counted twice, or not at all) by showing, in order, what you did, what the game predicted and what the server answered. Use `/it guilog note <text>` to mark a moment ("closed this one instantly") so it can be found in the file, and `/it guilog status` to see whether it is running.
+
+Every line is `time +msSinceStart tTickNumber TYPE details`, flushed straight to the file:
+
+- `OPEN`, `OPEN_SLOT`, `SLOT`, `CURSOR`, `STATE`, `CLOSE`: the menu as it opens (every non-empty slot), every change to a slot or to the item on the mouse between ticks (old → new), changes of the menu's state id, and the moment it closes (a change made in the same tick as the close is included).
+- `CLICK_RAW`, `KEY`: mouse presses and key presses in the GUI, with the hovered slot and item, before the game acts on them.
+- `CLICK_SENT`, `CLICK_PREDICTED`: the click the game sends to the server, then what the client predicted it would do before the server answered.
+- `PACKET_IN`, `PACKET_DONE`: each container packet from the server (slot, whole-menu contents, cursor item, close, open) with all its fields, just before and just after the client applies it. Each shows the client's state, which is how an answer that arrives after the GUI was closed shows up.
+- `MINION_CLICK`: an armor stand being right-clicked, which is how a minion GUI is attributed to a physical minion.
+- `TRACKER`: every decision the minion fuel tracker makes: which minion it is tracking, when the baseline is locked, when it is waiting for the cursor to clear or the slot to settle, what it compared, what it counted, the chat message it sent, and why nothing was counted when the GUI closed.
+
+Items are written as `count "name" fp=<fingerprint> sbId=<SkyBlock id> uuid=<item uuid>`. The first time a fingerprint appears, an `ITEMDEF` line just before it holds that item's full data: name, lore and every item component as SNBT. The fingerprint covers the count, so two lines with the same `fp` are the same item, uuid included, and the same item at another count has another `fp`. The end of the file counts the lines of each type, which shows which hooks never fired.
+
+Chat is not recorded, and the log holds no account name, but item data can include whatever the item carries (a Hypixel item uuid, or a player name on some items), so look through it before sharing it. To share it, copy the file into the repository (e.g. a `debug-logs` folder) and push it.
 
 ## Configuration
 

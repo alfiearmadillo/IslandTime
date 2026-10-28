@@ -15,6 +15,7 @@ import org.example.islandtime.BackpackNbtParser;
 import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.FakeSlot;
 import org.example.islandtime.FavouriteGuiViewer;
+import org.example.islandtime.GuiDebugLog;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
@@ -131,7 +132,11 @@ public class HandledScreenMixin {
     private void islandtime$blockClickWhileFrozen(MouseButtonEvent event,
                                                   boolean doubleClick,
                                                   CallbackInfoReturnable<Boolean> cir) {
-        if (islandtime$shouldBlockMouseInput()) {
+        boolean blocked = islandtime$shouldBlockMouseInput();
+        if (GuiDebugLog.isActive()) {
+            GuiDebugLog.onRawClick(this.hoveredSlot, event.button(), event.modifiers(), doubleClick, blocked);
+        }
+        if (blocked) {
             cir.setReturnValue(true);
             cir.cancel();
         }
@@ -164,6 +169,8 @@ public class HandledScreenMixin {
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void islandtime$beforeKeyPressed(KeyEvent event,
                                              CallbackInfoReturnable<Boolean> cir) {
+        if (GuiDebugLog.isActive()) GuiDebugLog.onKey(event.key(), this.hoveredSlot);
+
         long window = Minecraft.getInstance().getWindow().handle();
 
         // ── Copy Skin from hovered item keybind ──────────────────────────────

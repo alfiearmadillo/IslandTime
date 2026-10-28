@@ -166,6 +166,7 @@ public class IslandTimeCommand {
                                     showSpecificDate(StringArgumentType.getString(ctx, "date"));
                                     return 1;
                                 })))
+                .then(GuiDebugCommand.build())
         );
 
         // /it — alias for /islandtime
@@ -406,6 +407,7 @@ public class IslandTimeCommand {
                                     showSpecificDate(StringArgumentType.getString(ctx, "date"));
                                     return 1;
                                 })))
+                .then(GuiDebugCommand.build())
         );
 
     }
@@ -857,6 +859,7 @@ public class IslandTimeCommand {
                 {"/it blueprint list|select <name>|delete <name>", "List, switch between and delete copied greenhouse blueprints"},
                 {"/it blueprint gui|export [name]|import", "Open the blueprint list (select, delete, copy a shareable import code per layout, import one from the clipboard at the top). export copies the code of the selected or named layout, import reads one from the clipboard"},
                 {"/it blueprint board <n>|rotate [left|right]|mirror|align|toggle|status", "Pick the board for this plot, turn or mirror the layout (align fits it to what you have already built), switch the overlay on or off, or check why it isn't showing"},
+                {"/it guilog [start|stop|status|note <text>]", "Record a diagnostic log of container GUI activity (clicks, items, server packets, minion fuel tracking) to config/IslandTime/gui-debug/ for bug reports. Chat is not recorded"},
         };
 
         int commandsPerPage = 5;
