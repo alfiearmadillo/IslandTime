@@ -8,6 +8,8 @@
     "AdaptiveColorMixin",
     "GameRendererMixin",
     "GabagoolPpgMixin",
+    "GuiDebugGameModeMixin",
+    "GuiDebugPacketMixin",
     "HandledScreenMixin",
     "MouseMixin",
     "LevelRendererMixin",
