@@ -515,7 +515,8 @@ public class IslandTimeConfig extends Config {
                         "full sacks gains nothing.\n" +
                         "Until Minion GUI Opened: until you open a minion's menu, for when the gabagool goes " +
                         "into your minions rather than your sacks and you only need to get back and refuel.\n" +
-                        "Don't Repeat: send it once only."
+                        "Don't Repeat: send it once only.\n" +
+                        "The reminder sent when a fuel-day ends with fuel still left is always sent once only."
         )
         @ConfigEditorDropdown(values = {"Until Sacks Emptied", "Until Minion GUI Opened", "Don't Repeat"})
         public int fuelAlertRepeatMode = 0; // Until Sacks Emptied
