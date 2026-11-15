@@ -122,6 +122,35 @@ final class SkinService {
     // Reading a skin to upload
     // -------------------------------------------------------------------------
 
+    /** Downloads a skin from Mojang's texture server, as given by a profile. */
+    static BufferedImage downloadSkin(String url) throws SkinException {
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new SkinException("This account has no custom skin to save");
+        }
+        if (uri.getHost() == null || !uri.getHost().equals("textures.minecraft.net")) {
+            throw new SkinException("This account has no custom skin to save");
+        }
+        try {
+            HttpResponse<java.io.InputStream> response = HTTP.send(
+                    HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).GET().build(),
+                    HttpResponse.BodyHandlers.ofInputStream());
+            try (java.io.InputStream in = response.body()) {
+                if (response.statusCode() != 200) throw new SkinException("Could not download the skin (" + response.statusCode() + ")");
+                BufferedImage image = ImageIO.read(in);
+                if (image == null) throw new SkinException("The downloaded skin is not an image");
+                return image;
+            }
+        } catch (IOException e) {
+            throw new SkinException("Could not download the skin: " + e.getClass().getSimpleName());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SkinException("Cancelled");
+        }
+    }
+
     static void validate(BufferedImage image) throws SkinException {
         if (image == null) throw new SkinException("That isn't an image");
         boolean ok = image.getWidth() == 64 && (image.getHeight() == 64 || image.getHeight() == 32);

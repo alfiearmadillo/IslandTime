@@ -364,6 +364,33 @@ public class IslandTimeCommand {
                                                     skinChatReporter(client));
                                             return 1;
                                         })))
+                        .then(literal("save")
+                                .then(argument("name", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            Minecraft client = ctx.getSource().getClient();
+                                            String name = StringArgumentType.getString(ctx, "name").trim();
+                                            String problem = SkinLibrary.validateName(name, null);
+                                            if (problem != null) {
+                                                sendLocal(client, problem, false);
+                                                return 0;
+                                            }
+                                            sendLocal(client, "Saving the skin...", true);
+                                            SkinActions.saveCurrent(name, skinChatReporter(client));
+                                            return 1;
+                                        })))
+                        .then(literal("use")
+                                .then(argument("name", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            Minecraft client = ctx.getSource().getClient();
+                                            SkinLibrary.Entry entry = SkinLibrary.findByName(StringArgumentType.getString(ctx, "name"));
+                                            if (entry == null) {
+                                                sendLocal(client, "No saved skin has that name. See /it skin.", false);
+                                                return 0;
+                                            }
+                                            sendLocal(client, "Applying \"" + entry.name + "\"...", true);
+                                            SkinActions.useSaved(entry, skinChatReporter(client));
+                                            return 1;
+                                        })))
                         .then(literal("reset")
                                 .executes(ctx -> {
                                     Minecraft client = ctx.getSource().getClient();
@@ -859,6 +886,8 @@ public class IslandTimeCommand {
                 {"/it skin paste", "Set your skin to the image on your clipboard (64x64 or 64x32). Use /it skin pasteslim for the slim model"},
                 {"/it skin hash <texture hash>", "Set your skin to a texture on Mojang's texture server, such as the one a player head wears"},
                 {"/it skin reset", "Go back to the default skin"},
+                {"/it skin save <name>", "Save the skin (with its model and cape) the account has now, to switch back to later"},
+                {"/it skin use <name>", "Apply a saved skin, and its cape if the account owns it"},
                 {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate (or only Gabagool Distillate if that setting is on)"},
                 {"/it infernoProfits [MINIONS]", "Show what your current cohort (or MINIONS minions) earns per fuel day on Rare, Epic and Legendary fuel: loot at the Bazaar sell offer (Legendary with its rare drops, partial ones included) less the fuel at buy orders and, on Legendary, the eyedrops. Uses the speed and eyedrop settings of Profit Calculators > Inferno Profits"},
 

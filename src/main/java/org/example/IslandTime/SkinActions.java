@@ -56,6 +56,44 @@ final class SkinActions {
         run(reporter, "Cape hidden." + RECONNECT_NOTE, SkinService::hideCape);
     }
 
+    /** Saves the skin the account has now, with its model and cape, under {@code name}. */
+    static void saveCurrent(String name, Reporter reporter) {
+        run(reporter, "Saved the current skin as \"" + name + "\".", () -> {
+            SkinService.Profile profile = SkinService.fetchProfile();
+            BufferedImage image = SkinService.downloadSkin(profile.skinUrl());
+            SkinService.Cape worn = profile.capes().stream().filter(SkinService.Cape::active).findFirst().orElse(null);
+            try {
+                SkinLibrary.add(name, image, "slim".equals(profile.skinVariant()),
+                        worn == null ? "" : worn.id(), worn == null ? "" : worn.alias());
+            } catch (java.io.IOException e) {
+                throw new SkinService.SkinException(e.getMessage());
+            }
+            return profile;
+        });
+    }
+
+    /** Applies a saved skin and, when it was saved with one the account owns, its cape. */
+    static void useSaved(SkinLibrary.Entry entry, Reporter reporter) {
+        run(reporter, "Applied \"" + entry.name + "\"." + RECONNECT_NOTE, () -> {
+            BufferedImage image;
+            try {
+                image = SkinLibrary.readImage(entry);
+            } catch (java.io.IOException e) {
+                throw new SkinService.SkinException(e.getMessage());
+            }
+            SkinService.Profile profile = SkinService.uploadSkin(image, entry.slim);
+
+            if (entry.capeId == null) return profile;
+            SkinService.Cape worn = profile.capes().stream().filter(SkinService.Cape::active).findFirst().orElse(null);
+            if (entry.capeId.isEmpty()) {
+                return worn != null ? SkinService.hideCape() : profile;
+            }
+            boolean owned = profile.capes().stream().anyMatch(cape -> cape.id().equals(entry.capeId));
+            if (owned && (worn == null || !worn.id().equals(entry.capeId))) return SkinService.setCape(entry.capeId);
+            return profile;
+        });
+    }
+
     private static void run(Reporter reporter, String success, Call call) {
         Minecraft client = Minecraft.getInstance();
         Thread thread = new Thread(() -> {
