@@ -7,8 +7,9 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 
 /**
- * Sends a repeating Discord alert once a minion's queued fuel-days run out ("a day of fuel is
- * up"), so you know to refuel and/or sell out your sacks. This matters mainly because sacks
+ * Sends a repeating Discord alert once all of a minion's queued fuel has run out, so you know to refuel
+ * and/or sell out your sacks. When a fuel-day ends but fuel is still left, a one-off reminder with the
+ * fuel remaining is sent instead. This matters mainly because sacks
  * have a storage cap — AFKing past that point without emptying them stops the setup from
  * gaining anything more.
  *
@@ -21,8 +22,9 @@ import java.nio.file.StandardCopyOption;
  * Two settings (Alert Speeds category) change that for setups that don't AFK, both leaving the
  * behaviour above untouched while they are left at their defaults:
  *  - "Fuel Alert Only When All Fuel Expires": a fuel-day that ends while more fuel is still queued
- *    sends nothing. The alert goes out when the last queued fuel-day ends and no minion's fuel is still
- *    burning, so fuel added before then postpones it. See {@link #onFuelDayUp(int, boolean)}.
+ *    sends nothing, rather than the reminder it otherwise sends. The alert goes out when the last queued
+ *    fuel-day ends and no minion's fuel is still burning, so fuel added before then postpones it. See
+ *    {@link #onFuelDayUp(int, long)}.
  *  - "Repeat Fuel Alert Until" (a {@link RepeatMode}): what stops the repeating. Without AFKing the
  *    gabagool goes into minions, not sacks, so there is nothing to empty; the alert can instead stop
  *    when a minion's menu is opened ({@link #onMinionGuiOpened()}), or not repeat at all.
@@ -92,17 +94,20 @@ public class FuelExpiredAlertTracker {
     }
 
     /**
-     * Called by FuelCycleTracker each time a fuel-day runs out. Sends the first alert immediately,
-     * then repeats on tick() unless repeating is turned off.
+     * Called by FuelCycleTracker each time a fuel-day runs out. When no fuel is left, sends the "fuel has run
+     * out" alert immediately, then repeats on tick() unless repeating is turned off. When fuel is still left,
+     * sends a one-off reminder of how much remains instead (see
+     * {@link DiscordWebhookManager#sendFuelReminder(int, long)}), or nothing if "Only When All Fuel Expires" is on.
      *
-     * @param moreFuelQueued whether fuel is still queued after this fuel-day, in which case the
-     *                       alert is skipped when "Only When All Fuel Expires" is on. The next
-     *                       fuel-day to run out asks again, so it is sent once the last one has;
-     *                       if that leaves fuel still burning, {@link #onAllFuelExpired()} sends it.
+     * @param fuelRemainingMs how long the fuel still queued after this fuel-day lasts, or -1 when there is none.
+     *                        With "Only When All Fuel Expires" on, the alert is skipped while fuel remains; the
+     *                        next fuel-day to run out asks again, so it is sent once the last one has;
+     *                        if that leaves fuel still burning, {@link #onAllFuelExpired()} sends it.
      */
-    public static void onFuelDayUp(int minionCount, boolean moreFuelQueued) {
+    public static void onFuelDayUp(int minionCount, long fuelRemainingMs) {
         if (fuelExpiredAlertSpeed == AlertSpeed.OFF) return;
 
+        boolean moreFuelQueued = fuelRemainingMs >= 0;
         boolean wasHeldBack = alertHeldBack;
         if (onlyWhenAllExpired()) {
             int previousCount = stackMinionCount;
@@ -114,6 +119,9 @@ public class FuelExpiredAlertTracker {
                 return;
             }
             minionCount = stackMinionCount;
+        } else if (moreFuelQueued) {
+            DiscordWebhookManager.sendFuelReminder(minionCount, fuelRemainingMs);
+            return;
         }
         stackMinionCount = 0;
         alertHeldBack    = false;
@@ -130,12 +138,12 @@ public class FuelExpiredAlertTracker {
 
     /**
      * Called by FuelCycleTracker once no fuel is left burning or queued. Sends the alert that
-     * {@link #onFuelDayUp(int, boolean)} held back because a minion fueled after the others was still
+     * {@link #onFuelDayUp(int, long)} held back because a minion fueled after the others was still
      * burning when the last fuel-day ended.
      */
     public static void onAllFuelExpired() {
         if (!alertHeldBack) return;
-        onFuelDayUp(stackMinionCount, false);
+        onFuelDayUp(stackMinionCount, -1);
     }
 
     /**

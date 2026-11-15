@@ -54,6 +54,7 @@ public class FuelDayScreen extends Screen {
     private static final int ADD_DAY_BUTTON_WIDTH = 110;
     private static final int USE_BUTTON_WIDTH = 150;
     private static final int DATA_SETS_BUTTON_WIDTH = 70;
+    private static final int MINIONS_BUTTON_WIDTH = 60;
     private static final int PROFIT_BUTTON_WIDTH = 135;
     private static final long STATUS_MS = 4_000L;
 
@@ -72,6 +73,7 @@ public class FuelDayScreen extends Screen {
     private Rect forceEndRect;
     private Rect useRect;
     private Rect dataSetsRect;
+    private Rect minionsRect;
     private Rect profitRect;
     /** Whether the header was built for the data set in use, so it can be rebuilt when that changes. */
     private boolean builtForActive = true;
@@ -193,6 +195,7 @@ public class FuelDayScreen extends Screen {
         forceEndRect = null;
         useRect = null;
         dataSetsRect = null;
+        minionsRect = null;
         profitRect = null;
         builtForActive = viewingActive();
         estimateCache.clear();
@@ -218,16 +221,27 @@ public class FuelDayScreen extends Screen {
                         .build());
             }
 
-            int row2Width = DATA_SETS_BUTTON_WIDTH + PROFIT_BUTTON_WIDTH + TOP_BUTTON_GAP;
+            int minionsWidth = builtForActive ? MINIONS_BUTTON_WIDTH + TOP_BUTTON_GAP : 0;
+            int row2Width = DATA_SETS_BUTTON_WIDTH + minionsWidth + PROFIT_BUTTON_WIDTH + TOP_BUTTON_GAP;
             int x = width / 2 - row2Width / 2;
             dataSetsRect = new Rect(x, HEADER_ROW_2_Y, DATA_SETS_BUTTON_WIDTH, 20);
             addRenderableWidget(Button.builder(Component.literal("Data Sets"),
                             btn -> Minecraft.getInstance().setScreen(new FuelDataSetsScreen(this)))
                     .bounds(dataSetsRect.x(), dataSetsRect.y(), dataSetsRect.w(), dataSetsRect.h())
                     .build());
+            x += DATA_SETS_BUTTON_WIDTH + TOP_BUTTON_GAP;
+
+            // Only the data set in use has a cohort of minions running
+            if (builtForActive) {
+                minionsRect = new Rect(x, HEADER_ROW_2_Y, MINIONS_BUTTON_WIDTH, 20);
+                addRenderableWidget(Button.builder(Component.literal("Minions"),
+                                btn -> Minecraft.getInstance().setScreen(new FuelMinionsScreen(this)))
+                        .bounds(minionsRect.x(), minionsRect.y(), minionsRect.w(), minionsRect.h())
+                        .build());
+                x += MINIONS_BUTTON_WIDTH + TOP_BUTTON_GAP;
+            }
 
             // The mode belongs to the data set being shown, whether or not it is the one in use
-            x += DATA_SETS_BUTTON_WIDTH + TOP_BUTTON_GAP;
             profitRect = new Rect(x, HEADER_ROW_2_Y, PROFIT_BUTTON_WIDTH, 20);
             addRenderableWidget(Button.builder(profitModeLabel(estimateEnabled()), btn -> {
                         boolean estimated = !estimateEnabled();
@@ -751,6 +765,9 @@ public class FuelDayScreen extends Screen {
                     + "\" and can be switched back to").withStyle(ChatFormatting.DARK_GRAY));
         } else if (dataSetsRect != null && dataSetsRect.contains(mouseX, mouseY)) {
             lines.add(Component.literal("Create, view and switch between data sets").withStyle(ChatFormatting.GRAY));
+        } else if (minionsRect != null && minionsRect.contains(mouseX, mouseY)) {
+            lines.add(Component.literal("Edit the fuel time of each minion in the cohort").withStyle(ChatFormatting.GRAY));
+            lines.add(Component.literal("Fixes minions that have drifted out of sync").withStyle(ChatFormatting.DARK_GRAY));
         } else if (profitRect != null && profitRect.contains(mouseX, mouseY)) {
             lines.add(Component.literal("Profit for \"" + viewedSetName() + "\"").withStyle(ChatFormatting.GOLD));
             lines.add(Component.literal("Actual: the coins and gabagool the minions really made, as tracked").withStyle(ChatFormatting.GRAY));
@@ -895,6 +912,7 @@ public class FuelDayScreen extends Screen {
             lines.add(Component.literal("Minion fuel expiry (soonest first)")
                     .withStyle(ChatFormatting.GOLD));
             long now = System.currentTimeMillis();
+            Map<String, Long> outOfSync = FuelCycleTracker.getOutOfSyncMinions(now);
             for (FuelCycleTracker.MinionExpiry expiry : expiries) {
                 String label = expiry.name;
                 if (expiry.position != null && !expiry.position.isBlank()) {
@@ -902,8 +920,9 @@ public class FuelDayScreen extends Screen {
                 }
                 lines.add(Component.literal(label + " — "
                                 + formatRemaining(expiry.expiresAt - now)
-                                + " (" + FuelCycleTracker.formatEditableTimestamp(expiry.expiresAt) + ")")
-                        .withStyle(ChatFormatting.GRAY));
+                                + " (" + FuelCycleTracker.formatEditableTimestamp(expiry.expiresAt) + ")"
+                                + (outOfSync.containsKey(expiry.key) ? " - out of sync" : ""))
+                        .withStyle(outOfSync.containsKey(expiry.key) ? ChatFormatting.RED : ChatFormatting.GRAY));
             }
         }
         context.setComponentTooltipForNextFrame(font, lines, mouseX, mouseY);

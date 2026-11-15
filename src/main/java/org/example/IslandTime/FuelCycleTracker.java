@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -1022,11 +1023,13 @@ public class FuelCycleTracker {
 
     /** A display-only snapshot of one minion's active fuel expiry. */
     public static class MinionExpiry {
+        public final String key;
         public final String name;
         public final String position;
         public final long expiresAt;
 
-        private MinionExpiry(String name, String position, long expiresAt) {
+        private MinionExpiry(String key, String name, String position, long expiresAt) {
+            this.key = key;
             this.name = name;
             this.position = position;
             this.expiresAt = expiresAt;
@@ -1042,12 +1045,61 @@ public class FuelCycleTracker {
             String name = MinionIdentityRegistry.displayNameFor(entry.getKey());
             String position = MinionIdentityRegistry.positionFor(entry.getKey());
             result.add(new MinionExpiry(
+                    entry.getKey(),
                     name != null && !name.isBlank() ? name : "Minion",
                     position != null && !position.isBlank() ? position : entry.getKey(),
                     expiry));
         }
         result.sort(Comparator.comparingLong(expiry -> expiry.expiresAt));
         return result;
+    }
+
+    /** How far a minion's fuel may differ from the average of the other minions' before it counts as out of sync. */
+    static final long OUT_OF_SYNC_MS = 8L * 60 * 60 * 1000;
+
+    /**
+     * The active minions whose fuel expires more than {@link #OUT_OF_SYNC_MS} away from the average of the
+     * <em>other</em> active minions, each with how far from it: positive when it has more time left, negative
+     * when it has less. Needs at least two minions, as one has nothing to be out of sync with.
+     */
+    public static Map<String, Long> getOutOfSyncMinions(long now) {
+        List<MinionExpiry> active = getActiveMinionExpiries(now);
+        Map<String, Long> result = new LinkedHashMap<>();
+        if (active.size() < 2) return result;
+
+        long total = 0;
+        for (MinionExpiry minion : active) total += minion.expiresAt;
+        for (MinionExpiry minion : active) {
+            long averageOfRest = (total - minion.expiresAt) / (active.size() - 1);
+            long difference = minion.expiresAt - averageOfRest;
+            if (Math.abs(difference) > OUT_OF_SYNC_MS) result.put(minion.key, difference);
+        }
+        return result;
+    }
+
+    /** The average fuel expiry of every active minion except {@code key}, or -1 when there are none. */
+    public static long averageExpiryOfOthers(String key, long now) {
+        long total = 0;
+        int count = 0;
+        for (MinionExpiry minion : getActiveMinionExpiries(now)) {
+            if (minion.key.equals(key)) continue;
+            total += minion.expiresAt;
+            count++;
+        }
+        return count == 0 ? -1 : total / count;
+    }
+
+    /**
+     * Sets when one minion's fuel runs out, for correcting a minion that has drifted from the rest (time added
+     * or taken off it by hand). Only that minion's expiry changes; fuel-day records are left as they are.
+     *
+     * @return false if the minion isn't in the active cohort or {@code expiresAt} isn't in the future
+     */
+    public static boolean setMinionExpiry(String key, long expiresAt) {
+        if (key == null || !minionExpiries.containsKey(key) || expiresAt <= System.currentTimeMillis()) return false;
+        minionExpiries.put(key, expiresAt);
+        save();
+        return true;
     }
 
     public static boolean hasActiveCohort() {
@@ -1091,7 +1143,7 @@ public class FuelCycleTracker {
         // Sent once the queued fuel is discarded, so "only when all fuel expires" counts this as the end
         if (closedActiveDay) {
             FuelExpiredAlertTracker.onFuelDayUp(activeRecord.minionsRefueledAuto,
-                    hasFuelQueuedAfter(activeRecord, now));
+                    fuelRemainingAfter(activeRecord, now));
         }
         if (closedActiveDay) captureEndOfDayPrices(List.of(activeRecord));
         save();
@@ -1920,7 +1972,7 @@ public class FuelCycleTracker {
         record.cycleClosed = true;
         minionsCountedByDaySlot.remove(daySlot);
         FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto,
-                hasFuelQueuedAfter(record, System.currentTimeMillis()));
+                fuelRemainingAfter(record, System.currentTimeMillis()));
         captureEndOfDayPrices(List.of(record));
     }
 
@@ -1934,29 +1986,37 @@ public class FuelCycleTracker {
     }
 
     /**
-     * Whether fuel is still queued once the fuel-day {@code ending} is over. This is what the "only
-     * alert when all fuel expires" setting asks: fuel added later queues another day, which postpones
-     * the alert. See {@link #fuelQueued(DayRecord, long, long)}.
+     * How much fuel is still queued once the fuel-day {@code ending} is over, or -1 when none is. This
+     * is what decides between the "fuel has run out" alert and a reminder: fuel added later queues
+     * another day, which also postpones the alert when "only alert when all fuel expires" is on.
+     * See {@link #fuelRemainingMs(DayRecord, long, long)}.
      */
-    private static boolean hasFuelQueuedAfter(DayRecord ending, long now) {
-        return fuelQueued(ending, effectiveEndMs(ending), now);
+    private static long fuelRemainingAfter(DayRecord ending, long now) {
+        return fuelRemainingMs(ending, effectiveEndMs(ending), now);
     }
 
     /**
-     * Whether any fuel is left at {@code now}: a minion whose own fuel is still burning (a minion
-     * fueled after the others lands in the same days but burns on past their end), or a fuel-day,
-     * other than {@code ignore}, that hasn't been closed and ends at or after {@code minEnd}. Of
-     * several days with the same end, the one closed last is the one that counts as the end.
+     * How long the fuel left at {@code now} lasts, or -1 when there is none: a minion whose own fuel is
+     * still burning (a minion fueled after the others lands in the same days but burns on past their
+     * end), or a fuel-day, other than {@code ignore}, that hasn't been closed and ends at or after
+     * {@code minEnd}. Of several days with the same end, the one closed last is the one that counts as
+     * the end.
      */
-    private static boolean fuelQueued(DayRecord ignore, long minEnd, long now) {
+    private static long fuelRemainingMs(DayRecord ignore, long minEnd, long now) {
+        long remaining = -1;
         for (long expiry : minionExpiries.values()) {
-            if (expiry > now) return true;
+            if (expiry > now) remaining = Math.max(remaining, expiry - now);
         }
         for (DayRecord other : dayRecords.values()) {
             if (other == ignore || other.cycleStartMs <= 0 || isClosed(other)) continue;
-            if (effectiveEndMs(other) >= minEnd) return true;
+            long end = effectiveEndMs(other);
+            if (end >= minEnd) remaining = Math.max(remaining, Math.max(0, end - now));
         }
-        return false;
+        return remaining;
+    }
+
+    private static boolean fuelQueued(DayRecord ignore, long minEnd, long now) {
+        return fuelRemainingMs(ignore, minEnd, now) >= 0;
     }
 
     /**
@@ -2015,7 +2075,7 @@ public class FuelCycleTracker {
             }
             record.cycleClosed = true;
             minionsCountedByDaySlot.remove(record.date);
-            FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto, hasFuelQueuedAfter(record, now));
+            FuelExpiredAlertTracker.onFuelDayUp(record.minionsRefueledAuto, fuelRemainingAfter(record, now));
             anyClosed = true;
         }
 

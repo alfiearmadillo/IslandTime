@@ -323,6 +323,12 @@ public class IslandTimeCommand {
                             client.execute(() -> client.setScreen(new FuelDayScreen()));
                             return 1;
                         }))
+                .then(literal("cohort")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new FuelMinionsScreen(null)));
+                            return 1;
+                        }))
                 .then(literal("datasets")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
@@ -778,6 +784,7 @@ public class IslandTimeCommand {
                 {"/it fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
                 {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
                 {"/it datasets", "Open the fuel data sets menu: create, browse and switch between sets of fuel day data (Main, Debug, your own). The one in use is remembered"},
+                {"/it cohort", "Open the list of minions in the current fuel cohort to add or remove time from individual minions, sync out-of-sync ones back to the rest, or remove them"},
                 {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate (or only Gabagool Distillate if that setting is on)"},
                 {"/it infernoProfits [MINIONS]", "Show what your current cohort (or MINIONS minions) earns per fuel day on Rare, Epic and Legendary fuel: loot at the Bazaar sell offer (Legendary with its rare drops, partial ones included) less the fuel at buy orders and, on Legendary, the eyedrops. Uses the speed and eyedrop settings of Profit Calculators > Inferno Profits"},
 

@@ -138,6 +138,26 @@ public class IslandTimeConfig extends Config {
         @ConfigEditorBoolean
         public boolean enabled = true;
 
+        @ConfigOption(name = "Edit Cohort Minions", desc = "Open the list of minions in the current fuel cohort to add or remove time from individual minions, sync one back to the rest, or remove it. Also /it cohort")
+        @ConfigEditorButton(buttonText = " Edit Minions ")
+        public Runnable editCohortMinionsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new FuelMinionsScreen(null)));
+            }
+        };
+
+        @Expose
+        @ConfigOption(
+                name = "Highlight Out-of-Sync Minions",
+                desc = "Highlight, through walls, any minion whose fuel ends more than 8 hours before or after " +
+                        "the average of the other minions in the cohort. Only minions you have opened since " +
+                        "they were fueled are known by position."
+        )
+        @ConfigEditorBoolean
+        public boolean highlightOutOfSyncMinions = false;
+
         @ConfigOption(
                 name = "Fuel Data Sets",
                 desc = "Create, view and switch between sets of fuel day data (Main, Debug, or your own). " +
@@ -414,16 +434,17 @@ public class IslandTimeConfig extends Config {
         public int disconnectSpeed = 2; // NORMAL
 
         @Expose
-        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until the one set in Repeat Fuel Alert Until (by default, until you empty your sacks)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when all of a minion's fuel runs out, until the one set in Repeat Fuel Alert Until (by default, until you empty your sacks). A fuel-day ending with fuel still left sends a single reminder instead\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int fuelExpiredSpeed = 2; // NORMAL
 
         @Expose
         @ConfigOption(
                 name = "Fuel Alert Only When All Fuel Expires",
-                desc = "Send the fuel alert when the whole stack of fuel has run out, instead of each time " +
-                        "a single fuel-day runs out. Fuel added before that postpones the alert to when all of " +
-                        "it has actually run out. Off sends an alert per fuel-day. This only changes when the " +
+                desc = "Send the fuel alert when the whole stack of fuel has run out, instead of a reminder " +
+                        "each time a single fuel-day runs out (which says how much fuel is left, so you can " +
+                        "collect it). Fuel added before that postpones the alert to when all of " +
+                        "it has actually run out. This only changes when the " +
                         "alert is first sent; whether it then repeats is set by Repeat Fuel Alert Until."
         )
         @ConfigEditorBoolean
@@ -534,7 +555,7 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
             name = "Component Names",
-            desc = "Space-separated list of component names to display (e.g. catacombs_level_requirement id color)"
+            desc = "Space-separated list of component names to display (e.g. catacombs_level_requirement id color). Start a name with pet_ to read from a pet's petInfo (e.g. pet_candyUsed pet_exp)"
         )
         @ConfigEditorText
         public String componentNames = "";

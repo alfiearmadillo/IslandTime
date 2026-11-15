@@ -87,6 +87,7 @@ public class IslandTimeMod implements ClientModInitializer {
 
         // Register block highlight renderer
         BlockHighlightRenderer.register();
+        MinionSyncHighlight.register();
 
         // Register the Garden greenhouse blueprint overlay and its legend
         GreenhouseBlueprintRenderer.register();

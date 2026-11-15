@@ -1,5 +1,9 @@
 package org.example.islandtime;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.ItemStack;
@@ -9,10 +13,13 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Appends specified component values to item tooltips when enabled.
  * Reads component names from config and displays matching values from the item's custom data.
+ * A name starting with {@code pet_} reads from the pet's {@code petInfo} instead, so
+ * {@code pet_candyUsed} shows that value (matched without regard to case).
  */
 public class ComponentDisplayHandler {
 
@@ -44,6 +51,8 @@ public class ComponentDisplayHandler {
         if (customData == null || customData.isEmpty()) return;
 
         CompoundTag nbt = customData.copyTag();
+        JsonObject petInfo = null;
+        boolean petInfoRead = false;
 
         for (String name : names) {
             if (nbt.contains(name)) {
@@ -65,8 +74,64 @@ public class ComponentDisplayHandler {
                 } else {
                     tooltip.add(Component.literal("\u00A78" + name + ": " + formatNbtValue(element)));
                 }
+            } else if (name.regionMatches(true, 0, PET_PREFIX, 0, PET_PREFIX.length())
+                    && name.length() > PET_PREFIX.length()) {
+                if (!petInfoRead) {
+                    petInfo = readPetInfo(nbt);
+                    petInfoRead = true;
+                }
+                appendPetLines(tooltip, name, name.substring(PET_PREFIX.length()), petInfo);
             }
         }
+    }
+
+    /** Names starting with this look inside the pet's {@code petInfo} data instead of the item's own. */
+    private static final String PET_PREFIX = "pet_";
+
+    /** The pet's {@code petInfo}, which SkyBlock stores as a JSON string, or null when the item has none. */
+    private static JsonObject readPetInfo(CompoundTag nbt) {
+        String raw = nbt.getStringOr("petInfo", "");
+        if (raw.isEmpty()) return null;
+        try {
+            JsonElement parsed = JsonParser.parseString(raw);
+            return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+        } catch (JsonParseException e) {
+            return null;
+        }
+    }
+
+    /** Adds the lines for one petInfo value, matching the layout used for values on the item itself. */
+    private static void appendPetLines(List<Component> tooltip, String label, String key, JsonObject petInfo) {
+        if (petInfo == null) return;
+
+        JsonElement value = null;
+        for (Map.Entry<String, JsonElement> entry : petInfo.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(key)) {
+                value = entry.getValue();
+                break;
+            }
+        }
+        if (value == null) return;
+
+        if (value.isJsonArray()) {
+            tooltip.add(Component.literal("\u00A78" + label + ":"));
+            for (JsonElement child : value.getAsJsonArray()) {
+                tooltip.add(Component.literal("\u00A78  " + formatJsonValue(child)));
+            }
+        } else if (value.isJsonObject()) {
+            tooltip.add(Component.literal("\u00A78" + label + ":"));
+            for (Map.Entry<String, JsonElement> child : value.getAsJsonObject().entrySet()) {
+                tooltip.add(Component.literal("\u00A78  " + child.getKey() + ": " + formatJsonValue(child.getValue())));
+            }
+        } else {
+            tooltip.add(Component.literal("\u00A78" + label + ": " + formatJsonValue(value)));
+        }
+    }
+
+    private static String formatJsonValue(JsonElement element) {
+        if (element == null || element.isJsonNull()) return "null";
+        if (element.isJsonPrimitive()) return element.getAsString();
+        return element.toString();
     }
 
     private static String formatNbtValue(Tag element) {

@@ -107,6 +107,12 @@ public class MinionIdentityRegistry {
      */
     private static final Map<String, String> displayNames = new ConcurrentHashMap<>();
 
+    /**
+     * Canonical minion key -> the armor stand's real position, e.g. {@code 0.5,218,-12.5}.
+     * Display only, like {@link #displayNames}; the stand alias keeps the block position.
+     */
+    private static final Map<String, String> exactPositions = new ConcurrentHashMap<>();
+
     private static volatile boolean loaded = false;
 
     // Set when a save fails, so the next resolve() retries it instead of leaving the
@@ -137,11 +143,13 @@ public class MinionIdentityRegistry {
      *                      (normally the armor-stand key, or the GUI title).
      * @param displayName   the minion's GUI title, recorded alongside the identity purely
      *                      so the saved file is readable. May be null or empty.
+     * @param exactPosition the armor stand's real position (see {@link #formatExactPosition}),
+     *                      recorded for display only. May be null or empty.
      * @return the canonical key, or {@code fallbackKey} when this minion has no usable
      *         upgrade uuid and has never been registered before.
      */
     public static String resolve(List<String> upgradeUuids, String armorStandKey,
-                                 String fallbackKey, String displayName) {
+                                 String fallbackKey, String displayName, String exactPosition) {
         load();
 
         String canonical = null;
@@ -209,6 +217,11 @@ public class MinionIdentityRegistry {
             changed = true;
         }
 
+        if (exactPosition != null && !exactPosition.isEmpty()
+                && !exactPosition.equals(exactPositions.put(resolved, exactPosition))) {
+            changed = true;
+        }
+
         if (changed || saveFailed) save();
 
         return resolved;
@@ -232,13 +245,39 @@ public class MinionIdentityRegistry {
     }
 
     /**
-     * The block position of the armor stand registered to a canonical minion key
-     * (e.g. {@code -41,216,10}), or null if none is known.
+     * Where the armor stand registered to a canonical minion key really is (e.g.
+     * {@code -40.5,216,10.5}), or null if none is known. Minions are listed by this rather
+     * than by block position, which floors negative coordinates and so reads one lower than
+     * where the stand actually is.
      *
-     * <p>For display only. Note a minion identified purely by an upgrade uuid carries no
-     * position in its key, so this is the only way to say where it physically is.
+     * <p>For display only. A minion identified purely by an upgrade uuid carries no
+     * position in its key, so this is the only way to say where it physically is. When the
+     * real position hasn't been captured yet (a minion not right-clicked since it was
+     * first recorded) it is taken to be the centre of its block, which is where minions
+     * stand.
      */
     public static String positionFor(String canonicalKey) {
+        load();
+        if (canonicalKey == null) return null;
+        String exact = exactPositions.get(canonicalKey);
+        if (exact != null && !exact.isEmpty()) return exact;
+
+        String[] block = splitBlockPosition(blockPositionFor(canonicalKey));
+        if (block == null) return null;
+        try {
+            return formatExactPosition(Integer.parseInt(block[0]) + 0.5, Integer.parseInt(block[1]),
+                    Integer.parseInt(block[2]) + 0.5);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The block position of the armor stand registered to a canonical minion key
+     * (e.g. {@code -41,216,10}), or null if none is known. This is the position half of
+     * the stand's identity key, so it can be compared with {@code ArmorStand.blockPosition()}.
+     */
+    public static String blockPositionFor(String canonicalKey) {
         load();
         if (canonicalKey == null) return null;
         for (Map.Entry<String, String> entry : aliases.entrySet()) {
@@ -248,6 +287,23 @@ public class MinionIdentityRegistry {
             }
         }
         return null;
+    }
+
+    private static String[] splitBlockPosition(String position) {
+        if (position == null) return null;
+        String[] parts = position.split(",");
+        return parts.length == 3 ? parts : null;
+    }
+
+    /** Formats a real position as {@code x,y,z}, to at most two decimals with none shown for whole numbers. */
+    public static String formatExactPosition(double x, double y, double z) {
+        return formatCoordinate(x) + "," + formatCoordinate(y) + "," + formatCoordinate(z);
+    }
+
+    private static String formatCoordinate(double value) {
+        String text = String.format(java.util.Locale.ROOT, "%.2f", value);
+        if (text.contains(".")) text = text.replaceAll("0+$", "").replaceAll("\\.$", "");
+        return text.equals("-0") ? "0" : text;
     }
 
     // -------------------------------------------------------------------------
@@ -269,6 +325,8 @@ public class MinionIdentityRegistry {
         String name;
         /** Block position half of the armor-stand key, e.g. {@code -41,216,10}. */
         String position;
+        /** The stand's real position, e.g. {@code -40.5,216,10.5}. For display only. */
+        String exactPosition;
         /** Key into {@link IdentityDocument#armorTypes} for the equipment half. */
         String armor;
         /** Permanent upgrade-item uuids, stored without the {@code uuid:} prefix. */
@@ -310,6 +368,7 @@ public class MinionIdentityRegistry {
             MinionRecord record = new MinionRecord();
             record.id = entry.getKey();
             record.name = displayNames.get(entry.getKey());
+            record.exactPosition = exactPositions.get(entry.getKey());
 
             for (String alias : entry.getValue()) {
                 if (alias.startsWith(UUID_KEY_PREFIX)) {
@@ -363,6 +422,9 @@ public class MinionIdentityRegistry {
 
             if (record.name != null && !record.name.isEmpty()) {
                 displayNames.put(record.id, record.name);
+            }
+            if (record.exactPosition != null && !record.exactPosition.isEmpty()) {
+                exactPositions.put(record.id, record.exactPosition);
             }
             if (record.upgrades != null) {
                 for (String uuid : record.upgrades) {
