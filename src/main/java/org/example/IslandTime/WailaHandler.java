@@ -749,6 +749,14 @@ public class WailaHandler {
                                                             .withHoverEvent(new HoverEvent.ShowText(
                                                                     Component.literal("Click to copy skin texture image to clipboard (from local cache)")
                                                                             .withStyle(ChatFormatting.GRAY))))));
+                            client.player.sendSystemMessage(
+                                    Component.literal("  ").withStyle(ChatFormatting.GRAY)
+                                            .append(Component.literal("[Use As My Skin]").withStyle(ChatFormatting.DARK_AQUA)
+                                                    .withStyle(style -> style
+                                                            .withClickEvent(new ClickEvent.RunCommand("/it skin hash " + skinHash))
+                                                            .withHoverEvent(new HoverEvent.ShowText(
+                                                                    Component.literal("Click to make this your skin (shows to others after you reconnect)")
+                                                                            .withStyle(ChatFormatting.GRAY))))));
                         }
                     } catch (Exception ignored) {
                     }

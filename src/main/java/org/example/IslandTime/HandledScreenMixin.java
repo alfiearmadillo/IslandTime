@@ -175,6 +175,15 @@ public class HandledScreenMixin {
 
         // ── Copy Skin from hovered item keybind ──────────────────────────────
         IslandTimeConfig cfg = ConfigManager.getConfig();
+        if (cfg != null && cfg.accounts.setSkinKeybind > 0 && event.key() == cfg.accounts.setSkinKeybind) {
+            Slot slot = this.hoveredSlot;
+            if (slot != null && !slot.getItem().isEmpty()) {
+                IslandTimeCommand.setSkinFromItem(Minecraft.getInstance(), slot.getItem());
+                cir.setReturnValue(true);
+                cir.cancel();
+                return;
+            }
+        }
         if (cfg != null && cfg.misc.copySkinKeybindEnabled) {
             int copySkinKey = cfg.misc.copySkinKeybind;
             if (copySkinKey != 0 && event.key() == copySkinKey) {

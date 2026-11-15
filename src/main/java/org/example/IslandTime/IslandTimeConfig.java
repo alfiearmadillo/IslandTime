@@ -98,11 +98,68 @@ public class IslandTimeConfig extends Config {
     public SettingsLoadouts settingsLoadouts = new SettingsLoadouts();
 
     @Expose
+    @Category(name = "Accounts", desc = "Log in, switch accounts and renew your login in game without disconnecting, and change your skin and cape")
+    public Accounts accounts = new Accounts();
+
+    @Expose
     @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
     public Misc misc = new Misc();
 
     // -------------------------------------------------------------------------
 
+    public static class Accounts {
+        @ConfigOption(name = "Open Accounts", desc = "Log an account in, switch between saved accounts and renew the login in use. Also /it account")
+        @ConfigEditorButton(buttonText = " Open Accounts ")
+        public Runnable openAccountsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new AccountsScreen(null)));
+            }
+        };
+
+        @ConfigOption(name = "Open Skin & Capes", desc = "Paste or set a skin and pick a cape for the account in use. Also /it skin")
+        @ConfigEditorButton(buttonText = " Open Skin & Capes ")
+        public Runnable openSkinButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new SkinScreen(null)));
+            }
+        };
+
+        @Expose
+        @ConfigOption(
+                name = "Microsoft Client ID",
+                desc = "Needed to log an account in through the mod. It is the Application (client) ID of an app you " +
+                        "register at portal.azure.com (App registrations) for 'personal Microsoft accounts', with " +
+                        "'Allow public client flows' turned on. Microsoft also has to approve the app for Minecraft " +
+                        "(aka.ms/AppRegInfo) before the final Minecraft login step accepts it. It is not a secret, " +
+                        "but without it nothing here can log in. Skin and cape changes only need the login you are " +
+                        "already using."
+        )
+        @ConfigEditorText
+        public String msClientId = "";
+
+        @Expose
+        @ConfigOption(
+                name = "Renew Login Automatically",
+                desc = "Renew the login of a saved account in the background shortly before it expires (they last " +
+                        "24 hours), without disconnecting. Only applies to accounts that were logged in through " +
+                        "the mod, as renewing needs the login it saved."
+        )
+        @ConfigEditorBoolean
+        public boolean autoRenew = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Set Skin Keybind",
+                desc = "While hovering a player head in any inventory, press this key to make its skin your skin. " +
+                        "Unbound by default. Press Escape while binding to clear it"
+        )
+        @ConfigEditorKeybind(defaultKey = -1)
+        public int setSkinKeybind = -1;
+    }
     public static class IslandTime {
         @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island (last 7 days). You can also use /islandtime <date> to view a specific date (e.g., /islandtime 1-1-26)")
         @ConfigEditorButton(buttonText = " View Stats ")
