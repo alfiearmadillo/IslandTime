@@ -38,7 +38,7 @@ final class SkinService {
     private SkinService() {
     }
 
-    record Cape(String id, String alias, boolean active) {
+    record Cape(String id, String alias, boolean active, String url) {
     }
 
     record Profile(String name, String skinUrl, String skinVariant, List<Cape> capes) {
@@ -157,27 +157,36 @@ final class SkinService {
 
     /** Downloads a skin from Mojang's texture server, as given by a profile. */
     static BufferedImage downloadSkin(String url) throws SkinException {
+        return download(url, "This account has no custom skin to save", "skin");
+    }
+
+    /** Downloads a cape from Mojang's texture server, as given by a profile. */
+    static BufferedImage downloadCape(String url) throws SkinException {
+        return download(url, "This cape has no texture", "cape");
+    }
+
+    private static BufferedImage download(String url, String noTexture, String what) throws SkinException {
         URI uri;
         try {
             uri = URI.create(url);
         } catch (IllegalArgumentException | NullPointerException e) {
-            throw new SkinException("This account has no custom skin to save");
+            throw new SkinException(noTexture);
         }
         if (uri.getHost() == null || !uri.getHost().equals("textures.minecraft.net")) {
-            throw new SkinException("This account has no custom skin to save");
+            throw new SkinException(noTexture);
         }
         try {
             HttpResponse<java.io.InputStream> response = HTTP.send(
                     HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).GET().build(),
                     HttpResponse.BodyHandlers.ofInputStream());
             try (java.io.InputStream in = response.body()) {
-                if (response.statusCode() != 200) throw new SkinException("Could not download the skin (" + response.statusCode() + ")");
+                if (response.statusCode() != 200) throw new SkinException("Could not download the " + what + " (" + response.statusCode() + ")");
                 BufferedImage image = ImageIO.read(in);
-                if (image == null) throw new SkinException("The downloaded skin is not an image");
+                if (image == null) throw new SkinException("The downloaded " + what + " is not an image");
                 return image;
             }
         } catch (IOException e) {
-            throw new SkinException("Could not download the skin: " + e.getClass().getSimpleName());
+            throw new SkinException("Could not download the " + what + ": " + e.getClass().getSimpleName());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new SkinException("Cancelled");
@@ -349,7 +358,8 @@ final class SkinService {
                 JsonObject cape = element.getAsJsonObject();
                 capes.add(new Cape(cape.get("id").getAsString(),
                         cape.has("alias") ? cape.get("alias").getAsString() : "Cape",
-                        cape.has("state") && "ACTIVE".equals(cape.get("state").getAsString())));
+                        cape.has("state") && "ACTIVE".equals(cape.get("state").getAsString()),
+                        cape.has("url") ? cape.get("url").getAsString() : ""));
             }
         }
         return new Profile(name, skinUrl, variant, capes);
