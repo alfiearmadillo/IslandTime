@@ -300,7 +300,9 @@ final class MsAuth {
      * Sends a request and reads its JSON reply. The services here report most failures as a 4xx with a JSON body
      * ({@code error}, {@code XErr}) that the caller needs to see, so those are returned rather than thrown.
      */
-    private static JsonObject send(HttpRequest request) throws AuthException {
+    private static JsonObject send(HttpRequest original) throws AuthException {
+        HttpRequest request = HttpRequest.newBuilder(original, (name, value) -> true)
+                .setHeader("User-Agent", "IslandTimeMod/1.0").build();
         try {
             HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
             String body = response.body();
@@ -315,9 +317,14 @@ final class MsAuth {
             }
             int status = response.statusCode();
             if (status >= 200 && status < 300) return json;
-            if (json.has("error") || json.has("XErr")) return json;
+            if (json.has("error") || json.has("XErr") || json.has("errorMessage")) return json;
             if (status == 429) throw new AuthException("Too many requests; wait a minute and try again");
-            throw new AuthException("The server replied with an error (" + status + ")");
+
+            // Which service said no, and what it said, since a bare status code doesn't say what to fix
+            String excerpt = body == null ? "" : body.replaceAll("\\s+", " ").trim();
+            if (excerpt.length() > 200) excerpt = excerpt.substring(0, 200) + "...";
+            throw new AuthException("The server replied with an error (" + status + ") from "
+                    + request.uri().getHost() + (excerpt.isEmpty() ? "" : ": " + excerpt));
         } catch (IOException e) {
             throw new AuthException("Could not reach the login servers: " + e.getClass().getSimpleName());
         } catch (InterruptedException e) {
