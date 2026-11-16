@@ -103,7 +103,8 @@ final class AccountManager {
             announceCode(code);
             MsAuth.MsTokens tokens = MsAuth.pollForTokens(clientId, code, () -> cancelRequested);
             pendingCode = null;
-            setStatus("Signing in...", true);
+            setStatus("Microsoft login accepted. Logging in to Minecraft...", true);
+            chat("Microsoft login accepted. Logging in to Minecraft...", ChatFormatting.GRAY);
             finishLogin(tokens, true);
         });
     }
@@ -283,5 +284,16 @@ final class AccountManager {
     static void setStatus(String message, boolean ok) {
         status = message;
         statusOk = ok;
+        // Logins run in the background and the screen may not be open, so a failure has to be seen in chat
+        if (!ok) chat(message, ChatFormatting.RED);
+    }
+
+    private static void chat(String message, ChatFormatting color) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> {
+            if (client.player != null) {
+                client.player.sendSystemMessage(Component.literal("[IslandTime] " + message).withStyle(color));
+            }
+        });
     }
 }

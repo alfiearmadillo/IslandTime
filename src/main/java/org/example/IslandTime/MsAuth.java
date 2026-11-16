@@ -165,7 +165,8 @@ final class MsAuth {
         xblRequest.addProperty("TokenType", "JWT");
         JsonObject xbl = postJson(XBL_URL, xblRequest);
         String xblToken = string(xbl, "Token");
-        if (xblToken.isEmpty()) throw new AuthException("Xbox Live did not accept the login");
+        if (xbl.has("XErr")) throw xstsError(xbl.get("XErr").getAsLong());
+        if (xblToken.isEmpty()) throw new AuthException("Xbox Live did not accept the login" + detail(xbl));
 
         JsonObject xstsRequest = new JsonObject();
         JsonObject xstsProperties = new JsonObject();
@@ -186,14 +187,33 @@ final class MsAuth {
         mcRequest.addProperty("identityToken", "XBL3.0 x=" + userHash + ";" + xstsToken);
         JsonObject mc = postJson(MC_LOGIN_URL, mcRequest);
         String mcToken = string(mc, "access_token");
-        if (mcToken.isEmpty()) throw new AuthException("Minecraft did not accept the login");
+        if (mcToken.isEmpty()) throw minecraftRefusal(mc);
         long expiresAt = System.currentTimeMillis() + (mc.has("expires_in") ? mc.get("expires_in").getAsLong() : 86_400L) * 1000L;
 
         JsonObject profile = getJson(MC_PROFILE_URL, mcToken);
         if (profile.has("error") || string(profile, "id").isEmpty()) {
-            throw new AuthException("This Microsoft account does not own Minecraft: Java Edition");
+            throw new AuthException("This Microsoft account does not own Minecraft: Java Edition" + detail(profile));
         }
         return new McSession(mcToken, string(profile, "name"), uuidOf(string(profile, "id")), expiresAt);
+    }
+
+    private static AuthException minecraftRefusal(JsonObject json) {
+        String message = string(json, "errorMessage");
+        if (message.isEmpty()) message = string(json, "error_description");
+        if (message.toLowerCase().contains("invalid app registration")) {
+            return new AuthException("Microsoft signed you in, but Minecraft refused the app (Invalid app registration). "
+                    + "Mojang has to approve the app's Client ID before it can log in to Minecraft: request it at "
+                    + "aka.ms/AppRegInfo. Until then, use a Client ID that is already approved.");
+        }
+        return new AuthException("Minecraft did not accept the login" + detail(json));
+    }
+
+    /** What a failed reply said, as a suffix for an error message, or nothing. */
+    private static String detail(JsonObject json) {
+        String message = string(json, "errorMessage");
+        if (message.isEmpty()) message = string(json, "error_description");
+        if (message.isEmpty()) message = string(json, "error");
+        return message.isEmpty() ? "" : " (" + message + ")";
     }
 
     private static String userHash(JsonObject xsts) {
