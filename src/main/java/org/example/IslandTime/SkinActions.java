@@ -28,19 +28,26 @@ final class SkinActions {
         run(reporter, "", SkinService::fetchProfile);
     }
 
-    static void paste(boolean slim, Reporter reporter) {
+    /** Pastes a skin from the clipboard: a texture hash or textures.minecraft.net link if that's the text there, else an image. */
+    static void paste(Boolean slim, Reporter reporter) {
+        // The clipboard text can only be read on the game thread
+        String hash = SkinService.parseTextureHash(Minecraft.getInstance().keyboardHandler.getClipboard());
+        if (hash != null) {
+            fromTexture(hash, slim, reporter);
+            return;
+        }
         run(reporter, "Skin changed." + RECONNECT_NOTE, () -> {
             BufferedImage image = SkinService.readClipboardImage();
             return SkinService.uploadSkin(image, slim);
         });
     }
 
-    static void fromFile(String path, boolean slim, Reporter reporter) {
+    static void fromFile(String path, Boolean slim, Reporter reporter) {
         run(reporter, "Skin changed." + RECONNECT_NOTE,
                 () -> SkinService.uploadSkin(SkinService.readFile(path), slim));
     }
 
-    static void fromTexture(String hash, boolean slim, Reporter reporter) {
+    static void fromTexture(String hash, Boolean slim, Reporter reporter) {
         run(reporter, "Skin changed." + RECONNECT_NOTE, () -> SkinService.setSkinFromTexture(hash, slim));
     }
 

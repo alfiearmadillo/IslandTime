@@ -18,10 +18,11 @@ public class SkinScreen extends ListEditorScreen {
     private static final int SAVE_WIDTH = 40;
     private static final int RENAME_WIDTH = 52;
     private static final int REMOVE_WIDTH = 20;
-    private static final String HASH_PATTERN = "[0-9a-fA-F]{16,64}";
+
+    private static final List<String> MODELS = List.of("Auto", "Classic", "Slim");
 
     private SkinService.Profile profile;
-    private boolean slim = false;
+    private int model = 0;
     private boolean loading = true;
     private Button modelButton;
 
@@ -39,8 +40,11 @@ public class SkinScreen extends ListEditorScreen {
 
     private void accept(SkinService.Profile loaded) {
         profile = loaded;
-        slim = "slim".equals(loaded.skinVariant());
-        if (modelButton != null) modelButton.setMessage(modelLabel());
+    }
+
+    /** The model to send, or null to pick it from the skin's arms. */
+    private Boolean chosenModel() {
+        return model == 0 ? null : model == 2;
     }
 
     private final SkinActions.Reporter reporter = (message, ok, loaded) -> {
@@ -64,7 +68,7 @@ public class SkinScreen extends ListEditorScreen {
     }
 
     private Component modelLabel() {
-        return Component.literal("Model: " + (slim ? "Slim" : "Classic"));
+        return Component.literal("Model: " + MODELS.get(model));
     }
 
     @Override
@@ -76,7 +80,7 @@ public class SkinScreen extends ListEditorScreen {
 
         addRenderableWidget(Button.builder(Component.literal("Paste Skin"), btn -> {
                     setStatus("Reading the clipboard...", true);
-                    SkinActions.paste(slim, reporter);
+                    SkinActions.paste(chosenModel(), reporter);
                 })
                 .bounds(x, HEADER_Y, widths[0], 20).build());
         x += widths[0] + BUTTON_GAP;
@@ -86,7 +90,7 @@ public class SkinScreen extends ListEditorScreen {
         x += widths[1] + BUTTON_GAP;
 
         modelButton = addRenderableWidget(Button.builder(modelLabel(), btn -> {
-                    slim = !slim;
+                    model = (model + 1) % MODELS.size();
                     btn.setMessage(modelLabel());
                 })
                 .bounds(x, HEADER_Y, widths[2], 20).build());
@@ -103,7 +107,7 @@ public class SkinScreen extends ListEditorScreen {
         openForm("Set Skin", "Apply",
                 List.of(new TextField("PNG file path or texture hash", "", 260, ""),
                         new TextField("Also save it as (optional)", "", SkinLibrary.MAX_NAME_LENGTH, "")),
-                List.of(new ChoiceField("Model", List.of("Classic", "Slim"), slim ? 1 : 0)),
+                List.of(new ChoiceField("Model", MODELS, model)),
                 (texts, choices) -> {
                     String input = texts[0].trim();
                     String saveAs = texts[1].trim();
@@ -112,15 +116,15 @@ public class SkinScreen extends ListEditorScreen {
                         String problem = SkinLibrary.validateName(saveAs, null);
                         if (problem != null) return problem;
                     }
-                    boolean chosenSlim = choices[0] == 1;
-                    slim = chosenSlim;
+                    model = choices[0];
+                    Boolean chosenSlim = chosenModel();
                     setStatus("Changing the skin...", true);
                     // Saving reads back what the account now has, so it only follows a change that worked
                     SkinActions.Reporter then = (message, ok, loaded) -> {
                         reporter.report(message, ok, loaded);
                         if (ok && !saveAs.isEmpty()) SkinActions.saveCurrent(saveAs, reporter);
                     };
-                    if (input.matches(HASH_PATTERN)) {
+                    if (SkinService.parseTextureHash(input) != null) {
                         SkinActions.fromTexture(input, chosenSlim, then);
                     } else {
                         SkinActions.fromFile(input, chosenSlim, then);

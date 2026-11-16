@@ -345,7 +345,7 @@ public class IslandTimeCommand {
                                 .executes(ctx -> {
                                     Minecraft client = ctx.getSource().getClient();
                                     sendLocal(client, "Reading the clipboard...", true);
-                                    SkinActions.paste(false, skinChatReporter(client));
+                                    SkinActions.paste(null, skinChatReporter(client));
                                     return 1;
                                 }))
                         .then(literal("pasteslim")
@@ -360,7 +360,7 @@ public class IslandTimeCommand {
                                         .executes(ctx -> {
                                             Minecraft client = ctx.getSource().getClient();
                                             sendLocal(client, "Changing the skin...", true);
-                                            SkinActions.fromTexture(StringArgumentType.getString(ctx, "hash"), false,
+                                            SkinActions.fromTexture(StringArgumentType.getString(ctx, "hash"), null,
                                                     skinChatReporter(client));
                                             return 1;
                                         })))
@@ -644,7 +644,7 @@ public class IslandTimeCommand {
         String hash = skinHashFromItem(client, stack);
         if (hash == null) return;
         sendLocal(client, "Changing the skin...", true);
-        SkinActions.fromTexture(hash, false, skinChatReporter(client));
+        SkinActions.fromTexture(hash, null, skinChatReporter(client));
     }
 
     static void sendLocal(Minecraft client, String message, boolean ok) {
@@ -883,7 +883,7 @@ public class IslandTimeCommand {
                 {"/it cohort", "Open the list of minions in the current fuel cohort to add or remove time from individual minions, sync out-of-sync ones back to the rest, or remove them"},
                 {"/it account", "Open the accounts screen: log an account in through Microsoft, switch between saved accounts and renew the login in use without disconnecting. Needs a Microsoft Client ID in the Accounts settings"},
                 {"/it skin", "Open the skin and cape screen for the account in use (changes show to others after you reconnect)"},
-                {"/it skin paste", "Set your skin to the image on your clipboard (64x64 or 64x32). Use /it skin pasteslim for the slim model"},
+                {"/it skin paste", "Set your skin to the image (or texture hash) on your clipboard. The slim model is picked from the arms; /it skin pasteslim forces it"},
                 {"/it skin hash <texture hash>", "Set your skin to a texture on Mojang's texture server, such as the one a player head wears"},
                 {"/it skin reset", "Go back to the default skin"},
                 {"/it skin save <name>", "Save the skin (with its model and cape) the account has now, to switch back to later"},
