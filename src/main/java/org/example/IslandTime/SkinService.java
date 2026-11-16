@@ -62,9 +62,14 @@ final class SkinService {
     /** Sets the skin from a PNG that is 64x64 or 64x32. */
     static Profile uploadSkin(BufferedImage image, boolean slim) throws SkinException {
         validate(image);
+        BufferedImage argb = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        java.awt.Graphics2D graphics = argb.createGraphics();
+        graphics.setComposite(java.awt.AlphaComposite.Src);
+        graphics.drawImage(image, 0, 0, null);
+        graphics.dispose();
         byte[] png;
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            ImageIO.write(image, "png", out);
+            ImageIO.write(argb, "png", out);
             png = out.toByteArray();
         } catch (IOException e) {
             throw new SkinException("Could not encode the skin image");
@@ -181,8 +186,13 @@ final class SkinService {
             String error;
             if (os.contains("win")) {
                 String path = temp.getAbsolutePath().replace("'", "''");
+                // The clipboard's PNG format keeps transparency, which a plain bitmap read loses (it fills it with white)
                 String script = "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; "
-                        + "if ([System.Windows.Forms.Clipboard]::ContainsImage()) { "
+                        + "$d = [System.Windows.Forms.Clipboard]::GetDataObject(); "
+                        + "if ($d -ne $null -and $d.GetDataPresent('PNG')) { "
+                        + "$s = $d.GetData('PNG'); $o = [System.IO.File]::Create('" + path + "'); "
+                        + "$s.CopyTo($o); $o.Close(); exit 0 } "
+                        + "elseif ([System.Windows.Forms.Clipboard]::ContainsImage()) { "
                         + "$i = [System.Windows.Forms.Clipboard]::GetImage(); "
                         + "$i.Save('" + path + "', [System.Drawing.Imaging.ImageFormat]::Png); exit 0 } "
                         + "elseif ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) { "
