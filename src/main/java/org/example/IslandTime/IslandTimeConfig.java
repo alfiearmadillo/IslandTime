@@ -98,11 +98,68 @@ public class IslandTimeConfig extends Config {
     public SettingsLoadouts settingsLoadouts = new SettingsLoadouts();
 
     @Expose
+    @Category(name = "Accounts", desc = "Log in, switch accounts and renew your login in game without disconnecting, and change your skin and cape")
+    public Accounts accounts = new Accounts();
+
+    @Expose
     @Category(name = "Misc", desc = "Additional commands and miscellaneous settings")
     public Misc misc = new Misc();
 
     // -------------------------------------------------------------------------
 
+    public static class Accounts {
+        @ConfigOption(name = "Open Accounts", desc = "Log an account in, switch between saved accounts and renew the login in use. Also /it account")
+        @ConfigEditorButton(buttonText = " Open Accounts ")
+        public Runnable openAccountsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new AccountsScreen(null)));
+            }
+        };
+
+        @ConfigOption(name = "Open Skin & Capes", desc = "Paste or set a skin and pick a cape for the account in use. Also /it skin")
+        @ConfigEditorButton(buttonText = " Open Skin & Capes ")
+        public Runnable openSkinButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new SkinScreen(null)));
+            }
+        };
+
+        @Expose
+        @ConfigOption(
+                name = "Microsoft Client ID",
+                desc = "Needed to log an account in through the mod. It is the Application (client) ID of an app you " +
+                        "register at portal.azure.com (App registrations) for 'personal Microsoft accounts', with " +
+                        "'Allow public client flows' turned on. Microsoft also has to approve the app for Minecraft " +
+                        "(aka.ms/AppRegInfo) before the final Minecraft login step accepts it. It is not a secret, " +
+                        "but without it nothing here can log in. Skin and cape changes only need the login you are " +
+                        "already using."
+        )
+        @ConfigEditorText
+        public String msClientId = "";
+
+        @Expose
+        @ConfigOption(
+                name = "Renew Login Automatically",
+                desc = "Renew the login of a saved account in the background shortly before it expires (they last " +
+                        "24 hours), without disconnecting. Only applies to accounts that were logged in through " +
+                        "the mod, as renewing needs the login it saved."
+        )
+        @ConfigEditorBoolean
+        public boolean autoRenew = true;
+
+        @Expose
+        @ConfigOption(
+                name = "Set Skin Keybind",
+                desc = "While hovering a player head in any inventory, press this key to make its skin your skin. " +
+                        "Unbound by default. Press Escape while binding to clear it"
+        )
+        @ConfigEditorKeybind(defaultKey = -1)
+        public int setSkinKeybind = -1;
+    }
     public static class IslandTime {
         @ConfigOption(name = "View Stats", desc = "Click to view time spent on your private island (last 7 days). You can also use /islandtime <date> to view a specific date (e.g., /islandtime 1-1-26)")
         @ConfigEditorButton(buttonText = " View Stats ")
@@ -137,6 +194,26 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(name = "Enable Tracking", desc = "Track minion fuel and profit per fuel day")
         @ConfigEditorBoolean
         public boolean enabled = true;
+
+        @ConfigOption(name = "Edit Cohort Minions", desc = "Open the list of minions in the current fuel cohort to add or remove time from individual minions, sync one back to the rest, or remove it. Also /it cohort")
+        @ConfigEditorButton(buttonText = " Edit Minions ")
+        public Runnable editCohortMinionsButton = new Runnable() {
+            @Override
+            public void run() {
+                net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
+                client.execute(() -> client.setScreen(new FuelMinionsScreen(null)));
+            }
+        };
+
+        @Expose
+        @ConfigOption(
+                name = "Highlight Out-of-Sync Minions",
+                desc = "Highlight, through walls, any minion whose fuel ends more than 8 hours before or after " +
+                        "the average of the other minions in the cohort. Only minions you have opened since " +
+                        "they were fueled are known by position."
+        )
+        @ConfigEditorBoolean
+        public boolean highlightOutOfSyncMinions = false;
 
         @ConfigOption(
                 name = "Fuel Data Sets",
@@ -414,16 +491,17 @@ public class IslandTimeConfig extends Config {
         public int disconnectSpeed = 2; // NORMAL
 
         @Expose
-        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when a minion's fuel runs out, until the one set in Repeat Fuel Alert Until (by default, until you empty your sacks)\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
+        @ConfigOption(name = "Fuel Expired Alert Speed", desc = "How often to alert when all of a minion's fuel runs out, until the one set in Repeat Fuel Alert Until (by default, until you empty your sacks). A fuel-day ending with fuel still left sends a single reminder instead\nOFF: No alerts | FAST: Immediately, then every 5 min\nNORMAL: Immediately, then every 30 min | SLOW: Immediately, then every 3 hours")
         @ConfigEditorDropdown(values = {"OFF", "FAST", "NORMAL", "SLOW"})
         public int fuelExpiredSpeed = 2; // NORMAL
 
         @Expose
         @ConfigOption(
                 name = "Fuel Alert Only When All Fuel Expires",
-                desc = "Send the fuel alert when the whole stack of fuel has run out, instead of each time " +
-                        "a single fuel-day runs out. Fuel added before that postpones the alert to when all of " +
-                        "it has actually run out. Off sends an alert per fuel-day. This only changes when the " +
+                desc = "Send the fuel alert when the whole stack of fuel has run out, instead of a reminder " +
+                        "each time a single fuel-day runs out (which says how much fuel is left, so you can " +
+                        "collect it). Fuel added before that postpones the alert to when all of " +
+                        "it has actually run out. This only changes when the " +
                         "alert is first sent; whether it then repeats is set by Repeat Fuel Alert Until."
         )
         @ConfigEditorBoolean
@@ -437,7 +515,8 @@ public class IslandTimeConfig extends Config {
                         "full sacks gains nothing.\n" +
                         "Until Minion GUI Opened: until you open a minion's menu, for when the gabagool goes " +
                         "into your minions rather than your sacks and you only need to get back and refuel.\n" +
-                        "Don't Repeat: send it once only."
+                        "Don't Repeat: send it once only.\n" +
+                        "The reminder sent when a fuel-day ends with fuel still left is always sent once only."
         )
         @ConfigEditorDropdown(values = {"Until Sacks Emptied", "Until Minion GUI Opened", "Don't Repeat"})
         public int fuelAlertRepeatMode = 0; // Until Sacks Emptied
@@ -534,7 +613,7 @@ public class IslandTimeConfig extends Config {
         @Expose
         @ConfigOption(
             name = "Component Names",
-            desc = "Space-separated list of component names to display (e.g. catacombs_level_requirement id color)"
+            desc = "Space-separated list of component names to display (e.g. catacombs_level_requirement id color). Start a name with pet_ to read from a pet's petInfo (e.g. pet_candyUsed pet_exp)"
         )
         @ConfigEditorText
         public String componentNames = "";

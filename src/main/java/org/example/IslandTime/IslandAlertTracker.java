@@ -67,10 +67,10 @@ public class IslandAlertTracker {
             long timeOffIsland = now - timeLeftIsland;
 
             if (lastAlertSentTime == 0 && timeOffIsland >= islandAlertSpeed.firstAlertMs) {
-                DiscordWebhookManager.sendIslandAlert();
+                DiscordWebhookManager.sendIslandAlert(timeOffIsland);
                 lastAlertSentTime = now;
             } else if (lastAlertSentTime > 0 && (now - lastAlertSentTime) >= islandAlertSpeed.repeatAlertMs) {
-                DiscordWebhookManager.sendIslandAlert();
+                DiscordWebhookManager.sendIslandAlert(timeOffIsland);
                 lastAlertSentTime = now;
             }
         }

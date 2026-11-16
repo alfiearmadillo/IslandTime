@@ -64,6 +64,7 @@ public class IslandTimeMod implements ClientModInitializer {
             GreenhouseBlueprintRenderer.tick(client);
             ComposterTracker.tick(client);
             WailaHandler.tickKeybind(client);
+            AccountManager.tick(client);
         });
 
         // Start the localhost poller when the player connects to a server,
@@ -87,6 +88,7 @@ public class IslandTimeMod implements ClientModInitializer {
 
         // Register block highlight renderer
         BlockHighlightRenderer.register();
+        MinionSyncHighlight.register();
 
         // Register the Garden greenhouse blueprint overlay and its legend
         GreenhouseBlueprintRenderer.register();

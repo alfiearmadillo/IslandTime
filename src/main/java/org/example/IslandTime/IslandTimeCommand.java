@@ -323,6 +323,81 @@ public class IslandTimeCommand {
                             client.execute(() -> client.setScreen(new FuelDayScreen()));
                             return 1;
                         }))
+                .then(literal("cohort")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new FuelMinionsScreen(null)));
+                            return 1;
+                        }))
+                .then(literal("account")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new AccountsScreen(null)));
+                            return 1;
+                        }))
+                .then(literal("skin")
+                        .executes(ctx -> {
+                            Minecraft client = ctx.getSource().getClient();
+                            client.execute(() -> client.setScreen(new SkinScreen(null)));
+                            return 1;
+                        })
+                        .then(literal("paste")
+                                .executes(ctx -> {
+                                    Minecraft client = ctx.getSource().getClient();
+                                    sendLocal(client, "Reading the clipboard...", true);
+                                    SkinActions.paste(false, skinChatReporter(client));
+                                    return 1;
+                                }))
+                        .then(literal("pasteslim")
+                                .executes(ctx -> {
+                                    Minecraft client = ctx.getSource().getClient();
+                                    sendLocal(client, "Reading the clipboard...", true);
+                                    SkinActions.paste(true, skinChatReporter(client));
+                                    return 1;
+                                }))
+                        .then(literal("hash")
+                                .then(argument("hash", StringArgumentType.word())
+                                        .executes(ctx -> {
+                                            Minecraft client = ctx.getSource().getClient();
+                                            sendLocal(client, "Changing the skin...", true);
+                                            SkinActions.fromTexture(StringArgumentType.getString(ctx, "hash"), false,
+                                                    skinChatReporter(client));
+                                            return 1;
+                                        })))
+                        .then(literal("save")
+                                .then(argument("name", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            Minecraft client = ctx.getSource().getClient();
+                                            String name = StringArgumentType.getString(ctx, "name").trim();
+                                            String problem = SkinLibrary.validateName(name, null);
+                                            if (problem != null) {
+                                                sendLocal(client, problem, false);
+                                                return 0;
+                                            }
+                                            sendLocal(client, "Saving the skin...", true);
+                                            SkinActions.saveCurrent(name, skinChatReporter(client));
+                                            return 1;
+                                        })))
+                        .then(literal("use")
+                                .then(argument("name", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            Minecraft client = ctx.getSource().getClient();
+                                            SkinLibrary.Entry entry = SkinLibrary.findByName(StringArgumentType.getString(ctx, "name"));
+                                            if (entry == null) {
+                                                sendLocal(client, "No saved skin has that name. See /it skin.", false);
+                                                return 0;
+                                            }
+                                            sendLocal(client, "Applying \"" + entry.name + "\"...", true);
+                                            SkinActions.useSaved(entry, skinChatReporter(client));
+                                            return 1;
+                                        })))
+                        .then(literal("reset")
+                                .executes(ctx -> {
+                                    Minecraft client = ctx.getSource().getClient();
+                                    sendLocal(client, "Resetting the skin...", true);
+                                    SkinActions.reset(skinChatReporter(client));
+                                    return 1;
+                                })))
                 .then(literal("datasets")
                         .executes(ctx -> {
                             Minecraft client = ctx.getSource().getClient();
@@ -560,19 +635,47 @@ public class IslandTimeCommand {
     // -------------------------------------------------------------------------
 
     public static void copySkinFromItem(Minecraft client, net.minecraft.world.item.ItemStack stack) {
+        String hash = skinHashFromItem(client, stack);
+        if (hash != null) copySkinImage(client, hash);
+    }
+
+    /** Makes the skin of a hovered player head the logged-in account's skin. */
+    public static void setSkinFromItem(Minecraft client, net.minecraft.world.item.ItemStack stack) {
+        String hash = skinHashFromItem(client, stack);
+        if (hash == null) return;
+        sendLocal(client, "Changing the skin...", true);
+        SkinActions.fromTexture(hash, false, skinChatReporter(client));
+    }
+
+    static void sendLocal(Minecraft client, String message, boolean ok) {
         if (client.player == null) return;
+        client.player.sendSystemMessage(Component.literal(message)
+                .withStyle(ok ? ChatFormatting.GRAY : ChatFormatting.RED));
+    }
+
+    private static SkinActions.Reporter skinChatReporter(Minecraft client) {
+        return (message, ok, profile) -> {
+            if (client.player == null) return;
+            client.player.sendSystemMessage(Component.literal(message)
+                    .withStyle(ok ? ChatFormatting.GREEN : ChatFormatting.RED));
+        };
+    }
+
+    /** The texture hash of a player head item, telling the player in chat why if there isn't one. */
+    private static String skinHashFromItem(Minecraft client, net.minecraft.world.item.ItemStack stack) {
+        if (client.player == null) return null;
 
         if (stack == null || stack.isEmpty()) {
             client.player.sendSystemMessage(
                     Component.literal("No item under cursor.").withStyle(ChatFormatting.RED));
-            return;
+            return null;
         }
 
         // Check if it's a player head
         if (!stack.is(net.minecraft.world.item.Items.PLAYER_HEAD)) {
             client.player.sendSystemMessage(
                     Component.literal("Not a player head item.").withStyle(ChatFormatting.RED));
-            return;
+            return null;
         }
 
         // Extract profile from item component
@@ -580,7 +683,7 @@ public class IslandTimeCommand {
         if (profile == null) {
             client.player.sendSystemMessage(
                     Component.literal("This head has no profile data.").withStyle(ChatFormatting.RED));
-            return;
+            return null;
         }
 
         // Extract texture hash from profile properties
@@ -605,10 +708,9 @@ public class IslandTimeCommand {
         if (hash == null || hash.isBlank()) {
             client.player.sendSystemMessage(
                     Component.literal("Could not extract texture hash from this head.").withStyle(ChatFormatting.RED));
-            return;
+            return null;
         }
-
-        copySkinImage(client, hash);
+        return hash;
     }
 
     /** Run a clipboard command with optional stdin bytes. Returns null on success, error message on failure. */
@@ -778,6 +880,14 @@ public class IslandTimeCommand {
                 {"/it fueltime", "Open the fuel day tracker GUI (day-by-day fuel/profit stats). Same as /it fueldays"},
                 {"/it fueltime <YYYY-MM-DD>", "Show a quick chat summary for a specific day (e.g., /it fueltime 2026-01-01)"},
                 {"/it datasets", "Open the fuel data sets menu: create, browse and switch between sets of fuel day data (Main, Debug, your own). The one in use is remembered"},
+                {"/it cohort", "Open the list of minions in the current fuel cohort to add or remove time from individual minions, sync out-of-sync ones back to the rest, or remove them"},
+                {"/it account", "Open the accounts screen: log an account in through Microsoft, switch between saved accounts and renew the login in use without disconnecting. Needs a Microsoft Client ID in the Accounts settings"},
+                {"/it skin", "Open the skin and cape screen for the account in use (changes show to others after you reconnect)"},
+                {"/it skin paste", "Set your skin to the image on your clipboard (64x64 or 64x32). Use /it skin pasteslim for the slim model"},
+                {"/it skin hash <texture hash>", "Set your skin to a texture on Mojang's texture server, such as the one a player head wears"},
+                {"/it skin reset", "Go back to the default skin"},
+                {"/it skin save <name>", "Save the skin (with its model and cape) the account has now, to switch back to later"},
+                {"/it skin use <name>", "Apply a saved skin, and its cape if the account owns it"},
                 {"/it fuelcost [NUMBER]", "Show the buy-order breakdown for one fuel, or NUMBER fuels, using the cheapest distillate (or only Gabagool Distillate if that setting is on)"},
                 {"/it infernoProfits [MINIONS]", "Show what your current cohort (or MINIONS minions) earns per fuel day on Rare, Epic and Legendary fuel: loot at the Bazaar sell offer (Legendary with its rare drops, partial ones included) less the fuel at buy orders and, on Legendary, the eyedrops. Uses the speed and eyedrop settings of Profit Calculators > Inferno Profits"},
 

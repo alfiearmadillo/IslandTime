@@ -14,6 +14,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.network.chat.Component;
@@ -210,6 +211,10 @@ public class MinionFuelTracker {
     private static String lastArmorStandKey = null;
     private static long lastArmorStandInteractMs = 0;
 
+    // The real position of each right-clicked armor stand, by its key, so a minion can be listed
+    // where it actually stands rather than by its block position.
+    private static final java.util.Map<String, String> exactPositionByStandKey = new java.util.HashMap<>();
+
     // How long after right-clicking an armor stand we'll still trust it as "the minion
     // whose GUI just opened" — generous enough to cover normal server round-trip latency
     // for the container-open packet, but short enough that a stray earlier click can't
@@ -222,6 +227,9 @@ public class MinionFuelTracker {
             if (world.isClientSide() && entity instanceof ArmorStand armorStand) {
                 lastArmorStandKey = buildArmorStandKey(armorStand);
                 lastArmorStandInteractMs = System.currentTimeMillis();
+                Vec3 exact = armorStand.position();
+                exactPositionByStandKey.put(lastArmorStandKey,
+                        MinionIdentityRegistry.formatExactPosition(exact.x, exact.y, exact.z));
                 if (GuiDebugLog.isActive()) {
                     GuiDebugLog.event("MINION_CLICK", "entityId=" + entity.getId() + " hand=" + hand
                             + " key=\"" + lastArmorStandKey + "\"");
@@ -320,7 +328,8 @@ public class MinionFuelTracker {
         if (upgradeUuids.isEmpty() && !force) return;
 
         String resolvedKey = MinionIdentityRegistry.resolve(
-                upgradeUuids, currentArmorStandKey, currentMinionKey, currentMinionName);
+                upgradeUuids, currentArmorStandKey, currentMinionKey, currentMinionName,
+                exactPositionByStandKey.get(currentArmorStandKey));
 
         if (resolvedKey != null && !resolvedKey.isEmpty() && !resolvedKey.equals(currentMinionKey)) {
             adoptMinionKey(currentMinionKey, resolvedKey);
@@ -668,8 +677,10 @@ public class MinionFuelTracker {
         // Only track an actual minion management GUI. The Bazaar's
         // "Inferno Minion Fuel" menu also contains "minion" in its title, but its
         // slot layout is unrelated and must never be treated as a minion fuel slot.
+        // Bazaar item pages ("Inferno Minion ➜ Reaper Pepper") are titled "<category> ➜ <item>".
         String normalizedTitle = title.toLowerCase(java.util.Locale.ROOT);
-        if (!normalizedTitle.contains("minion") || normalizedTitle.contains("minion fuel")) {
+        if (!normalizedTitle.contains("minion") || normalizedTitle.contains("minion fuel")
+                || normalizedTitle.contains("\u279C")) {
             // We're in a container but not a minion - reset if we were in a minion GUI
             if (wasInMinionGui) {
                 leaveMinionGui(client);

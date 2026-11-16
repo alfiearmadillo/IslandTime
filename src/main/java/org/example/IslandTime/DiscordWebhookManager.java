@@ -76,20 +76,43 @@ public class DiscordWebhookManager {
     // Send helpers
     // -------------------------------------------------------------------------
 
-    public static void sendIslandAlert() {
+    public static void sendIslandAlert(long offIslandMs) {
         String url = webhookUrl;
         if (url == null || url.isEmpty()) return;
 
         String time = LocalDateTime.now().format(TIME_FORMATTER);
         String ping = (discordUserId != null && !discordUserId.isEmpty()) ? "<@" + discordUserId + ">\n" : "";
         String message = String.format(
-                "⚠️ **Island Alert**\n%sYou've been off your island for 10+ minutes\nTime: %s",
-                ping, time);
+                "⚠️ **Island Alert**\n%sYou've been off your island for %s\nTime: %s",
+                ping, formatDuration(offIslandMs), time);
         sendWebhook(url, message);
     }
 
+    /** A duration to the nearest minute, e.g. "1 hour 5 minutes", "3 days" or "45 seconds" when under a minute. */
+    static String formatDuration(long ms) {
+        long totalSeconds = Math.max(0, ms) / 1000;
+        if (totalSeconds < 60) return totalSeconds + " second" + (totalSeconds == 1 ? "" : "s");
+
+        long totalMinutes = (totalSeconds + 30) / 60;
+        long days = totalMinutes / (24 * 60);
+        long hours = (totalMinutes / 60) % 24;
+        long minutes = totalMinutes % 60;
+
+        StringBuilder out = new StringBuilder();
+        appendUnit(out, days, "day");
+        appendUnit(out, hours, "hour");
+        appendUnit(out, minutes, "minute");
+        return out.toString();
+    }
+
+    private static void appendUnit(StringBuilder out, long value, String unit) {
+        if (value <= 0) return;
+        if (out.length() > 0) out.append(' ');
+        out.append(value).append(' ').append(unit).append(value == 1 ? "" : "s");
+    }
+
     /**
-     * Sent when a minion's queued fuel-days have run out. Repeats at the configured interval
+     * Sent once all of a minion's queued fuel has run out. Repeats at the configured interval
      * until stopped (see FuelExpiredAlertTracker), primarily because sack storage caps mean
      * an idle AFK setup stops gaining anything once sacks fill up.
      */
@@ -103,6 +126,20 @@ public class DiscordWebhookManager {
                 "⛽ **Fuel Alert**\n%sYour minion fuel has run out (%d minion%s)\n" +
                         "Time to refuel and/or empty sacks before selling.\nTime: %s",
                 ping, minionCount, minionCount == 1 ? "" : "s", time);
+        sendWebhook(url, message);
+    }
+
+    /** Sent once when a fuel-day ends but fuel is still left, as a reminder to collect what has been made. */
+    public static void sendFuelReminder(int minionCount, long fuelRemainingMs) {
+        String url = webhookUrl;
+        if (url == null || url.isEmpty()) return;
+
+        String time = LocalDateTime.now().format(TIME_FORMATTER);
+        String ping = (discordUserId != null && !discordUserId.isEmpty()) ? "<@" + discordUserId + ">\n" : "";
+        String message = String.format(
+                "⛽ **Fuel Reminder**\n%sA day of fuel is up (%d minion%s), with %s of fuel left\n" +
+                        "Time to collect it.\nTime: %s",
+                ping, minionCount, minionCount == 1 ? "" : "s", formatDuration(fuelRemainingMs), time);
         sendWebhook(url, message);
     }
 
