@@ -4,7 +4,7 @@
   "version": "1.7.0",
   "name": "Island Time",
   "description": "Tracks time spent on your Hypixel SkyBlock island",
-  "authors": ["You"],
+  "authors": ["alfiearmadillo"],
   "environment": "client",
   "entrypoints": {
     "client": ["org.example.islandtime.IslandTimeMod"]
