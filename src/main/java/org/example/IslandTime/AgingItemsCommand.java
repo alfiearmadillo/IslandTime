@@ -14,13 +14,38 @@ import java.util.*;
  * Aging items take 300 hours to complete.
  * Items in the Time Pocket age at 2× speed (150 real hours).
  *
- * Buy prices come from AH lowest BIN (moulberry API) or Bazaar.
+ * Buy prices come from AH lowest BIN (moulberry API) or Bazaar, except the Rosewater Flask and Not Very Moldy
+ * Bread, which are priced as the cost of making them (see {@link #CRAFTED}).
  * Sell prices come from Bazaar (insta-sell or sell-offer, toggleable).
  */
 public class AgingItemsCommand {
 
     private static final double AGING_HOURS = 300.0;
     private static final double TIME_POCKET_MULTIPLIER = 2.0;
+
+    /** One thing an aging item is bought as: {@code qty} of {@code id}, off the AH (lowest BIN) or the Bazaar (buy order). */
+    private record Part(String id, int qty, boolean bin) {
+    }
+
+    /** Aging items priced by what their parts cost rather than their own listing. */
+    private static final Map<String, List<Part>> CRAFTED = Map.of(
+            "ROSEWATER_FLASK", List.of(new Part("NEW_BOTTLE_OF_JYRRE", 1, true), new Part("COMPACTED_WILD_ROSE", 32, false)),
+            "NOT_VERY_MOLDY_BREAD", List.of(new Part("CORNUCOPIA", 32, false), new Part("FINE_FLOUR", 16, false)));
+
+    /** The cost of making {@code agingId} from its parts, or -1 if a part has no price. Null if it isn't priced that way. */
+    private static Double craftedPrice(String agingId, JsonObject bazaarProducts) {
+        List<Part> parts = CRAFTED.get(agingId.toUpperCase(Locale.ROOT));
+        if (parts == null) return null;
+        double total = 0;
+        for (Part part : parts) {
+            double price = part.bin()
+                    ? PriceCache.getLowestBin(null, part.id())
+                    : PriceCache.getBuyOrderPrice(bazaarProducts, part.id());
+            if (price <= 0) return -1.0;
+            total += price * part.qty();
+        }
+        return total;
+    }
 
     public static void execute(Minecraft client) {
         if (client.player == null) return;
@@ -59,12 +84,18 @@ public class AgingItemsCommand {
                     String agingId = pair[0];
                     String agedId  = pair[1];
 
-                    // Buy price: try BZ first, then AH lowest BIN via Coflnet
-                    double buyPrice = PriceCache.getInstaBuyPrice(bazaarProducts, agingId);
+                    // Buy price: made from its parts if it has a recipe here, else BZ first, then AH lowest BIN via Coflnet
+                    Double crafted = craftedPrice(agingId, bazaarProducts);
+                    double buyPrice;
                     boolean buyFromAH = false;
-                    if (buyPrice < 0) {
-                        buyPrice = PriceCache.getLowestBin(null, agingId);
-                        buyFromAH = (buyPrice > 0);
+                    if (crafted != null) {
+                        buyPrice = crafted;
+                    } else {
+                        buyPrice = PriceCache.getInstaBuyPrice(bazaarProducts, agingId);
+                        if (buyPrice < 0) {
+                            buyPrice = PriceCache.getLowestBin(null, agingId);
+                            buyFromAH = (buyPrice > 0);
+                        }
                     }
 
                     // Sell price: BZ insta-sell or sell-offer
@@ -90,7 +121,7 @@ public class AgingItemsCommand {
                     }
                     if (buyUnavailable) {
                         results.add(new ItemResult(agingId, agedId, -1, sellPrice,
-                                Double.NaN, Double.NaN, false, "buy price N/A (0 on AH)", sellLabel));
+                                Double.NaN, Double.NaN, false, "buy price N/A (no price for the item or its parts)", sellLabel));
                         continue;
                     }
 

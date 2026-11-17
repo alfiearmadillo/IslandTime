@@ -16,6 +16,7 @@ import org.example.islandtime.BackpackHoverHandler;
 import org.example.islandtime.FakeSlot;
 import org.example.islandtime.FavouriteGuiViewer;
 import org.example.islandtime.GuiDebugLog;
+import org.example.islandtime.MinionFuelTracker;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
@@ -30,6 +31,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class HandledScreenMixin {
 
     @Shadow @Nullable protected Slot hoveredSlot;
+    @Shadow protected int leftPos;
+    @Shadow protected int topPos;
 
     @Unique @Nullable private Slot islandtime$savedSlot = null;
 
@@ -117,6 +120,7 @@ public class HandledScreenMixin {
     private void islandtime$cancelTooltipForBackpack(GuiGraphicsExtractor context,
                                                      int mouseX, int mouseY,
                                                      CallbackInfo ci) {
+        MinionFuelTracker.renderFuelSyncBar(context, (AbstractContainerScreen<?>) (Object) this, leftPos, topPos);
         islandtime$updateOverlays(context, mouseX, mouseY);
 
         if (FavouriteGuiViewer.isActive() || BackpackHoverHandler.hasBackpackHovered()) {
