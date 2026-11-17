@@ -17,6 +17,7 @@
     "MultiPlayerGameModeMixin",
     "ResourcePackMixin",
     "RenderSectionMixin",
+    "SodiumChunkTrackerMixin",
     "SackChatPacketMixin",
     "TooltipOverrideMixin"
   ],
