@@ -42,6 +42,9 @@ public class ConfigManager {
 
         // Sync initial values from existing config files to MoulConfig
         syncFromExistingConfigs();
+
+        // Not part of the sync above, as nothing else stores it; a saved "on" must apply at launch
+        EdgeChunkRendering.setEnabled(config.misc.renderEdgeChunks);
     }
 
     public static IslandTimeConfig getConfig() {
@@ -310,6 +313,9 @@ public class ConfigManager {
         if (TooltipOverrideConfig.isShowHiddenTooltips() != config.misc.showHiddenTooltips) {
             TooltipOverrideConfig.setShowHiddenTooltips(config.misc.showHiddenTooltips);
         }
+
+        // Misc — render edge chunks
+        EdgeChunkRendering.setEnabled(config.misc.renderEdgeChunks);
 
         // Misc — keep resource pack
         if (ResourcePackConfig.isEnabled() != config.misc.keepResourcePack) {

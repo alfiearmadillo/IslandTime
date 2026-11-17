@@ -16,6 +16,7 @@
     "MinecraftSessionAccessor",
     "MultiPlayerGameModeMixin",
     "ResourcePackMixin",
+    "RenderSectionMixin",
     "SackChatPacketMixin",
     "TooltipOverrideMixin"
   ],

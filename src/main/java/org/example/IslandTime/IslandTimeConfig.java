@@ -693,6 +693,15 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean trueAdaptiveColor = false;
+
+        @ConfigAccordionId(id = 3)
+        @Expose
+        @ConfigOption(
+            name = "Render Edge Chunks",
+            desc = "Vanilla only draws a chunk once every chunk around it has loaded, so chunks at the edge of what the server sends (their blocks exist and can be hit, but are never drawn) stay invisible. When enabled, they are drawn anyway, with the missing neighbours treated as empty air. Edge chunks the server sent no lighting for will look dark."
+        )
+        @ConfigEditorBoolean
+        public boolean renderEdgeChunks = false;
     }
 
     /**
