@@ -77,7 +77,7 @@ public class FuelMinionsScreen extends ListEditorScreen {
             Long difference = outOfSync.get(minion.key);
             String subtitle = formatSpan(minion.expiresAt - now) + " left, ends "
                     + FuelCycleTracker.formatEditableTimestamp(minion.expiresAt);
-            if (difference != null) subtitle += " (" + signedSpan(difference) + " vs the rest)";
+            if (difference != null) subtitle += " (" + signedSpan(difference) + " vs the highest day)";
 
             List<RowButton> buttons = new ArrayList<>();
             buttons.add(button("-1h", STEP_WIDTH, 0xFFFFAA00, () -> adjust(minion, -STEP_MS),
@@ -88,7 +88,7 @@ public class FuelMinionsScreen extends ListEditorScreen {
                     "Set when this minion's fuel ends, or add or remove any amount of time"));
             if (difference != null) {
                 buttons.add(button("Sync", SYNC_WIDTH, 0xFF55FFFF, () -> syncToRest(minion),
-                        "Set this minion's fuel to end at the average of the other minions'"));
+                        "Set this minion's fuel to end at the average of the minions with the most days left"));
             }
             buttons.add(confirmButton("X", "?", REMOVE_WIDTH, 0xFFFF5555, "remove:" + minion.key,
                     () -> remove(minion), "Remove this minion from the cohort, as if its fuel had been taken out"));
@@ -105,12 +105,12 @@ public class FuelMinionsScreen extends ListEditorScreen {
     }
 
     private void syncToRest(FuelCycleTracker.MinionExpiry minion) {
-        long average = FuelCycleTracker.averageExpiryOfOthers(minion.key, System.currentTimeMillis());
+        long average = FuelCycleTracker.highestDayAverageExpiry(System.currentTimeMillis());
         if (average < 0) {
             setStatus("There are no other minions to sync with.", false);
             return;
         }
-        apply(minion, average, "Synced " + minion.name + " @ " + minion.position + " to the rest.");
+        apply(minion, average, "Synced " + minion.name + " @ " + minion.position + " to the highest day.");
     }
 
     private void apply(FuelCycleTracker.MinionExpiry minion, long expiresAt, String success) {

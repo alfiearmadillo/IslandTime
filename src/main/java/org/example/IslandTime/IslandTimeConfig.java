@@ -209,7 +209,8 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(
                 name = "Highlight Out-of-Sync Minions",
                 desc = "Highlight, through walls, any minion whose fuel ends more than 8 hours before or after " +
-                        "the average of the other minions in the cohort. Only minions you have opened since " +
+                        "the average of the minions with the most whole days of fuel left (everyone with 4d 0s to " +
+                        "4d 23h 59m 59s when 4 days is the highest). Only minions you have opened since " +
                         "they were fueled are known by position."
         )
         @ConfigEditorBoolean
@@ -693,6 +694,15 @@ public class IslandTimeConfig extends Config {
         )
         @ConfigEditorBoolean
         public boolean trueAdaptiveColor = false;
+
+        @ConfigAccordionId(id = 3)
+        @Expose
+        @ConfigOption(
+            name = "Render Edge Chunks",
+            desc = "Vanilla (and Sodium) only draw a chunk once every chunk around it has loaded, so chunks at the edge of what the server sends (their blocks exist and can be hit, but are never drawn) stay invisible. When enabled, they are drawn anyway, with the missing neighbours treated as empty air. Edge chunks the server sent no lighting for will look dark."
+        )
+        @ConfigEditorBoolean
+        public boolean renderEdgeChunks = false;
     }
 
     /**

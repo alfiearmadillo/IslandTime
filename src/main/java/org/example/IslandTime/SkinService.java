@@ -38,7 +38,7 @@ final class SkinService {
     private SkinService() {
     }
 
-    record Cape(String id, String alias, boolean active) {
+    record Cape(String id, String alias, boolean active, String url) {
     }
 
     record Profile(String name, String skinUrl, String skinVariant, List<Cape> capes) {
@@ -59,9 +59,28 @@ final class SkinService {
         return parseProfile(call(HttpRequest.newBuilder(URI.create(PROFILE_URL)).GET()));
     }
 
-    /** Sets the skin from a PNG that is 64x64 or 64x32. */
-    static Profile uploadSkin(BufferedImage image, boolean slim) throws SkinException {
+    /**
+     * Whether the arms on a skin texture are the thin (3 pixel) kind. A slim arm leaves the last column of each arm
+     * face unused, so those pixels are fully transparent; a classic arm paints them. Old 64x32 skins are always classic.
+     */
+    static boolean looksSlim(BufferedImage image) {
+        if (image.getWidth() != 64 || image.getHeight() != 64) return false;
+        return isClear(image, 54, 20, 2, 12) && isClear(image, 46, 52, 2, 12);
+    }
+
+    private static boolean isClear(BufferedImage image, int x, int y, int width, int height) {
+        for (int px = x; px < x + width; px++) {
+            for (int py = y; py < y + height; py++) {
+                if ((image.getRGB(px, py) >>> 24) != 0) return false;
+            }
+        }
+        return true;
+    }
+
+    /** Sets the skin from a PNG that is 64x64 or 64x32. A null {@code slim} picks the model from the arms in the image. */
+    static Profile uploadSkin(BufferedImage image, Boolean slim) throws SkinException {
         validate(image);
+        boolean thin = slim != null ? slim : looksSlim(image);
         BufferedImage argb = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
         java.awt.Graphics2D graphics = argb.createGraphics();
         graphics.setComposite(java.awt.AlphaComposite.Src);
@@ -79,7 +98,7 @@ final class SkinService {
         ByteArrayOutputStream body = new ByteArrayOutputStream();
         try {
             body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"variant\"\r\n\r\n"
-                    + (slim ? "slim" : "classic") + "\r\n").getBytes(StandardCharsets.UTF_8));
+                    + (thin ? "slim" : "classic") + "\r\n").getBytes(StandardCharsets.UTF_8));
             body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"skin.png\"\r\n"
                     + "Content-Type: image/png\r\n\r\n").getBytes(StandardCharsets.UTF_8));
             body.write(png);
@@ -93,15 +112,24 @@ final class SkinService {
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()))));
     }
 
-    /** Sets the skin from a texture on Mojang's texture server, such as the one a player head wears. */
-    static Profile setSkinFromTexture(String textureHash, boolean slim) throws SkinException {
-        if (!textureHash.matches("[0-9a-fA-F]{16,64}")) throw new SkinException("That isn't a skin texture hash");
-        JsonObject json = new JsonObject();
-        json.addProperty("variant", slim ? "slim" : "classic");
-        json.addProperty("url", "http://textures.minecraft.net/texture/" + textureHash.toLowerCase());
-        return parseProfile(call(HttpRequest.newBuilder(URI.create(PROFILE_URL + "/skins"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json.toString()))));
+    private static final java.util.regex.Pattern TEXTURE = java.util.regex.Pattern.compile(
+            "(?i)^(?:https?://textures\\.minecraft\\.net/texture/)?([0-9a-f]{16,64})$");
+
+    /** The texture hash in a bare hash or a textures.minecraft.net link, or null if the text is neither. */
+    static String parseTextureHash(String text) {
+        if (text == null) return null;
+        java.util.regex.Matcher matcher = TEXTURE.matcher(text.trim());
+        return matcher.matches() ? matcher.group(1).toLowerCase() : null;
+    }
+
+    /**
+     * Sets the skin from a texture on Mojang's texture server, such as the one a player head wears. The texture is
+     * downloaded and uploaded like a pasted image, so it goes through the same call as every other skin change.
+     */
+    static Profile setSkinFromTexture(String texture, Boolean slim) throws SkinException {
+        String hash = parseTextureHash(texture);
+        if (hash == null) throw new SkinException("That isn't a skin texture hash");
+        return uploadSkin(downloadSkin("https://textures.minecraft.net/texture/" + hash), slim);
     }
 
     /** Goes back to the default skin. */
@@ -129,27 +157,36 @@ final class SkinService {
 
     /** Downloads a skin from Mojang's texture server, as given by a profile. */
     static BufferedImage downloadSkin(String url) throws SkinException {
+        return download(url, "This account has no custom skin to save", "skin");
+    }
+
+    /** Downloads a cape from Mojang's texture server, as given by a profile. */
+    static BufferedImage downloadCape(String url) throws SkinException {
+        return download(url, "This cape has no texture", "cape");
+    }
+
+    private static BufferedImage download(String url, String noTexture, String what) throws SkinException {
         URI uri;
         try {
             uri = URI.create(url);
         } catch (IllegalArgumentException | NullPointerException e) {
-            throw new SkinException("This account has no custom skin to save");
+            throw new SkinException(noTexture);
         }
         if (uri.getHost() == null || !uri.getHost().equals("textures.minecraft.net")) {
-            throw new SkinException("This account has no custom skin to save");
+            throw new SkinException(noTexture);
         }
         try {
             HttpResponse<java.io.InputStream> response = HTTP.send(
                     HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).GET().build(),
                     HttpResponse.BodyHandlers.ofInputStream());
             try (java.io.InputStream in = response.body()) {
-                if (response.statusCode() != 200) throw new SkinException("Could not download the skin (" + response.statusCode() + ")");
+                if (response.statusCode() != 200) throw new SkinException("Could not download the " + what + " (" + response.statusCode() + ")");
                 BufferedImage image = ImageIO.read(in);
-                if (image == null) throw new SkinException("The downloaded skin is not an image");
+                if (image == null) throw new SkinException("The downloaded " + what + " is not an image");
                 return image;
             }
         } catch (IOException e) {
-            throw new SkinException("Could not download the skin: " + e.getClass().getSimpleName());
+            throw new SkinException("Could not download the " + what + ": " + e.getClass().getSimpleName());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new SkinException("Cancelled");
@@ -321,7 +358,8 @@ final class SkinService {
                 JsonObject cape = element.getAsJsonObject();
                 capes.add(new Cape(cape.get("id").getAsString(),
                         cape.has("alias") ? cape.get("alias").getAsString() : "Cape",
-                        cape.has("state") && "ACTIVE".equals(cape.get("state").getAsString())));
+                        cape.has("state") && "ACTIVE".equals(cape.get("state").getAsString()),
+                        cape.has("url") ? cape.get("url").getAsString() : ""));
             }
         }
         return new Profile(name, skinUrl, variant, capes);

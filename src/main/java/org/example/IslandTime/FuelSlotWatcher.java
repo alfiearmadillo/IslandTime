@@ -12,17 +12,23 @@ import org.example.islandtime.FuelSlotChange.Result;
  *   <li>The client predicts the click: the placed fuel (no "Time Remaining" line) appears in the slot and
  *       the display item it replaced lands on the cursor.</li>
  *   <li>The server empties the cursor and re-sends the slot with a stack count of 3 but the old,
- *       unchanged time remaining. That count is a leftover, not the amount of fuel.</li>
+ *       unchanged time remaining. That count is the amount placed, not yet reflected in the time.</li>
  *   <li>Up to a second later its once-a-second refresh sends the real slot: count 1, time remaining one
  *       day longer.</li>
  * </ol>
  * The refresh also re-issues the item with a fresh uuid every second even when nothing changed, and it is
- * never sent when the GUI is closed first, so the placement has to be remembered from step 1 to be counted.
+ * never sent when the GUI is closed first. So a placement is counted in two steps: the first sign of it
+ * (the server accepting the click, or the stack size showing what was placed) counts it straight away, which
+ * is enough on its own; the refresh that follows, if it is seen while the GUI is still open, only confirms it,
+ * and adds fuel if it shows more than was counted. It never counts the same fuel twice.
  */
 final class FuelSlotWatcher {
 
     /** How long a changed reading must hold before it is believed, in ticks. */
     static final int SETTLING_TICKS = 3;
+
+    /** How long a counted placement waits for the refresh that confirms it, in ticks. The refresh comes about every second. */
+    static final int CONFIRM_HOLD_TICKS = 80;
 
     /** Where a debug log of what the watcher decides goes; the watcher stays silent without one. */
     interface Tracer {
@@ -59,6 +65,11 @@ final class FuelSlotWatcher {
     private Reading settling = null;
     private int settlingTicks = 0;
 
+    // While a placement has been counted but its refresh has not been seen: the ticks left to wait for it, and what
+    // the slot showed before the count. A reading at or below that is the old display arriving late.
+    private int holdTicks = 0;
+    private int unitsBeforeCount = 0;
+
     FuelSlotWatcher(Reading baseline, Tracer tracer) {
         this.baseline = baseline;
         this.tracer = tracer == null ? Tracer.NONE : tracer;
@@ -81,8 +92,12 @@ final class FuelSlotWatcher {
         if (placementTarget >= 0 && !placementAccepted) return;
 
         // A click made while the previous one is accepted but not yet shown stacks onto it; the display item
-        // on the cursor is still the stale one from before the first.
-        int target = (placementTarget >= 0 ? placementTarget : cursor.units()) + slot.units();
+        // on the cursor is still the stale one from before the first. The same goes for one made while a counted
+        // placement waits for its refresh, whose total the baseline already holds.
+        int before = placementTarget >= 0 ? placementTarget
+                : holdTicks > 0 ? Math.max(cursor.units(), baseline.units())
+                : cursor.units();
+        int target = before + slot.units();
         placementTarget = target;
         placementAccepted = false;
         if (tracer.enabled()) {
@@ -116,6 +131,8 @@ final class FuelSlotWatcher {
      * @return the counted change, or null when there is nothing to report yet
      */
     Outcome tick(Reading slot, Reading cursor, boolean cursorHeld, int unitsExpired) {
+        if (holdTicks > 0) holdTicks--;
+
         if (isPlacementPrediction(slot, cursor)) {
             notePlacement(slot, cursor);
             settling = null;
@@ -128,9 +145,16 @@ final class FuelSlotWatcher {
         }
         followPlacement(slot, cursor, cursorHeld);
 
+        Outcome counted = countFirstStep(slot, cursorHeld, unitsExpired);
+        if (counted != null) return counted;
+
         if (slot.sameAs(baseline)) {
             settling = null;
             settlingTicks = 0;
+            if (holdTicks > 0 && slot.timed() && slot.stack() <= 1) {
+                holdTicks = 0;
+                if (tracer.enabled()) tracer.event("refresh seen: slot=" + slot + " confirms the placement counted earlier");
+            }
             if (tracer.enabled()) tracer.endRun("slot equals the baseline again " + slot);
             return null;
         }
@@ -142,6 +166,17 @@ final class FuelSlotWatcher {
             if (tracer.enabled()) {
                 tracer.transition("cursor guard: slot=" + slot + " differs from baseline " + baseline
                         + " but the cursor holds " + cursor + "; waiting for it to clear");
+            }
+            return null;
+        }
+
+        // The slot showing what it did before a counted placement is the old display, not fuel being taken out.
+        if (holdTicks > 0 && !slot.empty() && slot.name().equals(baseline.name()) && slot.units() <= unitsBeforeCount) {
+            settling = null;
+            settlingTicks = 0;
+            if (tracer.enabled()) {
+                tracer.transition("slot=" + slot + " is the display from before the counted placement (baseline "
+                        + baseline + "); waiting for the refresh");
             }
             return null;
         }
@@ -161,9 +196,53 @@ final class FuelSlotWatcher {
         }
         settling = null;
         settlingTicks = 0;
+        holdTicks = 0;
         if (tracer.enabled()) tracer.transition("settled slot=" + slot + " baseline=" + baseline);
 
         return confirm(slot, unitsExpired);
+    }
+
+    /**
+     * Counts a placement at the first sign of it, without waiting for the refresh: the server having accepted
+     * the click that was in flight, or the slot's stack size showing the amount placed while its time remaining
+     * has not caught up. The count becomes the baseline, so the refresh that follows matches it and only adds
+     * fuel if it shows more.
+     */
+    private Outcome countFirstStep(Reading slot, boolean cursorHeld, int unitsExpired) {
+        if (cursorHeld || baseline.empty() || !(slot.empty() || slot.name().equals(baseline.name()))) return null;
+
+        int reached;
+        String why;
+        if (placementTarget >= 0 && placementAccepted) {
+            reached = placementTarget;
+            why = "the server accepted the placement";
+        } else if (slot.timed() && slot.stack() > 1 && baseline.stack() <= 1) {
+            reached = slot.units() + slot.stack();
+            why = "the stack size shows " + slot.stack() + " placed";
+        } else {
+            return null;
+        }
+
+        if (reached <= baseline.units()) {
+            dropPlacement("it adds nothing to the baseline " + baseline);
+            return null;
+        }
+        Reading counted = new Reading(false, baseline.name(), reached, true, 1);
+        Result change = FuelSlotChange.evaluate(baseline, counted, unitsExpired);
+        if (change.newFuelUnits() <= 0) {
+            dropPlacement("it adds nothing to the baseline " + baseline);
+            return null;
+        }
+
+        unitsBeforeCount = baseline.units();
+        holdTicks = CONFIRM_HOLD_TICKS;
+        settling = null;
+        settlingTicks = 0;
+        if (tracer.enabled()) {
+            tracer.event("counting " + change.newFuelUnits() + " unit(s) at once, " + why + ": slot=" + slot
+                    + " baseline " + baseline + " -> " + counted + "; the refresh will confirm it");
+        }
+        return confirm(counted, change);
     }
 
     /**
@@ -183,7 +262,7 @@ final class FuelSlotWatcher {
         // is the stale pre-placement display (or the client's guess) and the placement counts in full.
         Reading effective = slot;
         if (placementTarget >= 0 && !slot.empty() && slot.units() < placementTarget) {
-            effective = new Reading(false, slot.name(), placementTarget, slot.timed());
+            effective = new Reading(false, slot.name(), placementTarget, slot.timed(), 1);
             if (tracer.enabled()) {
                 tracer.event("flush: slot=" + slot + " is behind the placement in flight; using " + effective);
             }

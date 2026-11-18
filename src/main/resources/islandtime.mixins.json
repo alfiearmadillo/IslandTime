@@ -16,6 +16,8 @@
     "MinecraftSessionAccessor",
     "MultiPlayerGameModeMixin",
     "ResourcePackMixin",
+    "RenderSectionMixin",
+    "SodiumChunkTrackerMixin",
     "SackChatPacketMixin",
     "TooltipOverrideMixin"
   ],

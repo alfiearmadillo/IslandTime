@@ -20,17 +20,18 @@ final class FuelSlotChange {
      * <p>Hypixel's fuel item always has a stack count of 1; how much fuel is queued is written in its
      * "Time Remaining" lore line, which {@link #parseTimeRemainingMs} reads. For such an item the units are
      * the whole days remaining ({@code timed}). Only an item without that line (such as the fuel in the
-     * player's inventory) counts its stack size instead.
+     * player's inventory) counts its stack size instead. {@code stack} is the item's raw stack size either way:
+     * on a timed item it is 1 except in the moment after fuel is placed, when it is the amount placed.
      */
-    record Reading(boolean empty, String name, int units, boolean timed) {
-        static final Reading EMPTY = new Reading(true, "", 0, false);
+    record Reading(boolean empty, String name, int units, boolean timed, int stack) {
+        static final Reading EMPTY = new Reading(true, "", 0, false, 0);
 
         static Reading of(String name, int count) {
-            return new Reading(false, name, count, false);
+            return new Reading(false, name, count, false, count);
         }
 
-        static Reading timed(String name, long remainingMs) {
-            return new Reading(false, name, (int) Math.min(Integer.MAX_VALUE, Math.max(0L, remainingMs) / DAY_MS), true);
+        static Reading timed(String name, long remainingMs, int stack) {
+            return new Reading(false, name, (int) Math.min(Integer.MAX_VALUE, Math.max(0L, remainingMs) / DAY_MS), true, stack);
         }
 
         /** Whether both readings show the same fuel and the same amount of it, however each got that amount. */
@@ -40,7 +41,8 @@ final class FuelSlotChange {
 
         @Override
         public String toString() {
-            return empty ? "empty" : units + (timed ? "d" : "x") + " \"" + name + "\"";
+            return empty ? "empty" : units + (timed ? "d" : "x") + (timed && stack > 1 ? "(stack " + stack + ")" : "")
+                    + " \"" + name + "\"";
         }
     }
 
