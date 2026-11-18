@@ -2,6 +2,7 @@ package org.example.islandtime;
 
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -16,6 +17,7 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.network.chat.Component;
 import net.minecraft.ChatFormatting;
@@ -870,6 +872,55 @@ public class MinionFuelTracker {
         applyFuelChange(client, slotItem, outcome);
     }
 
+    // -------------------------------------------------------------------------
+    // Fuel sync countdown bar
+    // -------------------------------------------------------------------------
+
+    // Hypixel re-issues the fuel item about once a second, and each time mints a new custom_data timestamp. The
+    // bar counts down to the next one, taking +1s from the current timestamp as when it arrives. Rather than
+    // compare that timestamp with the local clock (the two can be seconds apart), the moment a new one is seen
+    // is taken as when it was issued.
+    private static final long FUEL_SYNC_INTERVAL_MS = 1000L;
+    private static long lastFuelTimestamp = Long.MIN_VALUE;
+    private static long lastFuelTimestampSeenMs = 0;
+
+    /**
+     * Draws a durability-style bar over the fuel slot of the open minion GUI that empties until the next
+     * sync of the fuel item is due. Does nothing for any other screen or while the slot holds no timed fuel.
+     */
+    public static void renderFuelSyncBar(GuiGraphicsExtractor context, AbstractContainerScreen<?> screen,
+                                         int leftPos, int topPos) {
+        AbstractContainerMenu menu = screen.getMenu();
+        if (menu == null || menu != lastMinionMenu || FUEL_SLOT_INDEX >= menu.slots.size()) return;
+
+        Slot slot = menu.getSlot(FUEL_SLOT_INDEX);
+        ItemStack stack = slot.getItem();
+        if (stack.isEmpty() || timeRemainingMs(stack) < 0) {
+            lastFuelTimestamp = Long.MIN_VALUE;
+            return;
+        }
+
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+        Tag timestampTag = customData == null ? null : customData.copyTag().get("timestamp");
+        Long timestamp = timestampTag == null ? null : parseTimestamp(timestampTag);
+        if (timestamp == null) return;
+
+        long now = System.currentTimeMillis();
+        if (timestamp != lastFuelTimestamp) {
+            lastFuelTimestamp = timestamp;
+            lastFuelTimestampSeenMs = now;
+        }
+        float left = 1f - (float) (now - lastFuelTimestampSeenMs) / FUEL_SYNC_INTERVAL_MS;
+        left = Math.max(0f, Math.min(1f, left));
+
+        // Where and how big vanilla draws an item's durability bar
+        int x = leftPos + slot.x + 2;
+        int y = topPos + slot.y + 13;
+        context.fill(x, y, x + 13, y + 2, 0xFF000000);
+        int filled = Math.round(left * 13f);
+        if (filled > 0) context.fill(x, y, x + filled, y + 1, java.awt.Color.HSBtoRGB(left / 3f, 1f, 1f));
+    }
+
     /**
      * Reads what a stack in the fuel slot (or on the cursor) amounts to. The fuel's own "Time Remaining"
      * lore line is what says how much fuel is queued: Hypixel keeps the stack count at 1 and, around a
@@ -884,7 +935,7 @@ public class MinionFuelTracker {
         String name = stack.getHoverName().getString();
         long remainingMs = timeRemainingMs(stack);
         return remainingMs >= 0
-                ? FuelSlotChange.Reading.timed(name, remainingMs)
+                ? FuelSlotChange.Reading.timed(name, remainingMs, stack.getCount())
                 : FuelSlotChange.Reading.of(name, stack.getCount());
     }
 

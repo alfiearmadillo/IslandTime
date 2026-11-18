@@ -1054,39 +1054,50 @@ public class FuelCycleTracker {
         return result;
     }
 
-    /** How far a minion's fuel may differ from the average of the other minions' before it counts as out of sync. */
+    /** How far a minion's fuel may differ from the average of the highest-day minions' before it counts as out of sync. */
     static final long OUT_OF_SYNC_MS = 8L * 60 * 60 * 1000;
 
     /**
-     * The active minions whose fuel expires more than {@link #OUT_OF_SYNC_MS} away from the average of the
-     * <em>other</em> active minions, each with how far from it: positive when it has more time left, negative
-     * when it has less. Needs at least two minions, as one has nothing to be out of sync with.
+     * The average fuel expiry of the minions with the most whole days of fuel left (everyone showing, say,
+     * 4d 0s to 4d 23h 59m 59s when 4 is the highest), or -1 when no minion has fuel. Minions with less fuel
+     * left than that don't pull the average down, since they are the ones that are behind.
+     */
+    public static long highestDayAverageExpiry(long now) {
+        return highestDayAverageExpiry(getActiveMinionExpiries(now), now);
+    }
+
+    private static long highestDayAverageExpiry(List<MinionExpiry> active, long now) {
+        long highestDay = -1;
+        for (MinionExpiry minion : active) highestDay = Math.max(highestDay, (minion.expiresAt - now) / DAY_MS);
+        if (highestDay < 0) return -1;
+
+        long total = 0;
+        int count = 0;
+        for (MinionExpiry minion : active) {
+            if ((minion.expiresAt - now) / DAY_MS != highestDay) continue;
+            total += minion.expiresAt;
+            count++;
+        }
+        return total / count;
+    }
+
+    /**
+     * The active minions whose fuel expires more than {@link #OUT_OF_SYNC_MS} away from
+     * {@link #highestDayAverageExpiry the average of the highest-day minions}, each with how far from it:
+     * positive when it has more time left, negative when it has less. Needs at least two minions, as one
+     * has nothing to be out of sync with.
      */
     public static Map<String, Long> getOutOfSyncMinions(long now) {
         List<MinionExpiry> active = getActiveMinionExpiries(now);
         Map<String, Long> result = new LinkedHashMap<>();
         if (active.size() < 2) return result;
 
-        long total = 0;
-        for (MinionExpiry minion : active) total += minion.expiresAt;
+        long reference = highestDayAverageExpiry(active, now);
         for (MinionExpiry minion : active) {
-            long averageOfRest = (total - minion.expiresAt) / (active.size() - 1);
-            long difference = minion.expiresAt - averageOfRest;
+            long difference = minion.expiresAt - reference;
             if (Math.abs(difference) > OUT_OF_SYNC_MS) result.put(minion.key, difference);
         }
         return result;
-    }
-
-    /** The average fuel expiry of every active minion except {@code key}, or -1 when there are none. */
-    public static long averageExpiryOfOthers(String key, long now) {
-        long total = 0;
-        int count = 0;
-        for (MinionExpiry minion : getActiveMinionExpiries(now)) {
-            if (minion.key.equals(key)) continue;
-            total += minion.expiresAt;
-            count++;
-        }
-        return count == 0 ? -1 : total / count;
     }
 
     /**

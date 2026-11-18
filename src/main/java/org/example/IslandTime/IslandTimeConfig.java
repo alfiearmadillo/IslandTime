@@ -209,7 +209,8 @@ public class IslandTimeConfig extends Config {
         @ConfigOption(
                 name = "Highlight Out-of-Sync Minions",
                 desc = "Highlight, through walls, any minion whose fuel ends more than 8 hours before or after " +
-                        "the average of the other minions in the cohort. Only minions you have opened since " +
+                        "the average of the minions with the most whole days of fuel left (everyone with 4d 0s to " +
+                        "4d 23h 59m 59s when 4 days is the highest). Only minions you have opened since " +
                         "they were fueled are known by position."
         )
         @ConfigEditorBoolean
