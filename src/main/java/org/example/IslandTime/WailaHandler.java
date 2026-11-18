@@ -405,6 +405,11 @@ public class WailaHandler {
                 "Click to copy entity network ID");
         sendCopyLine(client, "UUID: ", entity.getStringUUID(), ChatFormatting.DARK_GRAY, "Click to copy UUID");
 
+        if (entity instanceof net.minecraft.world.entity.player.Player player) {
+            String skinHash = playerSkinHash(client, player);
+            if (skinHash != null) sendSkinLines(client, skinHash);
+        }
+
         // Position and size
         String posStr = String.format(Locale.ROOT, "%.2f, %.2f, %.2f", entity.getX(), entity.getY(), entity.getZ());
         sendCopyLine(client, "Position: ", posStr, ChatFormatting.WHITE, "Click to copy position");
@@ -727,36 +732,7 @@ public class WailaHandler {
                         if (hash != null) {
                             extractedHash = hash;
 
-                            // Show texture hash (clickable to copy)
-                            client.player.sendSystemMessage(
-                                    Component.literal("  Texture Hash: ").withStyle(ChatFormatting.GRAY)
-                                            .append(Component.literal(hash).withStyle(ChatFormatting.LIGHT_PURPLE)
-                                                    .withStyle(style -> style
-                                                            .withClickEvent(new ClickEvent.CopyToClipboard(hash))
-                                                            .withHoverEvent(new HoverEvent.ShowText(
-                                                                    Component.literal("Click to copy texture hash")
-                                                                            .withStyle(ChatFormatting.GRAY))))));
-                        }
-
-                        // Copy Skin button — reads locally cached texture and copies to clipboard
-                        if (extractedHash != null) {
-                            String skinHash = extractedHash;
-                            client.player.sendSystemMessage(
-                                    Component.literal("  ").withStyle(ChatFormatting.GRAY)
-                                            .append(Component.literal("[Copy Skin Image]").withStyle(ChatFormatting.DARK_AQUA)
-                                                    .withStyle(style -> style
-                                                            .withClickEvent(new ClickEvent.RunCommand("/it copyskin " + skinHash))
-                                                            .withHoverEvent(new HoverEvent.ShowText(
-                                                                    Component.literal("Click to copy skin texture image to clipboard (from local cache)")
-                                                                            .withStyle(ChatFormatting.GRAY))))));
-                            client.player.sendSystemMessage(
-                                    Component.literal("  ").withStyle(ChatFormatting.GRAY)
-                                            .append(Component.literal("[Use As My Skin]").withStyle(ChatFormatting.DARK_AQUA)
-                                                    .withStyle(style -> style
-                                                            .withClickEvent(new ClickEvent.RunCommand("/it skin hash " + skinHash))
-                                                            .withHoverEvent(new HoverEvent.ShowText(
-                                                                    Component.literal("Click to make this your skin (shows to others after you reconnect)")
-                                                                            .withStyle(ChatFormatting.GRAY))))));
+                            sendSkinLines(client, hash);
                         }
                     } catch (Exception ignored) {
                     }
@@ -766,6 +742,48 @@ public class WailaHandler {
             // getOwnerProfile may not exist in this version
         }
         return new SkullInfo(extractedHash, extractedSbId);
+    }
+
+    /** The texture hash (copyable) and the buttons to copy the skin image or use it as your own. */
+    private static void sendSkinLines(Minecraft client, String hash) {
+        client.player.sendSystemMessage(
+                Component.literal("  Texture Hash: ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal(hash).withStyle(ChatFormatting.LIGHT_PURPLE)
+                                .withStyle(style -> style
+                                        .withClickEvent(new ClickEvent.CopyToClipboard(hash))
+                                        .withHoverEvent(new HoverEvent.ShowText(
+                                                Component.literal("Click to copy texture hash")
+                                                        .withStyle(ChatFormatting.GRAY))))));
+        client.player.sendSystemMessage(
+                Component.literal("  ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal("[Copy Skin Image]").withStyle(ChatFormatting.DARK_AQUA)
+                                .withStyle(style -> style
+                                        .withClickEvent(new ClickEvent.RunCommand("/it copyskin " + hash))
+                                        .withHoverEvent(new HoverEvent.ShowText(
+                                                Component.literal("Click to copy skin texture image to clipboard (from local cache)")
+                                                        .withStyle(ChatFormatting.GRAY))))));
+        client.player.sendSystemMessage(
+                Component.literal("  ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal("[Use As My Skin]").withStyle(ChatFormatting.DARK_AQUA)
+                                .withStyle(style -> style
+                                        .withClickEvent(new ClickEvent.RunCommand("/it skin hash " + hash))
+                                        .withHoverEvent(new HoverEvent.ShowText(
+                                                Component.literal("Click to make this your skin (shows to others after you reconnect)")
+                                                        .withStyle(ChatFormatting.GRAY))))));
+    }
+
+    /** The texture hash of a player's skin, taken from the profile the server sent for them, or null if it has none. */
+    private static String playerSkinHash(Minecraft client, net.minecraft.world.entity.player.Player player) {
+        var info = client.getConnection() == null ? null : client.getConnection().getPlayerInfo(player.getUUID());
+        var profile = info != null ? info.getProfile() : player.getGameProfile();
+        for (Property prop : profile.properties().get("textures")) {
+            try {
+                String hash = extractTextureHash(new String(Base64.getDecoder().decode(prop.value())));
+                if (hash != null) return hash;
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return null;
     }
 
     /**
